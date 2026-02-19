@@ -965,7 +965,7 @@ CLASSIFICATION RULES:
 PRIORITY ORDER - Check in this exact order:
 1. SUMMARY if "summarize", "recap", or "summary" present
 2. FOLLOW_UP if very short acknowledgment (<5 words: "ok", "got it", "thanks", "understood", "i see", "interesting")
-3. QUESTION for everything else (DEFAULT) - the standard intent for product search queries"""
+3. QUESTION for everything else (DEFAULT) - the standard intent for product search queries
 
 CONFIDENCE GUIDELINES:
 - 0.9-1.0: Very clear intent, unambiguous message
