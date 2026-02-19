@@ -1,11 +1,10 @@
 #!/bin/bash
 # Agentic Hybrid Search Setup Script
-# One-time setup: install dependencies, generate API key, initialize database
+# One-time setup: configure environment, start Docker services, ingest ESCI products
 
 set -e  # Exit on error
 
-
-echo "🚀 Agentic Hybrid Search Setup"
+echo "🚀 Agentic Hybrid Search - Local Setup"
 echo ""
 
 # Handle help flag
@@ -13,31 +12,26 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     cat << EOF
 Usage: ./scripts/setup.sh [OPTIONS]
 
-One-time setup for Agentic Hybrid Search: installs dependencies, generates API key, and initializes the database.
+One-time setup for local development: configures environment, starts Docker services, and ingests ESCI products.
 
 OPTIONS:
     -h, --help          Show this help message and exit
 
 REQUIREMENTS:
     - Docker (for PostgreSQL + OpenSearch containers)
-    - Python 3.11+
-    - Node.js 18+
-    - Google API Key (for Gemini AI)
-    - Maven (for javadoc generation)
-    - Java 17+ (for Maven)
-    - Git (for cloning Lucille repository)
+    - Python 3.13 (with .venv already created at project root)
+    - Node.js 18+ (for frontend)
+    - Google API Key (for Gemini embeddings and LLM)
 
 WHAT THIS SCRIPT DOES:
-    1. Checks prerequisites (Docker, Python, Node.js, Maven, Git)
-    2. Clones or updates Lucille repository
-    3. Creates .env file with API key (if not already present)
-    4. Syncs API key to frontend configuration
-    5. Creates Python virtual environment and installs dependencies
-    6. Installs Node.js frontend dependencies
-    7. Generates Lucille javadocs
-    8. Starts PostgreSQL, OpenSearch, and OpenSearch Dashboards containers
-    9. Validates Google AI API key
-    10. Initializes database, OpenSearch index, and loads documentation
+    1. Checks prerequisites (Docker, Python 3.13, Node.js)
+    2. Creates .env file and configures Google API key (if not present)
+    3. Creates frontend .env configuration
+    4. Installs Python dependencies in root .venv
+    5. Installs Node.js frontend dependencies
+    6. Starts PostgreSQL, OpenSearch, and OpenSearch Dashboards containers
+    7. Initializes database and OpenSearch index
+    8. Ingests 10K ESCI e-commerce products (with deterministic sampling)
 
 SERVICES STARTED:
     - PostgreSQL (checkpoint storage) → localhost:5432
@@ -49,8 +43,9 @@ REQUIREMENTS:
     Get your key from: https://aistudio.google.com/apikey
 
 NEXT STEPS after setup:
-    1. Start services: ./scripts/start.sh
-    2. Visit http://localhost:5173
+    1. Start backend: make dev-api (from langchain_agent/)
+    2. Start frontend: make dev-web (from langchain_agent/)
+    3. Visit http://localhost:5173
 
 For more information, see README.md
 
@@ -71,6 +66,7 @@ if ! command -v docker &> /dev/null; then
     echo "   Please install Docker from https://www.docker.com/"
     exit 1
 fi
+echo "✓ Docker found"
 
 if ! command -v python3 &> /dev/null; then
     echo "❌ Python 3 not found"
@@ -78,7 +74,7 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Check Python version (must be 3.13 or earlier, not 3.14+)
+# Check Python version (must be 3.13)
 PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
 PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
 PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
@@ -86,72 +82,37 @@ PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
 if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 13 ]); then
     echo "❌ Python version too old: $PYTHON_VERSION"
     echo "   Required: Python 3.13 (or 3.13.x)"
-    echo "   LangChain requires Python 3.13 or earlier (not 3.14+)"
     exit 1
 fi
 
 if [ "$PYTHON_MAJOR" -gt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -gt 13 ]); then
     echo "❌ Python version too new: $PYTHON_VERSION"
     echo "   Required: Python 3.13 (or 3.13.x)"
-    echo "   LangChain/Pydantic V1 are not compatible with Python 3.14+"
-    echo ""
-    echo "   Solution: Install Python 3.13"
-    echo "   - macOS: brew install python@3.13"
-    echo "   - Ubuntu: sudo apt-get install python3.13"
-    echo "   - Or download from https://www.python.org/downloads/"
+    echo "   LangChain/Pydantic are not compatible with Python 3.14+"
     exit 1
 fi
+echo "✓ Python $PYTHON_VERSION found"
 
 if ! command -v node &> /dev/null; then
     echo "❌ Node.js not found"
     echo "   Please install Node.js 18+ from https://nodejs.org/"
     exit 1
 fi
+echo "✓ Node.js found"
 
-if ! command -v mvn &> /dev/null; then
-    echo "❌ Maven not found"
-    echo "   Please install Maven for javadoc generation"
-    echo "   macOS: brew install maven"
-    echo "   Ubuntu: sudo apt-get install maven"
-    exit 1
-fi
-
-if ! command -v git &> /dev/null; then
-    echo "❌ Git not found"
-    echo "   Please install Git"
-    echo "   macOS: brew install git"
-    echo "   Ubuntu: sudo apt-get install git"
-    exit 1
-fi
-
-echo "✓ All prerequisites found"
 echo ""
 
-# 2. Ensure Lucille repository is cloned/updated
-echo "📦 Setting up Lucille repository..."
+# 2. Verify ESCI dataset (informational, not required for initial setup)
+echo "📦 ESCI Dataset Status..."
 
-if [ ! -d "$PARENT_DIR/lucille" ]; then
-    echo "   Cloning Lucille from GitHub..."
-    cd "$PARENT_DIR"
-    git clone https://github.com/kmwtechnology/lucille.git > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        echo "   ✓ Lucille cloned successfully"
-    else
-        echo "   ❌ Failed to clone Lucille"
-        echo "      Please ensure you have git installed and internet access"
-        exit 1
-    fi
-    cd "$PROJECT_DIR"
+ESCI_FILE="$PARENT_DIR/esci/shopping_queries_dataset/shopping_queries_dataset_products.parquet"
+if [ -f "$ESCI_FILE" ]; then
+    FILE_SIZE=$(du -h "$ESCI_FILE" | cut -f1)
+    echo "✓ ESCI dataset found ($FILE_SIZE)"
 else
-    echo "   Updating existing Lucille repository..."
-    cd "$PARENT_DIR/lucille"
-    git pull > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        echo "   ✓ Lucille updated to latest version"
-    else
-        echo "   ⚠ Failed to update Lucille (continuing with existing version)"
-    fi
-    cd "$PROJECT_DIR"
+    echo "⚠ ESCI dataset not found at: $ESCI_FILE"
+    echo "   Download from: https://github.com/amazon-science/esci-data"
+    echo "   Will attempt to ingest later if available"
 fi
 echo ""
 
@@ -234,15 +195,17 @@ fi
 
 echo ""
 
-# 4. Install Python dependencies
-echo "📦 Installing Python dependencies..."
+# 4. Ensure root .venv has all dependencies
+echo "📦 Python Dependencies..."
 
-if [ ! -d "$PROJECT_DIR/.venv" ]; then
-    python3 -m venv "$PROJECT_DIR/.venv"
-    echo "   Created virtual environment"
+VENV_PATH="$PARENT_DIR/.venv"
+if [ ! -d "$VENV_PATH" ]; then
+    echo "❌ Virtual environment not found at: $VENV_PATH"
+    echo "   Please create it first: python3 -m venv $PARENT_DIR/.venv"
+    exit 1
 fi
 
-source "$PROJECT_DIR/.venv/bin/activate"
+source "$VENV_PATH/bin/activate"
 pip install -q --upgrade pip setuptools wheel
 pip install -q -r "$PROJECT_DIR/requirements.txt"
 echo "✓ Python dependencies installed"
@@ -261,22 +224,7 @@ fi
 cd "$PROJECT_DIR"
 echo ""
 
-# 7. Generate Lucille javadocs
-echo "📚 Generating Lucille javadocs..."
-
-if [ ! -d "$PARENT_DIR/lucille" ]; then
-    echo "   ❌ Lucille project not found (unexpected error)"
-    echo "   This should not happen if setup completed successfully"
-    exit 1
-fi
-
-cd "$PARENT_DIR/lucille"
-if ! mvn javadoc:aggregate > /dev/null 2>&1; then
-    echo "   ✗ Failed to generate javadocs. Ensure Maven and Java 17+ are installed."
-    exit 1
-fi
-echo "✓ Javadocs generated at target/site/apidocs"
-cd "$PROJECT_DIR"
+# Skip javadoc generation (ESCI products don't require it)
 echo ""
 
 # 8. Start Docker containers (PostgreSQL + OpenSearch)
@@ -332,31 +280,51 @@ fi
 cd "$PROJECT_DIR"
 echo ""
 
-# 9. Validate Google AI API key
-echo "🔑 Validating Google AI configuration..."
-echo ""
+# 9. Initialize database and OpenSearch index
+echo "💾 Initializing database and OpenSearch..."
 
-# 10. Initialize database and load data
-echo "💾 Initializing database and loading documentation..."
+source "$PARENT_DIR/.venv/bin/activate"
+cd "$PROJECT_DIR"
 
-source "$PROJECT_DIR/.venv/bin/activate"
-
-mkdir -p "$PROJECT_DIR/logs"
-python "$PROJECT_DIR/setup.py" 2>&1 | tee "$PROJECT_DIR/logs/setup.log"
+mkdir -p logs
+PYTHONPATH=. python setup.py 2>&1 | tee logs/setup.log
 
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
     echo ""
-    echo "✓ Database initialized and docs loaded"
+    echo "✓ Database and OpenSearch index initialized"
 else
     echo ""
-    echo "✗ Setup failed. Check logs: ./scripts/logs.sh backend"
+    echo "✗ Database initialization failed. Check logs/setup.log"
     exit 1
+fi
+echo ""
+
+# 10. Ingest ESCI products
+echo "🛍️  Ingesting ESCI e-commerce products (10K sample)..."
+echo "   This will download embeddings (~10K requests × 150 tokens = ~$0.30)"
+echo ""
+
+PYTHONPATH=. python ingest_esci_products.py 2>&1 | tee logs/ingest.log
+
+if [ ${PIPESTATUS[0]} -eq 0 ]; then
+    echo ""
+    echo "✓ ESCI products ingested successfully"
+else
+    echo ""
+    echo "⚠ Product ingestion failed. Check logs/ingest.log"
+    echo "   You can retry later with: PYTHONPATH=. python ingest_esci_products.py"
 fi
 
 echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Start services: ./scripts/start.sh"
+echo "  1. Start backend:  cd langchain_agent && make dev-api"
+echo "  2. Start frontend: cd langchain_agent && make dev-web"
+echo "  3. Visit http://localhost:5173"
 echo ""
-echo "Visit http://localhost:5173 when ready"
+echo "Services running at:"
+echo "  • Backend API: http://localhost:8000"
+echo "  • Frontend: http://localhost:5173"
+echo "  • OpenSearch: http://localhost:9200"
+echo "  • OpenSearch Dashboards: http://localhost:5601""
