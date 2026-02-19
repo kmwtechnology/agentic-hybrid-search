@@ -52,6 +52,7 @@ flowchart TB
 
     subgraph Pipeline["LangGraph Pipeline"]
         IC["Intent Classifier<br/>(question/summary/follow_up)"]
+        QR["Query Rewriter<br/>(resolve follow-up refs)"]
         QE["Query Evaluator<br/>Set α balance"]
         RET["Retriever<br/>Hybrid Search"]
         REFINE["Alpha Refiner<br/>(bidirectional retry)"]
@@ -78,7 +79,8 @@ flowchart TB
     end
 
     UI --> IC
-    IC --> QE
+    IC --> QR
+    QR --> QE
     QE --> RET
     RET --> Search
     VS --> RRF
@@ -99,14 +101,16 @@ flowchart TB
 
 ```text
 intent_classifier
-  ├── question         → query_evaluator (set α) → retriever (hybrid search) → alpha_refiner → reranker → agent
+  ├── question         → query_rewriter → query_evaluator (set α) → retriever (hybrid search) → alpha_refiner → reranker → agent
   ├── summary          → summarize conversation history → agent response
-  └── follow_up        → expand with context → query_evaluator → retriever → alpha_refiner → reranker → agent
+  └── follow_up        → query_rewriter (resolve refs) → query_evaluator → retriever → alpha_refiner → reranker → agent
 
 Key Decision Points:
-  - Query Evaluator: Classifies query type and sets optimal α (0.0-1.0)
+  - Query Rewriter: Resolves pronouns, comparatives, and attribute questions using conversation context
+  - Query Evaluator: Classifies query type and sets optimal α (0.0-1.0) using e-commerce-tuned guide
   - Alpha Refiner: If max relevance < 0.5, retry with opposite strategy (lexical → semantic or vice versa)
   - Reranker: LLM-based scoring of top-K documents (0.0-1.0 relevance)
+  - Citations: Products cited with Amazon URLs derived from ASIN metadata
 ```
 
 ### Search Balance (Alpha Parameter)
@@ -152,11 +156,13 @@ Show me blue running shoes for women
 What waterproof backpacks do you have?
 ```
 
-**Refinement** (follow_up intent with context expansion):
+**Refinement** (follow_up intent with conversational query rewriting):
 
 ```text
+Which is cheaper?                 → "Which noise-cancelling headphone is cheaper?"
+Does it come in white?            → "Does the Sony WH-1000XM5 come in white?"
+How much?                         → "How much do the running shoes cost?"
 How about ones from Nike?         → expands to full previous query context
-Can you show me the red ones?     → auto-expands color filter
 ```
 
 **Conversation Summary** (summary intent):
@@ -193,7 +199,7 @@ reason about why certain products were ranked higher than others.
 | Technique | Description |
 |-----------|-------------|
 | **Intent Classification** | 3-intent detection (question/summary/follow_up) with keyword fast-path + LLM fallback |
-| **Query Expansion** | Enriches vague follow-ups with full conversation history for context |
+| **Conversational Query Rewriting** | Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and attribute questions ("how much?") using conversation context |
 | **Dynamic Alpha** | Query evaluator analyzes query type and sets optimal α (0.0-1.0) for lexical/semantic balance |
 | **Reciprocal Rank Fusion** | Fuses vector + BM25 rankings: `score = Σ 1/(rank + k)` where k=60 |
 | **LLM-Based Reranking** | Gemini Flash Lite scores query-product relevance on 0.0-1.0 scale |

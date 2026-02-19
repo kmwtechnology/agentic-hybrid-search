@@ -103,15 +103,17 @@ npm run lint                  # eslint
 ### LangGraph Pipeline Flow
 
 ```
-Intent Classifier → Query Evaluator → Retriever → Reranker → Quality Gate → Agent
+Intent Classifier → Query Rewriter → Query Evaluator → Retriever → Reranker → Quality Gate → Agent
 ```
 
 - **Intent classification**: 3 classes — `question` (product/search queries), `summary` (summarize results), `follow_up` (continuation). Keyword fast-path + LLM fallback. Confidence < 0.7 triggers clarification.
-- **Dynamic alpha**: Controls lexical/semantic balance (0.0 = pure lexical, 1.0 = pure semantic). Collection-aware defaults via `SEARCH_DEFAULTS` in config.py (esci_products: α=0.65).
+- **Query rewriting**: `_expand_vague_query` resolves follow-up references before search. Detects pronouns ("does it", "those"), comparatives ("which is cheaper"), short attribute questions ("how much?"), and action requests without context. Uses LLM to rewrite with product names from conversation history. Skips expansion when query contains a specific brand/product topic (e.g., "Sony WH-1000XM5"). Emits `QueryExpansionEvent` for observability.
+- **Dynamic alpha**: Controls lexical/semantic balance (0.0 = pure lexical, 1.0 = pure semantic). Collection-aware defaults via `SEARCH_DEFAULTS` in config.py (esci_products: α=0.65). Alpha guide uses e-commerce vocabulary: exact model numbers/ASINs → pure lexical, brand+category → lexical-heavy, activity-based queries → balanced, conceptual needs → semantic-heavy, gift ideas/exploration → pure semantic.
 - **Retriever**: Hybrid search only (no reranking). Returns `retrieved_documents` + `user_query` to state.
 - **Reranker**: Dedicated node that scores/reorders documents via LLM. Sets `reranker_max_score` in state.
 - **Quality gate**: If `reranker_max_score < 0.5` and not yet retried, adjusts alpha ±0.3 and retries retriever→reranker. Otherwise continues to agent.
-- **Streaming**: WebSocket emits typed Pydantic events (`SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `LLMResponseChunkEvent`, etc.) rendered in the React ObservabilityPanel.
+- **Product citations**: Agent node generates source citations from retrieved documents. For ESCI products (which have no `url` metadata), citations use Amazon canonical URLs derived from the product ASIN (`https://www.amazon.com/dp/{product_id}`). Citations are deduplicated by URL and filtered by minimum reranker relevance score (0.10).
+- **Streaming**: WebSocket emits typed Pydantic events (`SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `LLMResponseChunkEvent`, etc.) rendered in the React ObservabilityPanel.
 
 ### Tech Stack
 

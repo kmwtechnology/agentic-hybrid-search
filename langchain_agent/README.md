@@ -415,26 +415,26 @@ The agent uses intent-based routing to direct queries to one of three pipelines:
 
 ```text
 START → Intent Classifier
-  ├── [question]                 → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
+  ├── [question]                 → Query Rewriter → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
   ├── [summary]                  → Summary → Agent → END
   ├── [config_request]           → Filter Resolver → Filter Generator → Filter Response → END
   ├── [documentation_request]    → Doc Planner → Doc Gatherer → Doc Synthesizer → END
-  └── [follow_up]                → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
+  └── [follow_up]                → Query Rewriter → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
 ```
 
 #### RAG Q&A Pipeline (Default)
 
 ```text
-Query → Intent Classifier → Query Expansion → Query Evaluator → Summary
+Query → Intent Classifier → Query Rewriter → Query Evaluator → Summary
   → Retriever (hybrid search + reranking) → Alpha Refiner → Agent → END
 ```
 
 **Features**:
 - **Intent Detection**: 5 intents (question, config_request, documentation_request, summary, follow_up) with confidence scoring
 - **Smart Routing**: Summary/follow_up skip retrieval or use minimal context; config/doc intents route to specialized pipelines
-- **Query Expansion**: Automatically expands vague follow-up queries using conversation context
+- **Query Rewriting**: Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and short attribute questions ("how much?") using conversation context via LLM. Skips expansion when query contains a specific brand/product topic.
 - **Alpha Refinement**: Bidirectional - tries opposite search strategy when max score < 0.5
-- **Citation Suppression**: Suppresses citations when max relevance < 10%
+- **Product Citations**: Generates Amazon product URLs from ASIN metadata (`https://www.amazon.com/dp/{ASIN}`) for ESCI products. Suppresses citations when max relevance < 10%.
 - **Honest Responses**: Returns "no info found" when retrieval fails (prevents hallucination)
 
 #### Product Filter Builder Pipeline
@@ -510,7 +510,7 @@ The UI provides real-time observability via WebSocket events:
 | Event | Description |
 |-------|-------------|
 | `intent_classification` | Intent with confidence score (5 intents: question, config_request, documentation_request, summary, follow_up) |
-| `query_expansion` | Original and expanded query for vague follow-ups |
+| `query_expansion` | Original and rewritten query for follow-ups (resolves pronouns, comparatives, attribute questions) |
 | `query_evaluation` | Alpha value and query analysis reasoning |
 | `hybrid_search_start/result` | Search candidates with scores |
 | `reranker_start/result` | Reranked documents with relevance scores |
@@ -532,10 +532,12 @@ The UI provides real-time observability via WebSocket events:
 
 Intelligent query optimization:
 
-1. **Query Evaluator**: Dynamically determines optimal alpha value (0.0-1.0) for hybrid search based on query type
-   - `0.0-0.15`: Pure lexical (exact matches, product names, SKUs)
-   - `0.4-0.6`: Balanced hybrid
-   - `0.75-1.0`: Pure semantic (conceptual questions)
+1. **Query Evaluator**: Dynamically determines optimal alpha value (0.0-1.0) for hybrid search using e-commerce-tuned guide
+   - `0.0-0.15`: Pure lexical (exact model numbers, ASINs, UPCs, brand+model combos)
+   - `0.15-0.40`: Lexical-heavy (brand + category, specific features, color/size combos)
+   - `0.4-0.6`: Balanced (feature comparisons, activity-based product queries)
+   - `0.60-0.75`: Semantic-heavy (conceptual needs, occasion-based queries)
+   - `0.75-1.0`: Pure semantic (gift ideas, mood/style queries, open-ended exploration)
 
 2. **Alpha Refiner**: Automatically retries with opposite strategy if max relevance score < 0.5
    - Low semantic score → retry with lexical-heavy search
