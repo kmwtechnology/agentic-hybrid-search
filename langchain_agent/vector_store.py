@@ -79,6 +79,13 @@ INDEX_MAPPING = {
             },
             "doc_type": {"type": "keyword"},
             "url": {"type": "keyword"},
+            # E-commerce product fields
+            "product_id": {"type": "keyword"},
+            "product_brand": {"type": "keyword"},
+            "product_color": {"type": "keyword"},
+            "product_locale": {"type": "keyword"},
+            "esci_labels": {"type": "keyword"},
+            # Legacy Lucille fields (unused, kept for schema compatibility)
             "component_type": {"type": "keyword"},
             "class_name": {
                 "type": "keyword",

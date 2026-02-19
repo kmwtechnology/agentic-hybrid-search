@@ -42,46 +42,56 @@ def test_config():
 
 @pytest.fixture
 def sample_documents() -> List[Document]:
-    """Fixture providing sample documents for testing."""
+    """Fixture providing sample product documents for testing."""
     return [
         Document(
-            page_content="This is about Apache Lucene search functionality.",
+            page_content="Wireless Bluetooth headphones with 30-hour battery life and noise cancellation.",
             metadata={
-                "source": "lucene-docs-search",
-                "url": "https://lucene.apache.org/core/",
-                "doc_type": "api",
+                "source": "esci/shopping_queries_dataset",
+                "product_id": "B001234",
+                "product_brand": "AudioTech",
+                "product_color": "black",
+                "doc_type": "product",
             },
         ),
         Document(
-            page_content="QueryParser is used to parse search query syntax.",
+            page_content="USB-C charging cable compatible with all modern devices. Durable nylon braiding.",
             metadata={
-                "source": "lucene-docs-queryparser",
-                "url": "https://lucene.apache.org/core/",
-                "doc_type": "api",
+                "source": "esci/shopping_queries_dataset",
+                "product_id": "B005678",
+                "product_brand": "CablePro",
+                "product_color": "white",
+                "doc_type": "product",
             },
         ),
         Document(
-            page_content="Lucille is a search ETL framework built on Apache Lucene.",
+            page_content="Blue lightweight backpack with multiple compartments and ergonomic design.",
             metadata={
-                "source": "lucille-readme",
-                "url": "https://github.com/kmwllc/lucille",
-                "doc_type": "documentation",
+                "source": "esci/shopping_queries_dataset",
+                "product_id": "B009012",
+                "product_brand": "TravelGear",
+                "product_color": "blue",
+                "doc_type": "product",
             },
         ),
         Document(
-            page_content="Indexing documents requires field definitions and tokenizers.",
+            page_content="Stainless steel water bottle keeps drinks cold for 24 hours.",
             metadata={
-                "source": "lucene-indexing-guide",
-                "url": "https://lucene.apache.org/",
-                "doc_type": "guide",
+                "source": "esci/shopping_queries_dataset",
+                "product_id": "B003456",
+                "product_brand": "HydroKeep",
+                "product_color": "silver",
+                "doc_type": "product",
             },
         ),
         Document(
-            page_content="Full-text search returns relevant results based on term matching.",
+            page_content="Mechanical keyboard with RGB backlighting and tactile switches for gaming.",
             metadata={
-                "source": "lucene-search-guide",
-                "url": "https://lucene.apache.org/",
-                "doc_type": "guide",
+                "source": "esci/shopping_queries_dataset",
+                "product_id": "B007890",
+                "product_brand": "GamingPro",
+                "product_color": "black",
+                "doc_type": "product",
             },
         ),
     ]
@@ -206,9 +216,9 @@ def sample_query_evaluation_event():
 
     return QueryEvaluationEvent(
         type="query_evaluation",
-        query="How do I use Lucille for document indexing?",
+        query="Find me wireless headphones with long battery life",
         alpha=0.6,
-        query_analysis="Semantic question about Lucille features",
+        query_analysis="Semantic product search query",
         search_strategy="balanced",
     )
 

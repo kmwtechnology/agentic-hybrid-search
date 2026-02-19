@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from langchain_core.messages import HumanMessage
-from main import LucilleAgent
+from main import EcommerceSearchAgent
 from config import DATABASE_URL
 
 def test_clarification():
@@ -28,7 +28,7 @@ def test_clarification():
     print("=" * 80)
 
     # Initialize agent
-    agent = LucilleAgent()
+    agent = EcommerceSearchAgent()
     agent.setup()
     thread_id = "test_clarification"
 

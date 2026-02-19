@@ -1,7 +1,7 @@
 """
-Observable Agent Service - Wrapper for LucilleAgent with event emission.
+Observable Agent Service - Wrapper for EcommerceSearchAgent with event emission.
 
-This service wraps the existing LucilleAgent and emits WebSocket events
+This service wraps the existing EcommerceSearchAgent and emits WebSocket events
 during execution, providing full observability into the agent's workflow.
 """
 
@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from main import LucilleAgent
+from main import EcommerceSearchAgent
 from config import (
     ENABLE_RERANKING,
     RERANKER_MODEL,
@@ -75,15 +75,15 @@ EmitCallback = Callable[[BaseEvent], Coroutine[Any, Any, None]]
 
 class ObservableAgentService:
     """
-    Observable wrapper for LucilleAgent that emits events during execution.
+    Observable wrapper for EcommerceSearchAgent that emits events during execution.
 
-    This service provides the same functionality as LucilleAgent but emits
+    This service provides the same functionality as EcommerceSearchAgent but emits
     structured events at each step, enabling real-time observability in the UI.
     """
 
     def __init__(self):
         """Initialize the observable agent service (lazy loading)."""
-        self._agent: Optional[LucilleAgent] = None
+        self._agent: Optional[EcommerceSearchAgent] = None
         self._initialized = False
         self._lock = asyncio.Lock()
 
@@ -96,14 +96,14 @@ class ObservableAgentService:
                 self._initialized = True
 
     async def _initialize_agent(self):
-        """Initialize the underlying LucilleAgent."""
+        """Initialize the underlying EcommerceSearchAgent."""
         # Run synchronous initialization in thread pool
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self._sync_init_agent)
 
     def _sync_init_agent(self):
         """Synchronous agent initialization."""
-        self._agent = LucilleAgent()
+        self._agent = EcommerceSearchAgent()
         # Skip prerequisite verification in API mode
         # (health endpoint handles this)
         self._agent.initialize_components()

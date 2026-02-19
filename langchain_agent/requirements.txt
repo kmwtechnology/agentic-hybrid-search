@@ -28,5 +28,9 @@ structlog>=24.0.0
 # HTML parsing for improved javadoc extraction
 beautifulsoup4>=4.12.3
 
+# Data processing (for ESCI product ingestion)
+pandas>=2.0.0
+pyarrow>=10.0.0
+
 # LangSmith observability (optional)
 langsmith>=0.1.0

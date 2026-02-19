@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Lucille Documentation RAG Agent with Real-Time Streaming, Local Knowledge Base, and Persistent Memory
+E-Commerce Product RAG Agent with Real-Time Streaming, Local Knowledge Base, and Persistent Memory
 
-A production-grade ReAct agent with the following features:
+A production-grade ReAct agent for product search with the following features:
 - Real-time character-by-character streaming of agent thinking and final responses
 - Hybrid vector/lexical search using OpenSearch with semantic embeddings
 - Intelligent document reranking using LLM-as-reranker (Gemini)
@@ -142,13 +142,13 @@ from config import (
 )
 
 
-class LucilleAgent:
+class EcommerceSearchAgent:
     """
     Main agent class that manages the LLM, tools, and conversation state.
 
     Handles:
     - Real-time streaming of agent thinking and responses
-    - Integration with local knowledge base (PostgreSQL + PGVector)
+    - Integration with local product knowledge base (OpenSearch + Embeddings)
     - Persistent conversation memory (PostgreSQL)
     - Interactive multi-turn conversations
     """
@@ -605,10 +605,9 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             )
             no_info_response = (
                 f"I searched the knowledge base but couldn't find any relevant information "
-                f"about '{user_query or 'your question'}'. This topic may not be covered in the "
-                f"available documentation.\n\n"
-                f"The knowledge base contains Lucille ETL framework documentation. "
-                f"If you have questions about Lucille pipelines, stages, or connectors, I'd be happy to help!"
+                f"about '{user_query or 'your question'}'. I couldn't find matching products in the knowledge base.\n\n"
+                f"The knowledge base contains Amazon product listings. "
+                f"Try searching for products by brand, color, type, or specific features!"
             )
             return {"messages": [AIMessage(content=no_info_response)]}
 
@@ -706,18 +705,18 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             # For questions, stick closer to existing documentation
             synthesis_instruction = "- Use only the retrieved documents above and the recent conversation context to respond; do not hallucinate beyond those facts."
 
-        system_prompt = f"""You are a precise, grounded assistant that answers questions using a knowledge base of Lucille ETL framework documentation.
+        system_prompt = f"""You are a helpful product search assistant. Answer questions using a knowledge base of Amazon product listings.
 {recent_context_block}RETRIEVED DOCUMENTS FROM KNOWLEDGE BASE:
 {context}
 
 INSTRUCTIONS:
 {synthesis_instruction}
-- When drawing on a document, cite it descriptively (e.g., "According to the Pipeline class documentation..." or "As described in the Connector interface...").
-- Do NOT cite as "Document N" — always use a descriptive name from the document title so readers can match citations to the Sources list.
+- When drawing on a product document, cite it descriptively (e.g., "According to the Wireless Headphones listing..." or "As shown in the product details...").
+- Do NOT cite as "Document N" — always use a descriptive name from the product title so readers can match citations to the Sources list.
 - Always cite sources so users can verify information by reviewing the Sources section.
-- If you cannot generate content due to insufficient relevant information, explain what information is missing and offer to try a different search query.
-- Highlight any follow-up actions, clarifications, or uncertainties in a short summary paragraph at the end.
-- Keep tone professional, concise, and helpful; respect the user's stated intent (question, task, follow-up, etc.).
+- If you cannot find relevant products, explain what you searched for and offer to try a different search query.
+- Help users find, compare, and learn about products based on their needs.
+- Keep tone professional, concise, and helpful; respect the user's stated intent (question, filter request, follow-up, etc.).
 """
 
         # Build messages for LLM
@@ -2425,13 +2424,13 @@ Summary:"""
     def run_conversation(self):
         """Run the interactive conversation loop"""
         print("=" * 70)
-        print("Lucille Documentation Agent - Local Knowledge Base & Memory")
+        print("E-Commerce Search Agent - Product Knowledge Base & Memory")
         print("=" * 70)
         print()
-        print("Agent is ready! You can ask questions about:")
-        print("  - Python programming basics")
-        print("  - Machine learning concepts")
-        print("  - Web development")
+        print("Agent is ready! You can search for:")
+        print("  - Products by brand or type")
+        print("  - Products by color or attributes")
+        print("  - Product comparisons and details")
         print()
         print("Commands:")
         print("  - Type your question and press Enter")
@@ -2704,7 +2703,7 @@ Summary:"""
 
 def main():
     """Main function"""
-    agent = LucilleAgent()
+    agent = EcommerceSearchAgent()
     agent.run()
 
 

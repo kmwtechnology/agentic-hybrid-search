@@ -81,9 +81,10 @@ __all__ = [
     "MIN_VALID_DOCUMENTS",
     # Project paths
     "BASE_DIR",
-    # Lucille documentation source
-    "LUCILLE_PROJECT_DIR",
-    "LUCILLE_JAVADOC_PATH",
+    # ESCI e-commerce dataset configuration
+    "ESCI_DATASET_DIR",
+    "ESCI_PRODUCT_LOCALE",
+    "ESCI_INGEST_LIMIT",
     # Sample data
     "DEFAULT_THREAD_ID",
     # Conversation compaction
@@ -181,8 +182,8 @@ DB_POOL_MAX_SIZE = 20
 VECTOR_DIMENSION = 768
 
 # Collection name for vector storage
-# Use "lucille_docs" for Lucille API documentation
-VECTOR_COLLECTION_NAME = "lucille_docs"
+# Use "esci_products" for Amazon ESCI e-commerce products
+VECTOR_COLLECTION_NAME = "esci_products"
 
 # ============================================================================
 # OPENSEARCH CONFIGURATION
@@ -348,17 +349,20 @@ AGENT_MODEL = LLM_MODEL  # DEPRECATED: Use LLM_MODEL directly
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ============================================================================
-# LUCILLE DOCUMENTATION SOURCE
+# ESCI E-COMMERCE DATASET CONFIGURATION
 # ============================================================================
 
-# Path to Lucille project directory
-LUCILLE_PROJECT_DIR = os.getenv(
-    "LUCILLE_PROJECT_DIR",
-    str(Path(BASE_DIR).parent / "lucille")
+# Path to ESCI dataset directory
+ESCI_DATASET_DIR = os.getenv(
+    "ESCI_DATASET_DIR",
+    str(Path(BASE_DIR).parent / "esci" / "shopping_queries_dataset")
 )
 
-# Path to Lucille javadoc API documentation
-LUCILLE_JAVADOC_PATH = Path(LUCILLE_PROJECT_DIR) / "target" / "site" / "apidocs"
+# Product locale for filtering (e.g., "us" for English US)
+ESCI_PRODUCT_LOCALE = os.getenv("ESCI_PRODUCT_LOCALE", "us")
+
+# Default number of products to ingest (can be overridden with --limit flag)
+ESCI_INGEST_LIMIT = int(os.getenv("ESCI_INGEST_LIMIT", "10000"))
 
 # ============================================================================
 # SAMPLE DATA

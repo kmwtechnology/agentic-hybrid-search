@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Unified Setup Script for Lucille Documentation RAG Agent
-Initializes PostgreSQL database, loads Lucille documentation, and validates Google AI API key.
+Unified Setup Script for E-Commerce Search Agent
+Initializes PostgreSQL database, loads ESCI product data, and validates Google AI API key.
 This is the single entry point for complete system setup from scratch
 
 Usage:
-    python setup.py                    # Full setup with Lucille docs
-    python setup.py --skip-docs        # Setup without loading documentation
+    python setup.py                    # Full setup with ESCI products
+    python setup.py --skip-docs        # Setup without loading products
 """
 
 import argparse
@@ -302,12 +302,12 @@ def main():
     print("=" * 70)
     print("\nThis script will:")
     print("  1. Create PostgreSQL database (for checkpoints)")
-    print("  2. Create OpenSearch index (for documents)")
+    print("  2. Create OpenSearch index (for products)")
     print("  3. Create search pipeline (for hybrid search)")
     if not args.skip_models:
         print("  4. Validate Google AI API key")
     if not args.skip_docs:
-        print("  5. Load Lucille ETL framework documentation")
+        print("  5. Load ESCI e-commerce products")
     print("\n" + "=" * 70)
 
     try:
@@ -325,18 +325,18 @@ def main():
         if not args.skip_models:
             validate_google_api()
 
-        # Step 3: Document Loading
+        # Step 3: Product Data Loading
         if not args.skip_docs:
-            print("\n[6/7] Loading Lucille documentation...")
-            print("      Ensure Lucille javadocs are generated (run from lucille/: mvn javadoc:aggregate)")
+            print("\n[6/7] Loading ESCI e-commerce products...")
+            print("      Ensure ESCI dataset files are present in ../esci/shopping_queries_dataset/")
             try:
-                from ingest_lucille_docs import ingest_lucille_docs
-                docs_loaded, chunks_loaded = ingest_lucille_docs()
-                print(f"      ✓ Loaded {docs_loaded:,} documents ({chunks_loaded:,} chunks)")
+                from ingest_esci_products import ingest_esci_products
+                docs_loaded, chunks_loaded = ingest_esci_products()
+                print(f"      ✓ Loaded {docs_loaded:,} products ({chunks_loaded:,} chunks)")
             except Exception as e:
-                print(f"      ⚠ Error loading Lucille documentation: {e}")
-                print("      You can manually load documentation later with:")
-                print("      python ingest_lucille_docs.py")
+                print(f"      ⚠ Error loading ESCI products: {e}")
+                print("      You can manually load products later with:")
+                print("      python ingest_esci_products.py")
 
         # Summary
         print("\n" + "=" * 70)
@@ -345,9 +345,9 @@ def main():
         print("\nYou can now run the agent:")
         print("  python main.py")
         print("\nExample queries:")
-        print("  - What is Lucille?")
-        print("  - How do I create a Lucille pipeline?")
-        print("  - What connectors are available in Lucille?")
+        print("  - Find me wireless headphones")
+        print("  - Show me blue backpacks")
+        print("  - What products do you have from Brand X?")
         print("\n" + "=" * 70)
 
         return 0
@@ -360,8 +360,7 @@ def main():
         print("1. PostgreSQL: Ensure Docker container is running")
         print("   docker compose up -d")
         print("2. Google AI: Ensure GOOGLE_API_KEY is set in .env")
-        print("3. Lucille: Ensure Lucille is cloned to parent directory")
-        print("   and javadocs are generated")
+        print("3. ESCI Dataset: Ensure files are present in ../esci/shopping_queries_dataset/")
         print("4. Connection: Verify config.py settings")
         print("\n" + "=" * 70)
         return 1

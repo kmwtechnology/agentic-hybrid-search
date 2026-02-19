@@ -46,7 +46,7 @@ from api.schemas.events import (
 )
 
 if TYPE_CHECKING:
-    from main import LucilleAgent
+    from main import EcommerceSearchAgent
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ def _is_vague_documentation_request(query: str, content_type: str) -> bool:
     return False
 
 
-def content_type_classifier_node(state: CustomAgentState, agent: "LucilleAgent") -> Dict[str, Any]:
+def content_type_classifier_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
     """
     Classify the user's documentation request into one of 5 content types.
 
@@ -207,7 +207,7 @@ def content_type_classifier_node(state: CustomAgentState, agent: "LucilleAgent")
 
     Args:
         state: Agent state with user query in messages
-        agent: LucilleAgent instance for LLM access
+        agent: EcommerceSearchAgent instance for LLM access
 
     Returns:
         State updates with:
@@ -494,7 +494,7 @@ Reply with the number or describe the format you want. I'll ask about the topic 
     return state_updates
 
 
-def format_clarification_resolver_node(state: CustomAgentState, agent: "LucilleAgent") -> Dict[str, Any]:
+def format_clarification_resolver_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
     """
     Parse user's clarification response and resolve content format.
 
@@ -506,7 +506,7 @@ def format_clarification_resolver_node(state: CustomAgentState, agent: "LucilleA
 
     Args:
         state: Agent state with clarification_candidates
-        agent: LucilleAgent instance
+        agent: EcommerceSearchAgent instance
 
     Returns:
         State updates with resolved content_type and parameters
@@ -604,7 +604,7 @@ def format_clarification_resolver_node(state: CustomAgentState, agent: "LucilleA
     }
 
 
-def topic_clarification_resolver_node(state: CustomAgentState, agent: "LucilleAgent") -> Dict[str, Any]:
+def topic_clarification_resolver_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
     """
     Parse user's topic response and combine with content type.
 
@@ -679,7 +679,7 @@ def topic_clarification_resolver_node(state: CustomAgentState, agent: "LucilleAg
     }
 
 
-def social_content_generator_node(state: CustomAgentState, agent: "LucilleAgent") -> Dict[str, Any]:
+def social_content_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
     """
     Generate a social media post (100-300 words).
 
@@ -691,7 +691,7 @@ def social_content_generator_node(state: CustomAgentState, agent: "LucilleAgent"
 
     Args:
         state: Agent state with user query
-        agent: LucilleAgent instance
+        agent: EcommerceSearchAgent instance
 
     Returns:
         State updates with:
@@ -831,7 +831,7 @@ Generate the social post now:"""
         }
 
 
-def blog_content_generator_node(state: CustomAgentState, agent: "LucilleAgent") -> Dict[str, Any]:
+def blog_content_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
     """
     Generate a blog post (1000-2000 words).
 
@@ -843,7 +843,7 @@ def blog_content_generator_node(state: CustomAgentState, agent: "LucilleAgent") 
 
     Args:
         state: Agent state with user query
-        agent: LucilleAgent instance
+        agent: EcommerceSearchAgent instance
 
     Returns:
         State updates with:
@@ -1029,7 +1029,7 @@ Write the complete blog post now:"""
         }
 
 
-def article_content_generator_node(state: CustomAgentState, agent: "LucilleAgent") -> Dict[str, Any]:
+def article_content_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
     """
     Generate a technical article (800-1500 words).
 
@@ -1042,7 +1042,7 @@ def article_content_generator_node(state: CustomAgentState, agent: "LucilleAgent
 
     Args:
         state: Agent state with user query
-        agent: LucilleAgent instance
+        agent: EcommerceSearchAgent instance
 
     Returns:
         State updates with:
@@ -1248,7 +1248,7 @@ Write the complete technical article now. Remember: at least {target_length} wor
         }
 
 
-def tutorial_generator_node(state: CustomAgentState, agent: "LucilleAgent") -> Dict[str, Any]:
+def tutorial_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
     """
     Generate a step-by-step tutorial (~1000 words).
 
@@ -1260,7 +1260,7 @@ def tutorial_generator_node(state: CustomAgentState, agent: "LucilleAgent") -> D
 
     Args:
         state: Agent state with user query
-        agent: LucilleAgent instance
+        agent: EcommerceSearchAgent instance
 
     Returns:
         State updates with:

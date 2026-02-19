@@ -212,5 +212,5 @@ langchain_agent/chroma_db/chroma.sqlite3
 langchain_agent/.claude/
 CLAUDE.md
 
-# esci directory
+# esci directory - large parquet data files should not be committed
 esci/
