@@ -486,7 +486,7 @@ class ObservableAgentService:
                 triggered=triggered,
                 original_alpha=output.get("alpha", DEFAULT_ALPHA) if not triggered else DEFAULT_ALPHA,
                 new_alpha=output.get("alpha") if triggered else None,
-                max_score=0.0,  # max_score is in state, not output; use 0.0 as fallback
+                max_score=output.get("reranker_max_score", 0.0),
                 threshold=QUALITY_GATE_THRESHOLD,
                 reason=reason,
             ))

@@ -1418,6 +1418,7 @@ Respond with JSON only. No other text."""
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": "Quality gate disabled in config",
+                "reranker_max_score": max_score,
             }
 
         # Already retried once - accept results
@@ -1425,6 +1426,7 @@ Respond with JSON only. No other text."""
             logger.info(f"QualityGate: already retried, accepting results (max_score={max_score:.3f})")
             return {
                 "quality_gate_reason": f"Accepted after retry (max_score={max_score:.3f})",
+                "reranker_max_score": max_score,
             }
 
         # No documents to evaluate
@@ -1432,6 +1434,7 @@ Respond with JSON only. No other text."""
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": "No documents to evaluate",
+                "reranker_max_score": max_score,
             }
 
         # Score above threshold - good results, continue
@@ -1439,6 +1442,7 @@ Respond with JSON only. No other text."""
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": f"Max score {max_score:.3f} above threshold {QUALITY_GATE_THRESHOLD}",
+                "reranker_max_score": max_score,
             }
 
         # Score below threshold - adjust alpha and retry
@@ -1455,6 +1459,7 @@ Respond with JSON only. No other text."""
             "alpha": new_alpha,
             "quality_gate_retried": True,
             "quality_gate_reason": f"Retry triggered (max_score={max_score:.3f} < {QUALITY_GATE_THRESHOLD}), alpha → {new_alpha:.2f}",
+            "reranker_max_score": max_score,
         }
 
     def _route_after_intent(self, state: CustomAgentState) -> str:
