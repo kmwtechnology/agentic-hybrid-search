@@ -395,8 +395,13 @@ def ingest_esci_products(
     embedding_cache = {}  # df_idx -> embedding list (written to parquet at end)
     start_time = time.time()
     num_batches = (len(prepared) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE
+    batch_delay = 0.0  # seconds to wait between batches (adjusted on rate limit)
 
     for batch_num in range(num_batches):
+        # Pace requests to stay within rate limit
+        if batch_delay > 0 and batch_num > 0:
+            time.sleep(batch_delay)
+
         batch_start = batch_num * EMBEDDING_BATCH_SIZE
         batch_end = min(batch_start + EMBEDDING_BATCH_SIZE, len(prepared))
         batch = prepared[batch_start:batch_end]
@@ -413,8 +418,14 @@ def ingest_esci_products(
                     # Parse the API's retry delay (e.g., "retry in 7s") and use it directly
                     match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_str)
                     wait_secs = int(float(match.group(1))) + 1 if match else 30
+                    # Set inter-batch pacing: spread remaining batches across the rate limit window
+                    # e.g., if rate limited after 37 batches in 46s, pace = 46/37 ≈ 1.2s + 25% buffer
+                    elapsed_so_far = time.time() - start_time
+                    batches_done = max(batch_num, 1)
+                    batch_delay = (elapsed_so_far / batches_done) * 0.25
                     print(
-                        f"   ⏳ Batch {batch_num + 1}/{num_batches}: rate limited, waiting {wait_secs}s...",
+                        f"   ⏳ Batch {batch_num + 1}/{num_batches}: rate limited, waiting {wait_secs}s "
+                        f"(pacing future batches +{batch_delay:.1f}s)...",
                         flush=True,
                     )
                     time.sleep(wait_secs)
