@@ -20,6 +20,7 @@ Usage:
 import argparse
 import json
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -243,24 +244,11 @@ def _ingest_batch(
         else:
             need_embedding.append(item)
 
-    # Batch embed all products that need new embeddings in one API call (with retry on rate limit)
+    # Batch embed all products needing new embeddings (single API call, no retry here — caller handles rate limits)
     new_embeddings = []
     if need_embedding:
         texts = [item["text"] for item in need_embedding]
-        for attempt in range(3):
-            try:
-                new_embeddings = embeddings.embed_documents(texts)
-                break
-            except Exception as e:
-                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                    wait = 60 * (attempt + 1)
-                    logger.warning(f"Rate limited, waiting {wait}s (attempt {attempt + 1}/3)")
-                    print(f"   ⏳ Rate limited, waiting {wait}s before retry...", flush=True)
-                    time.sleep(wait)
-                else:
-                    raise
-        if not new_embeddings:
-            raise RuntimeError("Failed to embed after 3 retries")
+        new_embeddings = embeddings.embed_documents(texts)
 
     # Build OpenSearch bulk actions
     actions = []
@@ -400,10 +388,6 @@ def ingest_esci_products(
     if "embedding" not in df.columns:
         df["embedding"] = None
 
-    # Ensure embedding column exists for parquet caching
-    if "embedding" not in df.columns:
-        df["embedding"] = None
-
     # Process in batches
     total_docs = 0
     total_chunks = 0
@@ -418,30 +402,25 @@ def ingest_esci_products(
         batch = prepared[batch_start:batch_end]
 
         batch_t0 = time.time()
-        max_retries = 3
+        max_retries = 5
         for attempt in range(max_retries):
             try:
                 docs, chunks, parquet_updates = _ingest_batch(batch, embeddings_model, client)
                 break  # success
             except Exception as e:
                 error_str = str(e)
-                if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
-                    # Parse retry delay from error message
-                    wait_secs = 60  # default
-                    import re
+                if ("RESOURCE_EXHAUSTED" in error_str or "429" in error_str) and attempt < max_retries - 1:
+                    # Parse the API's retry delay (e.g., "retry in 7s") and use it directly
                     match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_str)
-                    if match:
-                        wait_secs = int(float(match.group(1))) + 2  # add buffer
-                    if attempt < max_retries - 1:
-                        print(
-                            f"   ⏳ Batch {batch_num + 1}/{num_batches}: rate limited, waiting {wait_secs}s "
-                            f"(retry {attempt + 1}/{max_retries})...",
-                            flush=True,
-                        )
-                        time.sleep(wait_secs)
-                        continue
+                    wait_secs = int(float(match.group(1))) + 1 if match else 30
+                    print(
+                        f"   ⏳ Batch {batch_num + 1}/{num_batches}: rate limited, waiting {wait_secs}s...",
+                        flush=True,
+                    )
+                    time.sleep(wait_secs)
+                    continue
                 logger.warning(f"Batch {batch_num + 1}/{num_batches} failed: {e}")
-                print(f"   ⚠ Batch {batch_num + 1}/{num_batches} failed after {attempt + 1} attempts: {e}")
+                print(f"   ⚠ Batch {batch_num + 1}/{num_batches} failed: {e}")
                 docs, chunks, parquet_updates = 0, 0, []
                 break
 
