@@ -5,14 +5,14 @@
 # This script:
 #   1. Starts Cloud SQL Auth Proxy to connect to the Cloud SQL instance
 #   2. Runs setup.py to create checkpoint and metadata tables
-#   3. Ingests Lucille documentation into hosted OpenSearch
+#   3. Ingests ESCI product data into hosted OpenSearch
 #   4. Shuts down the proxy
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated
 #   - Cloud SQL Auth Proxy installed (auto-downloaded if missing)
 #   - Python virtual environment with dependencies installed (.venv/)
-#   - Lucille javadocs generated (../lucille/target/site/apidocs)
+#   - ESCI dataset available (../esci/shopping_queries_dataset/*.parquet)
 #   - GOOGLE_API_KEY set in .env (needed for embedding generation)
 #   - deploy.sh already run (Cloud SQL instance must exist)
 #
@@ -62,19 +62,19 @@ Document search uses hosted OpenSearch (configured via env vars in deploy.sh).
 
 OPTIONS:
     --project PROJECT_ID   GCP project ID (otherwise uses gcloud default)
-    --skip-docs            Skip Lucille documentation ingestion into OpenSearch
+    --skip-docs            Skip ESCI product data ingestion into OpenSearch
     -h, --help             Show this help message
 
 WHAT THIS SCRIPT DOES:
     1. Downloads Cloud SQL Auth Proxy (if not installed)
     2. Starts the proxy to tunnel to Cloud SQL
     3. Creates checkpoint and metadata tables in Cloud SQL
-    4. Ingests Lucille documentation into hosted OpenSearch
+    4. Ingests ESCI product data into hosted OpenSearch
     5. Shuts down the proxy
 
 PREREQUISITES:
     - Run deploy.sh first to create the Cloud SQL instance
-    - Lucille javadocs generated: cd ../lucille && mvn javadoc:aggregate
+    - ESCI dataset: ../esci/shopping_queries_dataset/*.parquet
     - GOOGLE_API_KEY set in .env (needed for embeddings)
     - Python venv with dependencies: source .venv/bin/activate
 
@@ -296,7 +296,7 @@ echo ""
 echo "  The Cloud Run service should now pass health checks at:"
 echo "    /api/health"
 echo ""
-echo "  To re-ingest docs later:"
-echo "    python ingest_lucille_docs.py"
+echo "  To re-ingest products later:"
+echo "    python ingest_esci_products.py"
 echo ""
 echo "============================================================"

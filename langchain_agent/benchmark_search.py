@@ -42,10 +42,10 @@ from reranker import GeminiReranker
 # Benchmark test queries covering different types
 BENCHMARK_QUERIES = [
     # Semantic queries (high alpha)
-    "What is Lucille?",
-    "How do I build a Lucille pipeline?",
-    "Explain the concept of a Worker in Lucille",
-    "What are the core stages of a Lucille pipeline?",
+    "What wireless headphones do you have?",
+    "How do I find the best running shoes?",
+    "What features should I look for in a laptop?",
+    "What are the top-rated products by Samsung?",
     # Balanced queries (medium alpha)
     "How do I implement a custom stage?",
     "What is the Publisher interface?",

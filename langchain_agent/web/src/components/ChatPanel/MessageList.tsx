@@ -86,40 +86,40 @@ export function MessageList() {
       <div className="flex flex-col items-center justify-center h-full text-gray-500 px-4">
         <div className="text-center max-w-lg">
           <h3 className="text-lg font-medium text-gray-300 mb-1">
-            Lucille Agent
+            Product Search Agent
           </h3>
           <p className="text-xs text-gray-600 mb-4">
-            A multi-capability AI agent — fully local, no data leaves your machine
+            An AI-powered e-commerce product search agent with hybrid search & reranking
           </p>
 
           <div className="text-left space-y-3">
             <div>
               <div className="text-xs font-medium text-gray-400 mb-1">
-                Ask — RAG-powered Q&A with hybrid search & reranking
+                Search — RAG-powered Q&A with hybrid search & reranking
               </div>
               <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"What connectors are available in Lucille?"</div>
-                <div>"How does the CSVConnector handle encoding?"</div>
+                <div>"Find me wireless headphones under $50"</div>
+                <div>"What are the best-rated running shoes?"</div>
               </div>
             </div>
 
             <div>
               <div className="text-xs font-medium text-amber-600/80 mb-1">
-                Build — generate HOCON pipeline configs from plain English
+                Compare — find and compare products by attributes
               </div>
               <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"Build me a CSV to Solr pipeline with CopyFields"</div>
-                <div>"Create a pipeline that reads from S3 and indexes to OpenSearch"</div>
+                <div>"Compare Sony and Bose noise-canceling headphones"</div>
+                <div>"Show me blue Nike sneakers"</div>
               </div>
             </div>
 
             <div>
               <div className="text-xs font-medium text-teal-600/80 mb-1">
-                Document — create posts, articles, tutorials & docs
+                Discover — explore products by brand, color, or category
               </div>
               <div className="text-xs text-gray-600 space-y-0.5">
-                <div>"Write a tutorial for setting up the CSVConnector"</div>
-                <div>"Create a LinkedIn post about Lucille's connector framework"</div>
+                <div>"What brands of laptops are available?"</div>
+                <div>"Show me products from Samsung"</div>
               </div>
             </div>
 

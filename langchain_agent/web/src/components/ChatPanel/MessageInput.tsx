@@ -85,7 +85,7 @@ export function MessageInput() {
             onKeyDown={handleKeyDown}
             placeholder={
               isConnected
-                ? "Ask about Lucille pipelines, stages, or connectors..."
+                ? "Search for products, compare brands, or ask questions..."
                 : "Connecting..."
             }
             disabled={!isConnected}

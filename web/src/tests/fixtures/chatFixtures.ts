@@ -11,7 +11,7 @@ import { vi } from 'vitest'
  */
 export const mockMessages = {
   simple: 'Hello',
-  question: 'How do I use Lucille?',
+  question: 'What wireless headphones do you have?',
   long: 'This is a longer message with more content to test different input lengths.',
   specialChars: 'Test with special chars: !@#$%^&*()',
   unicode: 'Hello 世界 🌍 مرحبا',
@@ -116,8 +116,8 @@ export const chatInputScenarios = {
    * Accessibility-focused
    */
   accessible: {
-    ariaLabel: 'Submit your question for Lucille documentation search',
-    placeholder: 'Type your question about Lucille...',
+    ariaLabel: 'Submit your question for product search',
+    placeholder: 'Search for products...',
   },
 
   /**
@@ -135,7 +135,7 @@ export const chatInputScenarios = {
 export const validationCases = {
   valid: [
     'Hello',
-    'How do I use Lucille?',
+    'What wireless headphones do you have?',
     'Tell me about connectors',
     'a'.repeat(100),
   ],

@@ -68,20 +68,15 @@ fi
 echo "✓ OpenSearch Dashboards is ready"
 echo ""
 
-# Optional: Update documentation cache
+# Optional: Re-ingest product data
 if [ "$1" == "--update-docs" ]; then
-    echo "📚 Updating Lucille documentation..."
+    echo "📚 Re-ingesting ESCI product data..."
     source "$PROJECT_DIR/.venv/bin/activate"
-    # Regenerate javadocs if lucille exists
-    if [ -d "$PARENT_DIR/lucille" ]; then
-        echo "   Regenerating Lucille javadocs..."
-        cd "$PARENT_DIR/lucille" && mvn javadoc:aggregate -q 2>/dev/null && cd "$PROJECT_DIR"
-    fi
-    python "$PROJECT_DIR/ingest_lucille_docs.py" > "$PROJECT_DIR/logs/docs-update.log" 2>&1
+    PYTHONPATH="$PROJECT_DIR" python "$PROJECT_DIR/ingest_esci_products.py" > "$PROJECT_DIR/logs/docs-update.log" 2>&1
     if [ $? -eq 0 ]; then
-        echo "✓ Lucille documentation updated"
+        echo "✓ Product data updated"
     else
-        echo "⚠ Documentation update had issues (continuing anyway)"
+        echo "⚠ Product data update had issues (continuing anyway)"
     fi
     echo ""
 fi
@@ -183,6 +178,6 @@ echo "  All:       ./scripts/logs.sh all"
 echo ""
 echo "⚙️  Commands:"
 echo "  Stop services:        ./scripts/stop.sh"
-echo "  Update Lucille docs:  ./scripts/start.sh --update-docs"
+echo "  Re-ingest products:  ./scripts/start.sh --update-docs"
 echo "  View all logs:        ./scripts/logs.sh all"
 echo ""

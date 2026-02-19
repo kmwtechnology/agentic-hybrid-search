@@ -1,21 +1,21 @@
-# Agentic Hybrid Search - Multi-Capability Lucille Agent
+# Agentic Hybrid Search - E-Commerce Product Search Agent
 
 A production-grade LangGraph agent with three specialized capabilities:
-**RAG Q&A**, **Config Builder**, and **Documentation Writer**. All modes share
+**RAG Q&A**, **Product Filter Builder**, and **Product Comparison Writer**. All modes share
 the same data layer, LangGraph graph, and frontend. Uses Google Gemini AI
-for LLM inference and embeddings, PostgreSQL + PGVector for vector storage,
-and sophisticated retrieval with hybrid search and cross-encoder reranking.
+for LLM inference and embeddings, OpenSearch for hybrid vector + BM25 search,
+PostgreSQL for checkpoints, and sophisticated retrieval with hybrid search and LLM-based reranking.
 
 **Capabilities**:
 
-- **RAG Q&A**: Hybrid search + reranking + self-improving retrieval for Lucille documentation
-- **Config Builder**: Generate valid HOCON pipeline configs from natural language requests
-- **Documentation Writer**: 5 content types with intelligent classification and optimized retrieval
-  - **Social Posts** (100-300 words, 1 pass, ~6s) - Engaging LinkedIn/Twitter content
-  - **Blog Posts** (1000-2000 words, 2 passes, ~20s) - Narrative articles with examples
-  - **Technical Articles** (800-1500 words, 3 passes, ~25s) - Deep-dive analysis with code
-  - **Tutorials** (1000 words, 2 passes, ~20s) - Step-by-step instructional guides
-  - **Comprehensive Docs** (2500+ words, 5 passes, ~50s) - Full reference documentation
+- **RAG Q&A**: Hybrid search + reranking + self-improving retrieval for e-commerce product data (Amazon Shopping Queries Dataset / ESCI)
+- **Product Filter Builder**: Generate structured product filters and faceted search queries from natural language requests
+- **Product Comparison Writer**: 5 content types with intelligent classification and optimized retrieval
+  - **Social Posts** (100-300 words, 1 pass, ~6s) - Engaging LinkedIn/Twitter content about products
+  - **Blog Posts** (1000-2000 words, 2 passes, ~20s) - Product roundups and buying guides
+  - **Technical Articles** (800-1500 words, 3 passes, ~25s) - Deep-dive product analysis with specs
+  - **Tutorials** (1000 words, 2 passes, ~20s) - Step-by-step shopping and comparison guides
+  - **Comprehensive Docs** (2500+ words, 5 passes, ~50s) - Full product category reference documentation
 
 **Key Components**:
 
@@ -35,7 +35,6 @@ and sophisticated retrieval with hybrid search and cross-encoder reranking.
 docker --version          # Docker Desktop
 python3 --version         # Python 3.11+
 node --version            # Node.js 18+
-mvn --version             # Maven (for javadoc generation)
 ```
 
 If not installed:
@@ -43,7 +42,6 @@ If not installed:
 - **Docker**: <https://docker.com>
 - **Python**: <https://python.org>
 - **Node.js**: <https://nodejs.org>
-- **Maven**: <https://maven.apache.org> (requires Java 17+)
 
 **Additional Requirements**:
 
@@ -61,11 +59,10 @@ This takes 10-20 minutes on first run and will:
 
 1. Generate secure API keys
 2. Install Python and frontend dependencies
-3. Start PostgreSQL
-4. Initialize database
-5. Generate Lucille javadocs via Maven
-6. Validate Google AI API key
-7. Load Lucille documentation (~512 API classes)
+3. Start PostgreSQL and OpenSearch via Docker
+4. Initialize database and search index
+5. Validate Google AI API key
+6. Ingest ESCI product data (Amazon Shopping Queries Dataset)
 
 ### Start Services
 
@@ -76,13 +73,11 @@ cd langchain_agent
 
 Then open: <http://localhost:5173>
 
-To re-generate and load Lucille javadocs:
+To re-ingest ESCI product data:
 
 ```bash
-cd ../lucille
-mvn javadoc:aggregate
-cd ../agentic-hybrid-search/langchain_agent
-python ingest_lucille_docs.py
+cd langchain_agent
+python ingest_esci_products.py
 ```
 
 ### Stop Services
@@ -139,24 +134,24 @@ curl -H "X-API-Key: $(grep API_KEY .env | cut -d= -f2)" \
 
 ### Example Queries
 
-**RAG Q&A (Lucille Documentation):**
-- "What is Lucille?"
-- "How do I create a pipeline?"
-- "What stages are available?"
-- "How do I configure a connector?"
-- "What is the RunMode interface?"
+**RAG Q&A (Product Search):**
+- "Find wireless headphones under $50"
+- "Show me Nike running shoes"
+- "What are the best-rated noise canceling earbuds?"
+- "Compare Sony and Bose over-ear headphones"
+- "Find waterproof fitness trackers with heart rate monitoring"
 
-**Config Builder:**
-- "Build me a CSV to OpenSearch pipeline"
-- "Create a config for PDF ingestion with CopyFields and SetStaticField stages"
-- "Generate a pipeline config that reads from Kafka and writes to Solr"
+**Product Filter Builder:**
+- "Filter electronics by brand Samsung with price under $200"
+- "Show me running shoes size 10 in blue, sorted by rating"
+- "Find laptops with 16GB RAM and SSD under $1000"
 
-**Documentation Writer:**
-- "Write a LinkedIn post about CSVConnector" (social post)
-- "Create a blog post about hybrid search" (blog post)
-- "Write a technical article analyzing the reranker" (technical article)
-- "Create a tutorial for building a CSV pipeline" (tutorial)
-- "Document all Lucille connectors" (comprehensive docs)
+**Product Comparison Writer:**
+- "Write a LinkedIn post about the top wireless earbuds of 2025" (social post)
+- "Create a buying guide for mechanical keyboards" (blog post)
+- "Write a technical comparison of OLED vs LED monitors" (technical article)
+- "Create a tutorial for choosing the right running shoe" (tutorial)
+- "Document all product categories in home electronics" (comprehensive docs)
 
 ---
 
@@ -203,8 +198,8 @@ ENABLE_RESPONSE_GRADING = True
 REFLECTION_MAX_ITERATIONS = 2
 
 # Multi-Capability Agent
-ENABLE_CONFIG_BUILDER = True   # Config builder pipeline
-ENABLE_DOC_WRITER = True       # Documentation writer pipeline
+ENABLE_CONFIG_BUILDER = True   # Product filter builder pipeline
+ENABLE_DOC_WRITER = True       # Product comparison writer pipeline
 ```
 
 See `.env.example` for all available options.
@@ -215,30 +210,30 @@ The agent automatically routes requests based on user intent. Feature flags cont
 
 | Flag | Default | Capability | Description |
 |------|---------|-----------|-------------|
-| `ENABLE_CONFIG_BUILDER` | `True` | Config Builder | Generates Lucille HOCON pipeline configurations from natural language requests |
-| `ENABLE_DOC_WRITER` | `True` | Documentation Writer | Creates 5 content types (social/blog/article/tutorial/comprehensive) with intelligent classification |
-| `ENABLE_CONTENT_TYPE_CLASSIFICATION` | `True` | Content Type Sub-Classification | Enables LLM-based routing between the 5 documentation content types |
+| `ENABLE_CONFIG_BUILDER` | `True` | Product Filter Builder | Generates structured product filters and faceted search queries from natural language requests |
+| `ENABLE_DOC_WRITER` | `True` | Product Comparison Writer | Creates 5 content types (social/blog/article/tutorial/comprehensive) with intelligent classification |
+| `ENABLE_CONTENT_TYPE_CLASSIFICATION` | `True` | Content Type Sub-Classification | Enables LLM-based routing between the 5 product comparison content types |
 
 **Intent Routing:**
 
 When both flags are enabled, the intent classifier automatically routes requests:
 
-- **Questions** ("What connectors are available?", "How do I configure X?") → RAG Q&A pipeline (DEFAULT)
-- **Config Requests** ("Build me a CSV to Solr pipeline") → Config Builder pipeline
-- **Documentation Requests** ("Write a tutorial on X", "Create a guide", "Write documentation for X") → Documentation Writer pipeline → Content Type Classifier → Appropriate Generator (social/blog/article/tutorial/comprehensive)
+- **Questions** ("Find wireless headphones", "What are the top-rated laptops?") → RAG Q&A pipeline (DEFAULT)
+- **Config Requests** ("Filter products by brand and price range") → Product Filter Builder pipeline
+- **Documentation Requests** ("Write a buying guide for X", "Create a comparison", "Write a review of X") → Product Comparison Writer pipeline → Content Type Classifier → Appropriate Generator (social/blog/article/tutorial/comprehensive)
 - **Summaries** ("Summarize our conversation") → Summary generator
 
 **Key Distinction:**
 - **Conversational Q&A** (questions expecting direct answers) → RAG Q&A pipeline
-- **Publication content** (tutorials, guides, articles, blogs, API docs) → Documentation Writer pipeline
+- **Publication content** (tutorials, buying guides, comparisons, reviews) → Product Comparison Writer pipeline
 
 **All 5 Intents:**
 
 | Intent | Pipeline | Examples | Trigger Keywords |
 |--------|----------|----------|------------------|
-| `question` | RAG Q&A | "What connectors exist?", "How do I X?" | Questions expecting direct answers |
-| `config_request` | Config Builder | "Build me a X to Y pipeline" | "pipeline", "config", "HOCON" |
-| `documentation_request` | Doc Writer | "Write a tutorial on X", "Document the Y API" | "write", "create", "tutorial", "guide", "article", "document" |
+| `question` | RAG Q&A | "Find wireless headphones", "What are the best laptops?" | Questions expecting direct answers |
+| `config_request` | Product Filter Builder | "Filter by brand Samsung under $200" | "filter", "facet", "sort by", "price range" |
+| `documentation_request` | Product Comparison Writer | "Write a buying guide for X", "Compare Y products" | "write", "create", "tutorial", "guide", "article", "compare" |
 | `summary` | Summary | "Summarize our conversation" | "summarize", "recap", "summary" |
 | `follow_up` | RAG Q&A | "OK", "That makes sense", "Got it" | Short acknowledgments (<10 words) |
 
@@ -268,7 +263,7 @@ This will:
 4. Create Cloud SQL for checkpoints
 5. Manage secrets in Secret Manager
 
-### Initialize Cloud SQL + Ingest Docs
+### Initialize Cloud SQL + Ingest Products
 
 ```bash
 ./scripts/gcp-init.sh --project gen-lang-client-0250737934
@@ -277,7 +272,7 @@ This will:
 This initializes:
 1. Cloud SQL checkpoint tables
 2. OpenSearch index and search pipeline
-3. Lucille documentation ingestion
+3. ESCI product data ingestion
 
 ### Check Cloud Run Logs
 
@@ -296,7 +291,7 @@ gcloud logging read resource.type=cloud_run_revision --project=gen-lang-client-0
 - **Service URL**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app
 - **Health Check**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app/api/health
 - **API Docs**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app/docs
-- **OpenSearch**: 34.138.97.13:9200 (hosted, 1226+ documents indexed)
+- **OpenSearch**: 34.138.97.13:9200 (hosted, ESCI product data indexed)
 - **PostgreSQL**: Cloud SQL (checkpoints only)
 
 **Recent Updates**:
@@ -311,19 +306,12 @@ gcloud logging read resource.type=cloud_run_revision --project=gen-lang-client-0
 ### Link Verification
 
 The agent includes automatic link verification that:
-- ✅ Validates all citation URLs before sending to the LLM
-- ✅ Caches verification results for 60 minutes (TTL)
-- ✅ Replaces broken links with valid alternatives automatically
-- ✅ Gracefully handles timeouts (>2 seconds marked invalid)
+- Validates all citation URLs before sending to the LLM
+- Caches verification results for 60 minutes (TTL)
+- Replaces broken links with valid alternatives automatically
+- Gracefully handles timeouts (>2 seconds marked invalid)
 
 This prevents citing broken links in responses.
-
-### Javadoc URL Mapping
-
-Javadoc sources are automatically mapped to Maven Central hosting:
-- **Local**: Generated from Lucille javadoc (`target/site/apidocs/`)
-- **Deployed**: Mapped to https://javadoc.io/doc/com.kmwllc/lucille-core/latest/{class-path}.html
-- **Markdown**: GitHub URLs (doc/site/content/en/docs/*)
 
 ---
 
@@ -429,7 +417,7 @@ The agent uses intent-based routing to direct queries to one of three pipelines:
 START → Intent Classifier
   ├── [question]                 → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
   ├── [summary]                  → Summary → Agent → END
-  ├── [config_request]           → Config Resolver → Config Generator → Config Response → END
+  ├── [config_request]           → Filter Resolver → Filter Generator → Filter Response → END
   ├── [documentation_request]    → Doc Planner → Doc Gatherer → Doc Synthesizer → END
   └── [follow_up]                → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
 ```
@@ -449,17 +437,17 @@ Query → Intent Classifier → Query Expansion → Query Evaluator → Summary
 - **Citation Suppression**: Suppresses citations when max relevance < 10%
 - **Honest Responses**: Returns "no info found" when retrieval fails (prevents hallucination)
 
-#### Config Builder Pipeline
+#### Product Filter Builder Pipeline
 
 ```text
-Config Request → Config Resolver → Config Generator → Config Response → END
+Filter Request → Filter Resolver → Filter Generator → Filter Response → END
 ```
 
-- **Config Resolver**: Parses natural language request into component needs, resolves specs via metadata queries
-- **Config Generator**: Generates valid HOCON config using LLM with component spec context
-- **Config Response**: Formats config in markdown with validation notes and parameter reference
+- **Filter Resolver**: Parses natural language request into product attributes, categories, and constraints
+- **Filter Generator**: Generates structured faceted search queries using LLM with product schema context
+- **Filter Response**: Formats filters in markdown with available facets and result preview
 
-#### Documentation Writer Pipeline
+#### Product Comparison Writer Pipeline
 
 ```text
 Doc Request → Content Type Classifier → [Route by Type]
@@ -507,11 +495,11 @@ where k=60 (constant)
 
 The **Alpha Parameter** controls weighting (standard hybrid search convention):
 
-- `α=0.0-0.15`: Pure lexical (BM25, exact matches, class names)
-- `α=0.15-0.4`: Lexical-heavy (specific features, APIs)
+- `α=0.0-0.15`: Pure lexical (BM25, exact matches, product names, SKUs)
+- `α=0.15-0.4`: Lexical-heavy (specific product attributes, brand names)
 - `α=0.4-0.6`: Balanced hybrid
-- `α=0.6-0.75`: Semantic-heavy (how-to, architecture queries)
-- `α=0.75-1.0`: Pure semantic (vector, conceptual questions)
+- `α=0.6-0.75`: Semantic-heavy (how-to, "best for" queries)
+- `α=0.75-1.0`: Pure semantic (vector, conceptual product questions)
 
 Query Evaluator dynamically adjusts alpha based on query type.
 
@@ -527,9 +515,9 @@ The UI provides real-time observability via WebSocket events:
 | `hybrid_search_start/result` | Search candidates with scores |
 | `reranker_start/result` | Reranked documents with relevance scores |
 | `alpha_refinement` | Whether alpha was adjusted due to low relevance |
-| `config_builder_start` | Config builder user request |
-| `component_spec_retrieval` | Components requested/found/not found |
-| `config_generated` | Config preview with validation notes |
+| `config_builder_start` | Product filter builder user request |
+| `component_spec_retrieval` | Product attributes requested/found/not found |
+| `config_generated` | Filter preview with available facets |
 | `content_type_classification` | Content type detected (social_post, blog_post, technical_article, tutorial, comprehensive_docs) with confidence, target length, tone, retrieval depth, temperature |
 | `social_post_progress` / `blog_post_progress` / `article_progress` / `tutorial_progress` | Progress events per content type (retrieval, outline, generation stages) |
 | `llm_response_start` | LLM streaming started (creates placeholder message) |
@@ -545,7 +533,7 @@ The UI provides real-time observability via WebSocket events:
 Intelligent query optimization:
 
 1. **Query Evaluator**: Dynamically determines optimal alpha value (0.0-1.0) for hybrid search based on query type
-   - `0.0-0.15`: Pure lexical (exact matches, class names)
+   - `0.0-0.15`: Pure lexical (exact matches, product names, SKUs)
    - `0.4-0.6`: Balanced hybrid
    - `0.75-1.0`: Pure semantic (conceptual questions)
 
@@ -562,11 +550,11 @@ Intelligent query optimization:
 ### Update Data
 
 ```bash
-# Ingest Lucille javadoc
-python ingest_lucille_docs.py
+# Ingest ESCI product data
+python ingest_esci_products.py
 
 # Show ingestion stats
-python ingest_lucille_docs.py --stats
+python ingest_esci_products.py --stats
 
 # Or full re-initialization
 python setup.py
@@ -647,7 +635,7 @@ python benchmark_search.py     # Search performance benchmarks
 
 **Optimizations**:
 
-- OpenSearch hybrid search (Lucene + knn_vector)
+- OpenSearch hybrid search (BM25 + knn_vector)
 - Min-max normalization for score fusion
 - Gemini batch API for embeddings
 - Link cache with 60-minute TTL
@@ -681,17 +669,17 @@ langchain_agent/
 ├── agent_state.py         # LangGraph state schema (TypedDict)
 ├── vector_store.py        # OpenSearch hybrid search + metadata queries
 ├── reranker.py            # Gemini LLM-based reranker
-├── config_builder.py      # Config builder pipeline (HOCON generation)
-├── doc_writer.py          # Documentation writer pipeline (5 content types)
-├── component_specs.py     # Structured component spec extraction
-├── catalog_generator.py   # Auto-generated component catalogs
+├── config_builder.py      # Product filter builder pipeline (faceted search generation)
+├── content_generators.py  # Product comparison writer pipeline (5 content types)
+├── component_specs.py     # Structured product attribute extraction
+├── catalog_generator.py   # Auto-generated product catalogs
 ├── exceptions.py          # Custom exception hierarchy
 ├── retry_utils.py         # Retry decorators (tenacity)
 ├── link_verifier.py       # URL validation with TTL cache (httpx)
 ├── doc_replacer.py        # Broken link detection + replacement
 ├── embedding_cache.py     # Thread-safe embedding cache
 ├── logging_config.py      # Structured logging (JSON format)
-├── ingest_lucille_docs.py # Lucille javadoc + markdown ingestion
+├── ingest_esci_products.py # ESCI product data ingestion (Amazon Shopping Queries Dataset)
 ├── observable_agent.py    # SSE streaming + event emission
 ├── verify_changes.py      # Pipeline integration tests
 ├── benchmark_search.py    # Search performance benchmarks
@@ -710,6 +698,7 @@ langchain_agent/
 
 ## External References
 
+- **Amazon ESCI Dataset**: <https://github.com/amazon-science/esci-data>
 - **LangGraph**: <https://langchain-ai.github.io/langgraph/>
 - **LangChain**: <https://python.langchain.com/>
 - **OpenSearch**: <https://opensearch.org/docs/latest/>

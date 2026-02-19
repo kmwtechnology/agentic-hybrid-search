@@ -82,7 +82,7 @@ ESTIMATED MONTHLY COST (idle / light dev use):
 
 FIRST-TIME SETUP:
     After deploy, run gcp-init.sh to initialize Cloud SQL tables
-    and ingest Lucille documentation into OpenSearch.
+    and ingest ESCI product data into OpenSearch.
 
 EOF
             exit 0
@@ -386,8 +386,6 @@ LOG_FORMAT=json,\
 LOG_LEVEL=INFO,\
 ENABLE_RERANKING=true,\
 ENABLE_QUERY_EVALUATION=true,\
-ENABLE_CONFIG_BUILDER=true,\
-ENABLE_DOC_WRITER=true,\
 ENABLE_CONTENT_TYPE_CLASSIFICATION=true,\
 OPENSEARCH_HOST=34.138.97.13,\
 OPENSEARCH_PORT=9200,\

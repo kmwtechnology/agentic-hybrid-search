@@ -40,7 +40,7 @@ test.describe('Chat Application', () => {
       const input = page.getByPlaceholderText(/ask a question|message/i)
       const button = page.getByRole('button', { name: /send|submit/i })
 
-      await input.fill('How do I use Lucille?')
+      await input.fill('What wireless headphones do you have?')
       await expect(button).toBeEnabled()
     })
   })
@@ -248,7 +248,7 @@ test.describe('Chat Full Workflow', () => {
     const button = page.getByRole('button', { name: /send|submit/i })
 
     // Step 1: Send first message
-    const message1 = 'What is Lucille?'
+    const message1 = 'What running shoes are available?'
     await input.fill(message1)
     await button.click()
 

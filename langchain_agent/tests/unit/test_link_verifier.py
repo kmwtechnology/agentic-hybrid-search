@@ -235,27 +235,27 @@ class TestDocumentReplacementIntegration:
 
 
 # ============================================================================
-# JAVADOC LINK HANDLING
+# EXTERNAL LINK HANDLING
 # ============================================================================
 
 
-class TestJavadocLinkHandling:
-    """Tests for handling Javadoc links specifically."""
+class TestExternalLinkHandling:
+    """Tests for handling external product links specifically."""
 
-    def test_javadoc_io_links_verified(self):
-        """javadoc.io links should be verified."""
+    def test_product_page_links_verified(self):
+        """Product page links should be verified."""
         pytest.skip("Requires link_verifier setup")
 
-    def test_github_javadoc_links_detected_broken(self):
-        """GitHub javadoc links should be detected as broken."""
+    def test_broken_product_links_detected(self):
+        """Broken product links should be detected as broken."""
         pytest.skip("Requires link_verifier setup")
 
-    def test_github_javadoc_replaced_with_io(self):
-        """GitHub javadoc links should be replaced with javadoc.io."""
+    def test_broken_product_links_replaced(self):
+        """Broken product links should be replaced with valid alternatives."""
         pytest.skip("Requires link_verifier setup")
 
-    def test_class_path_preserved_in_replacement(self):
-        """Class path should be preserved in javadoc.io replacement."""
+    def test_product_path_preserved_in_replacement(self):
+        """Product path should be preserved in replacement."""
         pytest.skip("Requires link_verifier setup")
 
 
@@ -268,24 +268,24 @@ class TestJavadocLinkHandling:
 def sample_response_with_citations():
     """Sample agent response with citations."""
     return """
-    Here's information about Lucille [1].
+    Here's information about this product [1].
 
-    For more details on indexing [2], see the documentation.
+    For more details on specifications [2], see the documentation.
 
     You can learn more about the configuration at [3].
 
-    [1] https://github.com/kmwllc/lucille/blob/main/README.md
-    [2] https://github.com/kmwllc/lucille/blob/main/docs/indexing.md
+    [1] https://example.com/products/headphones
+    [2] https://example.com/products/speakers
     [3] https://broken-link.example.com/config
     """
 
 
 @pytest.fixture
-def sample_javadoc_citations():
-    """Sample citations with javadoc links."""
+def sample_product_citations():
+    """Sample citations with product links."""
     return [
-        "https://github.com/kmwllc/lucille/tree/main/target/site/apidocs/com/kmwllc/lucille/core/IndexManager.html",
-        "https://javadoc.io/doc/com.kmwllc/lucille-core/latest/com/kmwllc/lucille/core/IndexManager.html",
+        "https://example.com/products/headphones/specs",
+        "https://example.com/products/reviews",
     ]
 
 

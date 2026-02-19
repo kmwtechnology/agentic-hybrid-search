@@ -230,7 +230,7 @@ PYTHONPATH=. pytest tests/unit/
 2. Add to `.env`: `GOOGLE_API_KEY=your-key-here`
 3. Re-run setup: `python3 setup.py`
 
-### No `.txt` files found in documents directory
+### ESCI dataset not found or parquet files missing
 **Cause**: ESCI dataset not downloaded or parquet files missing
 **Fix**:
 1. Ensure parquet file exists: `ls ../esci/shopping_queries_dataset/shopping_queries_dataset_products.parquet`

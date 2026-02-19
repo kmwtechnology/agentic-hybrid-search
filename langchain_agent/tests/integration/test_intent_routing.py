@@ -4,7 +4,7 @@ Comprehensive intent and content type classification test suite.
 
 Tests all 5 intents with multiple query variations:
 - question (14 tests): Conversational Q&A
-- config_request (10 tests): Pipeline configuration generation
+- product_filter (10 tests): Product filtering and faceted search
 - documentation_request (15 tests): Publication content with 5 content types:
   * social_post (3 tests): LinkedIn/Twitter posts (100-300 words)
   * blog_post (3 tests): Narrative articles (1000-2000 words)
@@ -144,7 +144,7 @@ async def run_query(query: str, expected_intent: str, timeout: int = 180,
                     if clarification_type == "topic":
                         # Topic clarification: query lacks explicit subject
                         # Auto-respond with a default topic for testing
-                        topic_response = "Lucille connectors and pipeline configuration"
+                        topic_response = "e-commerce products and product search"
                         result.event_details["clarification_topic_provided"] = topic_response
 
                         # Send topic response
@@ -335,117 +335,117 @@ async def main():
         # Conversational Q&A - direct answers expected
 
         # Basic questions
-        ("What connectors are available in Lucille?", "question"),
-        ("What's the difference between OpenSearchIndexer and ElasticsearchIndexer?", "question"),
-        ("Can you explain how the RunMode interface works?", "question"),
-        ("Which stages support embedding generation?", "question"),
-        ("Tell me about the FileConnector", "question"),
-        ("What are the requirements for custom stages?", "question"),
-        ("How does Lucille handle error recovery?", "question"),
-        ("What indexers work with vector search?", "question"),
-        ("Explain the difference between connectors and stages", "question"),
+        ("What wireless headphones are available?", "question"),
+        ("What's the difference between over-ear and on-ear headphones?", "question"),
+        ("Can you explain how noise-canceling technology works?", "question"),
+        ("Which products support Bluetooth 5.0?", "question"),
+        ("Tell me about the Sony WH-1000XM5", "question"),
+        ("What are the requirements for waterproof earbuds?", "question"),
+        ("How do noise-canceling headphones work?", "question"),
+        ("What earbuds work with spatial audio?", "question"),
+        ("Explain the difference between active and passive noise cancellation", "question"),
 
         # Greetings and general queries
         ("Hello, what can you help me with?", "question"),
         ("Hi there!", "follow_up"),  # Greetings are continuation/greeting, not questions
-        ("What's new in Lucille?", "question"),
-        ("What can Lucille do?", "question"),
+        ("What are the latest trending products?", "question"),
+        ("What products can I search for?", "question"),
 
         # Troubleshooting and debugging questions
-        ("How do I troubleshoot connection errors?", "question"),
-        ("Why is my pipeline failing?", "question"),
-        ("What causes timeout errors in connectors?", "question"),
-        ("How do I debug stage execution?", "question"),
+        ("How do I troubleshoot Bluetooth pairing issues?", "question"),
+        ("Why won't my wireless earbuds connect?", "question"),
+        ("What causes audio lag in Bluetooth headphones?", "question"),
+        ("How do I fix poor sound quality on my earbuds?", "question"),
 
         # Best practices and recommendations
-        ("What are best practices for pipeline design?", "question"),
-        ("What's the recommended way to handle large files?", "question"),
-        ("Should I use batch processing or streaming?", "question"),
+        ("What are best practices for choosing running headphones?", "question"),
+        ("What's the recommended way to care for leather headbands?", "question"),
+        ("Should I buy wired or wireless earbuds for the gym?", "question"),
 
         # Comparison questions
-        ("Which is better: CSVConnector or FileConnector?", "question"),
-        ("What's the difference between stages and indexers?", "question"),
-        ("How does Lucille compare to other ETL tools?", "question"),
+        ("Which is better: AirPods Pro or Galaxy Buds Pro?", "question"),
+        ("What's the difference between open-back and closed-back headphones?", "question"),
+        ("How do Sony headphones compare to Bose?", "question"),
 
-        # Edge cases - questions that could be confused with config_request
-        ("How do I configure a stage?", "question"),  # Explanatory, not config generation
-        ("What configuration options does CSVConnector have?", "question"),
-        ("How should I set up my pipeline parameters?", "question"),
-        ("What's the syntax for HOCON configs?", "question"),
+        # Edge cases - questions that could be confused with product_filter
+        ("How do I choose the right earbud tips?", "question"),  # Explanatory, not filtering
+        ("What features does the Bose QuietComfort have?", "question"),
+        ("How should I pick headphones for my needs?", "question"),
+        ("What's the difference between AAC and LDAC codecs?", "question"),
 
         # Edge cases - questions that could be confused with documentation_request
-        ("How do connectors work?", "question"),  # Asking for explanation, not docs
-        ("What does the FileConnector do?", "question"),
-        ("Can you explain vector embeddings?", "question"),
+        ("How does hybrid search work for products?", "question"),  # Asking for explanation, not docs
+        ("What does the product rating mean?", "question"),
+        ("Can you explain product relevance scoring?", "question"),
 
-        # ==================== CONFIG_REQUEST INTENT ====================
-        # Pipeline configuration generation - HOCON output expected
+        # ==================== PRODUCT_FILTER INTENT ====================
+        # Product filtering and faceted search
 
-        # Explicit pipeline building
-        ("Build me a CSV to Solr pipeline", "config_request"),
-        ("Create a pipeline that reads from Kafka and writes to OpenSearch", "config_request"),
-        ("Generate a pipeline config with CopyFields and SetStaticField stages", "config_request"),
-        ("I need a pipeline configuration for PDF ingestion", "config_request"),
-        ("Build me a CSV to Solr pipeline with CopyFields and SetStaticField stages", "config_request"),
+        # Explicit product filtering
+        ("Show me Sony headphones under $50", "product_filter"),
+        ("Filter products by brand Nike", "product_filter"),
+        ("Find me wireless earbuds between $30 and $100", "product_filter"),
+        ("I need running shoes in size 10", "product_filter"),
+        ("Show me Sony headphones with noise canceling under $200", "product_filter"),
 
-        # Config generation variants
-        ("Create a config for processing JSON files", "config_request"),
-        ("Generate a Lucille pipeline that uses JlamaEmbed", "config_request"),
-        ("Make me a pipeline with DatabaseConnector and ElasticsearchIndexer", "config_request"),
-        ("Build a pipeline for vector search with embeddings", "config_request"),
-        ("Create a HOCON config for document enrichment", "config_request"),
+        # Filter generation variants
+        ("Filter products with 4+ star ratings", "product_filter"),
+        ("Show me Bose products sorted by price", "product_filter"),
+        ("Find Samsung Galaxy Buds in black color", "product_filter"),
+        ("List all waterproof earbuds under $75", "product_filter"),
+        ("Filter headphones by brand JBL and type over-ear", "product_filter"),
 
-        # More pipeline requests
-        ("Set up a pipeline from S3 to OpenSearch", "config_request"),
-        ("Configure a data ingestion pipeline", "config_request"),
-        ("I want a pipeline that uses the KafkaConnector", "config_request"),
-        ("Give me a config for indexing documents", "config_request"),
+        # More filter requests
+        ("Show me products from Apple in the electronics category", "product_filter"),
+        ("Filter by price range $50 to $150", "product_filter"),
+        ("I want to see only Sennheiser headphones", "product_filter"),
+        ("Give me a list of noise-canceling headphones under $100", "product_filter"),
 
         # Edge cases - imperative requests
-        ("Pipeline for CSV files please", "config_request"),
-        ("Need a config with embedding stage", "config_request"),
+        ("Headphones under $30 please", "product_filter"),
+        ("Need wireless earbuds with long battery life", "product_filter"),
 
         # ==================== DOCUMENTATION_REQUEST INTENT ====================
         # Publication content - 5 content types with different lengths and depths
 
         # ---------- SOCIAL_POST (100-300 words) ----------
-        ("Write a LinkedIn post about getting started with Lucille", "documentation_request", "social_post"),
-        ("Create a short social media post highlighting CSVConnector features", "documentation_request", "social_post"),
-        ("Draft a Twitter thread about Lucille's vector search capabilities", "documentation_request", "social_post"),
-        ("Write a Facebook post about Lucille", "documentation_request", "social_post"),
-        ("Create an Instagram caption about data pipelines", "documentation_request", "social_post"),
-        ("Draft a LinkedIn announcement for Lucille 1.0", "documentation_request", "social_post"),
+        ("Write a LinkedIn post about the best wireless earbuds of 2026", "documentation_request", "social_post"),
+        ("Create a short social media post highlighting AirPods Pro features", "documentation_request", "social_post"),
+        ("Draft a Twitter thread about the evolution of noise-canceling technology", "documentation_request", "social_post"),
+        ("Write a Facebook post about wireless earbuds", "documentation_request", "social_post"),
+        ("Create an Instagram caption about workout headphones", "documentation_request", "social_post"),
+        ("Draft a LinkedIn announcement for the new Sony WH-1000XM6", "documentation_request", "social_post"),
 
         # ---------- BLOG_POST (1000-2000 words) ----------
-        ("Write a blog post about Lucille pipeline design patterns", "documentation_request", "blog_post"),
-        ("Create a blog article exploring Lucille's hybrid search architecture", "documentation_request", "blog_post"),
-        ("Draft a narrative blog post on building production data pipelines with Lucille", "documentation_request", "blog_post"),
-        ("Write a blog about connector best practices", "documentation_request", "blog_post"),
-        ("Create an engaging blog post about search relevancy", "documentation_request", "blog_post"),
+        ("Write a blog post about e-commerce product search best practices", "documentation_request", "blog_post"),
+        ("Create a blog article exploring hybrid search for product discovery", "documentation_request", "blog_post"),
+        ("Draft a narrative blog post on building a great product recommendation engine", "documentation_request", "blog_post"),
+        ("Write a blog about choosing the right headphones for different activities", "documentation_request", "blog_post"),
+        ("Create an engaging blog post about search relevancy in e-commerce", "documentation_request", "blog_post"),
 
         # ---------- TECHNICAL_ARTICLE (800-1500 words) ----------
-        ("Write a technical article analyzing Lucille's cross-encoder reranking", "documentation_request", "technical_article"),
-        ("Create a technical deep-dive on how Lucille handles vector embeddings", "documentation_request", "technical_article"),
-        ("Draft a technical analysis of Lucille's connector architecture", "documentation_request", "technical_article"),
-        ("Write a deep dive on the indexer implementation", "documentation_request", "technical_article"),
-        ("Create a technical breakdown of the stage pipeline", "documentation_request", "technical_article"),
+        ("Write a technical article analyzing product search reranking algorithms", "documentation_request", "technical_article"),
+        ("Create a technical deep-dive on how vector embeddings improve product search", "documentation_request", "technical_article"),
+        ("Draft a technical analysis of e-commerce search architecture", "documentation_request", "technical_article"),
+        ("Write a deep dive on product recommendation systems", "documentation_request", "technical_article"),
+        ("Create a technical breakdown of the product search pipeline", "documentation_request", "technical_article"),
 
         # ---------- TUTORIAL (1000 words) ----------
-        ("Write a step-by-step tutorial on creating a CSV to OpenSearch pipeline", "documentation_request", "tutorial"),
-        ("Create a beginner's guide for building a Lucille pipeline", "documentation_request", "tutorial"),
-        ("Draft a tutorial walking through custom stage development", "documentation_request", "tutorial"),
-        ("Write a how-to guide for setting up vector search", "documentation_request", "tutorial"),
-        ("Create a walkthrough for first-time users", "documentation_request", "tutorial"),
-        ("Write step-by-step instructions for connector configuration", "documentation_request", "tutorial"),
+        ("Write a step-by-step tutorial on finding the perfect headphones online", "documentation_request", "tutorial"),
+        ("Create a beginner's guide for comparing products effectively", "documentation_request", "tutorial"),
+        ("Draft a tutorial walking through advanced product search techniques", "documentation_request", "tutorial"),
+        ("Write a how-to guide for setting up product alerts", "documentation_request", "tutorial"),
+        ("Create a walkthrough for first-time online shoppers", "documentation_request", "tutorial"),
+        ("Write step-by-step instructions for using product filters", "documentation_request", "tutorial"),
 
         # ---------- COMPREHENSIVE_DOCS (2000+ words) ----------
-        ("Document all available Lucille connectors with full specifications", "documentation_request", "comprehensive_docs"),
-        ("Create comprehensive documentation for the Lucille indexer API", "documentation_request", "comprehensive_docs"),
-        ("Write complete reference documentation for all Lucille stages", "documentation_request", "comprehensive_docs"),
-        ("Document the SpecBuilder API", "documentation_request", "comprehensive_docs"),
-        ("Draft API documentation for Lucille connectors", "documentation_request", "comprehensive_docs"),
-        ("Create full reference docs for the pipeline system", "documentation_request", "comprehensive_docs"),
-        ("Write exhaustive documentation covering all components", "documentation_request", "comprehensive_docs"),
+        ("Document all available product categories with full specifications", "documentation_request", "comprehensive_docs"),
+        ("Create comprehensive documentation for the product search API", "documentation_request", "comprehensive_docs"),
+        ("Write complete reference documentation for all product filter options", "documentation_request", "comprehensive_docs"),
+        ("Document the product review submission process", "documentation_request", "comprehensive_docs"),
+        ("Draft API documentation for product search endpoints", "documentation_request", "comprehensive_docs"),
+        ("Create full reference docs for the e-commerce search system", "documentation_request", "comprehensive_docs"),
+        ("Write exhaustive documentation covering all product attributes", "documentation_request", "comprehensive_docs"),
 
         # ---------- EDGE CASES - Ambiguous format keywords ----------
         # "guide" is ambiguous (tutorial vs comprehensive_docs)
@@ -497,9 +497,9 @@ async def main():
         # Action requests with action verbs route to documentation_request
         # (action verbs like "show", "give", "provide" trigger docs generation)
 
-        ("Show me an example of CSVConnector usage", "documentation_request"),
-        ("Give me a code snippet for custom stages", "documentation_request"),
-        ("Provide an example config", "documentation_request"),
+        ("Show me an example of a product review for wireless earbuds", "documentation_request"),
+        ("Give me a comparison table for top noise-canceling headphones", "documentation_request"),
+        ("Provide an example product listing", "documentation_request"),
 
         # ==================== EDGE CASES - VAGUE QUERIES ====================
         # These should trigger clarification (format or topic)
@@ -508,9 +508,9 @@ async def main():
         # Vague format - missing content type specification
         # (LLM returns multiple types → triggers format clarification)
         # Uncomment these to test clarification flow:
-        # ("Write about connectors", "documentation_request", "blog_post"),  # Vague format
-        # ("Create content about Lucille", "documentation_request", "blog_post"),  # Vague format
-        # ("Document pipelines", "documentation_request", "tutorial"),  # Vague format
+        # ("Write about wireless headphones", "documentation_request", "blog_post"),  # Vague format
+        # ("Create content about e-commerce search", "documentation_request", "blog_post"),  # Vague format
+        # ("Document product categories", "documentation_request", "tutorial"),  # Vague format
 
         # Vague topic - missing subject
         # ("Write a blog post", "documentation_request", "blog_post"),  # Vague topic
@@ -572,7 +572,7 @@ async def main():
                 by_content_type[r.expected_content_type]["failed"] += 1
 
     print(f"\n  {BOLD}Results by Intent:{RESET}")
-    for intent in ["question", "config_request", "documentation_request", "summary", "follow_up"]:
+    for intent in ["question", "product_filter", "documentation_request", "summary", "follow_up"]:
         if intent in by_intent:
             stats = by_intent[intent]
             color = GREEN if stats["failed"] == 0 else RED

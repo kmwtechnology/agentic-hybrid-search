@@ -118,7 +118,7 @@ export function rampUpTest() {
       messages: [
         {
           role: 'user',
-          content: 'How do I use Lucille for indexing?',
+          content: 'What are the best wireless headphones?',
         },
       ],
     })
@@ -159,7 +159,7 @@ export function sustainedLoadTest() {
       messages: [
         {
           role: 'user',
-          content: 'Explain the architecture of Lucille and how it handles document indexing with multiple stages',
+          content: 'Compare noise-canceling headphones from Sony and Bose including features and price ranges',
         },
       ],
     })
@@ -199,7 +199,7 @@ export function spikeTest() {
       messages: [
         {
           role: 'user',
-          content: 'What are the key features of Lucille?',
+          content: 'What are the key features of these running shoes?',
         },
       ],
     })
@@ -250,7 +250,7 @@ export function endToEndTest() {
     const payload = JSON.stringify({
       thread_id: `e2e-${__VU}-${Date.now()}`,
       messages: [
-        { role: 'user', content: 'How does Lucille work?' },
+        { role: 'user', content: 'How does product search work?' },
       ],
     })
 
@@ -271,9 +271,9 @@ export function endToEndTest() {
     const payload = JSON.stringify({
       thread_id: `e2e-${__VU}-${Date.now()}`,
       messages: [
-        { role: 'user', content: 'How does Lucille work?' },
-        { role: 'assistant', content: 'Lucille is a search ETL framework...' },
-        { role: 'user', content: 'Tell me more about indexing' },
+        { role: 'user', content: 'How does product search work?' },
+        { role: 'assistant', content: 'Product search uses hybrid search combining keyword and semantic matching...' },
+        { role: 'user', content: 'Tell me more about filtering by brand' },
       ],
     })
 

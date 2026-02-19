@@ -34,12 +34,12 @@ def test_clarification():
 
     # TEST 1: High confidence case (should NOT trigger clarification)
     print("\n" + "=" * 80)
-    print("TEST 1: High confidence case (LinkedIn post)")
+    print("TEST 1: High confidence case (product comparison)")
     print("=" * 80)
 
     config = {"configurable": {"thread_id": thread_id}}
     result = agent.app.invoke(
-        {"messages": [HumanMessage(content="Write a LinkedIn post about Lucille")]},
+        {"messages": [HumanMessage(content="Write a product comparison for wireless headphones")]},
         config=config
     )
 
@@ -66,7 +66,7 @@ def test_clarification():
 
     # Use a deliberately ambiguous query
     result = agent.app.invoke(
-        {"messages": [HumanMessage(content="Write about Lucille connectors")]},
+        {"messages": [HumanMessage(content="Write about the best running shoes")]},
         config=config
     )
 

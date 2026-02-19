@@ -1,8 +1,8 @@
 {
-  "name": "lucille-docs-agent-ui",
+  "name": "agentic-hybrid-search-ui",
   "private": true,
   "version": "1.0.0",
-  "description": "Lucille Documentation RAG Agent UI",
+  "description": "Agentic Hybrid Search E-Commerce Product Search UI",
   "type": "module",
   "scripts": {
     "dev": "vite",
