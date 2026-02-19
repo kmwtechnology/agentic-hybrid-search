@@ -19,19 +19,24 @@ OPTIONS:
 
 REQUIREMENTS:
     - Docker (for PostgreSQL + OpenSearch containers)
-    - Python 3.13 (with .venv already created at project root)
+    - Python 3.13 (creates .venv at project root if missing)
     - Node.js 18+ (for frontend)
     - Google API Key (for Gemini embeddings and LLM)
+    - ~1.5 GB disk space (ESCI dataset + sample parquet + Docker volumes)
+    - Internet access (to clone ESCI dataset repo from GitHub)
 
 WHAT THIS SCRIPT DOES:
     1. Checks prerequisites (Docker, Python 3.13, Node.js)
-    2. Creates .env file and configures Google API key (if not present)
-    3. Creates frontend .env configuration
-    4. Installs Python dependencies in root .venv
-    5. Installs Node.js frontend dependencies
-    6. Starts PostgreSQL, OpenSearch, and OpenSearch Dashboards containers
-    7. Initializes database and OpenSearch index
-    8. Ingests 10K ESCI e-commerce products (with deterministic sampling)
+    2. Clones ESCI dataset repo (if not present) → ../esci/
+    3. Creates Python virtual environment at project root (if not present)
+    4. Creates .env file and configures Google API key (if not present)
+    5. Creates frontend .env configuration
+    6. Installs Python dependencies in root .venv
+    7. Installs Node.js frontend dependencies
+    8. Starts PostgreSQL, OpenSearch, and OpenSearch Dashboards containers
+    9. Initializes database and OpenSearch index
+    10. Generates 10K deterministic product sample (seed=42)
+    11. Generates embeddings and indexes products into OpenSearch
 
 SERVICES STARTED:
     - PostgreSQL (checkpoint storage) → localhost:5432
@@ -102,17 +107,37 @@ echo "✓ Node.js found"
 
 echo ""
 
-# 2. Verify ESCI dataset (informational, not required for initial setup)
-echo "📦 ESCI Dataset Status..."
+# 2. Setup ESCI dataset repository
+echo "📦 Setting up ESCI dataset..."
 
-ESCI_FILE="$PARENT_DIR/esci/shopping_queries_dataset/shopping_queries_dataset_products.parquet"
+ESCI_REPO_DIR="$PARENT_DIR/esci"
+ESCI_FILE="$ESCI_REPO_DIR/shopping_queries_dataset/shopping_queries_dataset_products.parquet"
+
+if [ ! -d "$ESCI_REPO_DIR" ]; then
+    echo "   Cloning ESCI dataset from GitHub..."
+    cd "$PARENT_DIR"
+    git clone https://github.com/amazon-science/esci-data.git esci > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "   ✓ ESCI dataset cloned successfully"
+    else
+        echo "   ❌ Failed to clone ESCI dataset"
+        echo "      GitHub: https://github.com/amazon-science/esci-data"
+        echo "      Manual download: Extract shopping_queries_dataset/ to ../esci/"
+        exit 1
+    fi
+    cd "$PROJECT_DIR"
+else
+    echo "✓ ESCI dataset directory exists"
+fi
+
 if [ -f "$ESCI_FILE" ]; then
     FILE_SIZE=$(du -h "$ESCI_FILE" | cut -f1)
-    echo "✓ ESCI dataset found ($FILE_SIZE)"
+    echo "✓ ESCI dataset file found ($FILE_SIZE)"
 else
-    echo "⚠ ESCI dataset not found at: $ESCI_FILE"
-    echo "   Download from: https://github.com/amazon-science/esci-data"
-    echo "   Will attempt to ingest later if available"
+    echo "❌ ESCI dataset parquet file not found at:"
+    echo "   $ESCI_FILE"
+    echo "   Ensure shopping_queries_dataset_products.parquet is in: $ESCI_REPO_DIR/shopping_queries_dataset/"
+    exit 1
 fi
 echo ""
 
@@ -195,14 +220,19 @@ fi
 
 echo ""
 
-# 4. Ensure root .venv has all dependencies
-echo "📦 Python Dependencies..."
+# 4. Create and setup root .venv
+echo "📦 Python Virtual Environment..."
 
 VENV_PATH="$PARENT_DIR/.venv"
 if [ ! -d "$VENV_PATH" ]; then
-    echo "❌ Virtual environment not found at: $VENV_PATH"
-    echo "   Please create it first: python3 -m venv $PARENT_DIR/.venv"
-    exit 1
+    echo "   Creating virtual environment at $PARENT_DIR/.venv..."
+    python3 -m venv "$VENV_PATH"
+    if [ $? -eq 0 ]; then
+        echo "   ✓ Virtual environment created"
+    else
+        echo "   ❌ Failed to create virtual environment"
+        exit 1
+    fi
 fi
 
 source "$VENV_PATH/bin/activate"
@@ -299,20 +329,29 @@ else
 fi
 echo ""
 
-# 10. Ingest ESCI products
-echo "🛍️  Ingesting ESCI e-commerce products (10K sample)..."
-echo "   This will download embeddings (~10K requests × 150 tokens = ~$0.30)"
+# 10. Generate 10K sample and ingest ESCI products
+echo "🛍️  Preparing ESCI e-commerce products..."
+echo "   Step 1: Create 10K deterministic sample (seed=42) → esci_products_sample_10000.parquet"
+echo "   Step 2: Generate embeddings (~10K requests × 150 tokens = ~$0.30)"
+echo "   Step 3: Index into OpenSearch"
 echo ""
 
 PYTHONPATH=. python ingest_esci_products.py 2>&1 | tee logs/ingest.log
 
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
     echo ""
-    echo "✓ ESCI products ingested successfully"
+    SAMPLE_FILE="$PARENT_DIR/esci/shopping_queries_dataset/esci_products_sample_10000.parquet"
+    if [ -f "$SAMPLE_FILE" ]; then
+        SAMPLE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
+        echo "✓ 10K product sample created: $SAMPLE_SIZE"
+        echo "   Location: esci/shopping_queries_dataset/esci_products_sample_10000.parquet"
+    fi
+    echo "✓ ESCI products ingested and indexed successfully"
 else
     echo ""
-    echo "⚠ Product ingestion failed. Check logs/ingest.log"
+    echo "❌ Product ingestion failed. Check logs/ingest.log"
     echo "   You can retry later with: PYTHONPATH=. python ingest_esci_products.py"
+    exit 1
 fi
 
 echo ""
