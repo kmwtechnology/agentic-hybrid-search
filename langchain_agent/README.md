@@ -1,4 +1,4 @@
-# Rusty Compass - Multi-Capability Lucille Agent
+# Agentic Hybrid Search - Multi-Capability Lucille Agent
 
 A production-grade LangGraph agent with three specialized capabilities:
 **RAG Q&A**, **Config Builder**, and **Documentation Writer**. All modes share
@@ -81,7 +81,7 @@ To re-generate and load Lucille javadocs:
 ```bash
 cd ../lucille
 mvn javadoc:aggregate
-cd ../rusty-compass/langchain_agent
+cd ../agentic-hybrid-search/langchain_agent
 python ingest_lucille_docs.py
 ```
 
@@ -176,7 +176,7 @@ QUERY_EVAL_MAX_TOKENS = 1024
 # OpenSearch (Document Search)
 OPENSEARCH_HOST = "localhost"                 # Local: localhost:9200, GCP: 34.138.97.13:9200
 OPENSEARCH_PORT = 9200
-OPENSEARCH_INDEX_NAME = "rusty_compass_docs"
+OPENSEARCH_INDEX_NAME = "agentic_hybrid_search_docs"
 OPENSEARCH_USE_SSL = false                    # Local dev: false, GCP: true
 
 # PostgreSQL (Checkpoints Only)
@@ -293,9 +293,9 @@ gcloud logging read resource.type=cloud_run_revision --project=gen-lang-client-0
 
 ### Live Deployment
 
-- **Service URL**: https://rusty-compass-gyx7duaosq-uc.a.run.app
-- **Health Check**: https://rusty-compass-gyx7duaosq-uc.a.run.app/api/health
-- **API Docs**: https://rusty-compass-gyx7duaosq-uc.a.run.app/docs
+- **Service URL**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app
+- **Health Check**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app/api/health
+- **API Docs**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app/docs
 - **OpenSearch**: 34.138.97.13:9200 (hosted, 1226+ documents indexed)
 - **PostgreSQL**: Cloud SQL (checkpoints only)
 

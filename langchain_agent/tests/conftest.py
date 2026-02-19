@@ -1,5 +1,5 @@
 """
-Pytest configuration and fixtures for Rusty Compass tests.
+Pytest configuration and fixtures for Agentic Hybrid Search tests.
 
 Provides mock fixtures for external dependencies:
 - Google Gemini API (LLM and embeddings)

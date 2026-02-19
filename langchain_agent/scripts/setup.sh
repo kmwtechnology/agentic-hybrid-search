@@ -1,11 +1,11 @@
 #!/bin/bash
-# Rusty Compass Setup Script
+# Agentic Hybrid Search Setup Script
 # One-time setup: install dependencies, generate API key, initialize database
 
 set -e  # Exit on error
 
 
-echo "🚀 Rusty Compass Setup"
+echo "🚀 Agentic Hybrid Search Setup"
 echo ""
 
 # Handle help flag
@@ -13,7 +13,7 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     cat << EOF
 Usage: ./scripts/setup.sh [OPTIONS]
 
-One-time setup for Rusty Compass: installs dependencies, generates API key, and initializes the database.
+One-time setup for Agentic Hybrid Search: installs dependencies, generates API key, and initializes the database.
 
 OPTIONS:
     -h, --help          Show this help message and exit

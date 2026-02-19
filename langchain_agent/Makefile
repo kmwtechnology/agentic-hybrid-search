@@ -1,7 +1,7 @@
 .PHONY: help setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web
 
 help:
-	@echo "Rusty Compass - Development Commands"
+	@echo "Agentic Hybrid Search - Development Commands"
 	@echo ""
 	@echo "Setup & Initialization:"
 	@echo "  make setup              - Run complete system setup (database, models, data)"
@@ -74,7 +74,7 @@ type-check:
 	mypy main.py config.py --ignore-missing-imports || true
 
 run:
-	@echo "Starting Rusty Compass agent..."
+	@echo "Starting Agentic Hybrid Search agent..."
 	python3 main.py
 
 stop:

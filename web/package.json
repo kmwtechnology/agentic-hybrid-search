@@ -1,7 +1,7 @@
 {
-  "name": "rusty-compass-web",
+  "name": "agentic-hybrid-search-web",
   "version": "0.1.0",
-  "description": "Frontend for Rusty Compass RAG Agent",
+  "description": "Frontend for Agentic Hybrid Search RAG Agent",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rusty Compass — GCP Resource Teardown
+# Agentic Hybrid Search — GCP Resource Teardown
 # Removes all GCP resources created by deploy.sh
 #
 # This script deletes:
@@ -19,9 +19,9 @@ set -euo pipefail
 # ============================================================================
 
 REGION="us-central1"
-SERVICE_NAME="rusty-compass"
-CLOUD_SQL_INSTANCE="rusty-compass-db"
-ARTIFACT_REPO="rusty-compass"
+SERVICE_NAME="agentic-hybrid-search"
+CLOUD_SQL_INSTANCE="agentic-hybrid-search-db"
+ARTIFACT_REPO="agentic-hybrid-search"
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
             cat << 'EOF'
 Usage: ./scripts/gcp-teardown.sh [OPTIONS]
 
-Remove all GCP resources for Rusty Compass.
+Remove all GCP resources for Agentic Hybrid Search.
 
 WARNING: This is destructive and cannot be undone.
 All Cloud SQL data, secrets, and deployed services will be deleted.
@@ -49,8 +49,8 @@ OPTIONS:
     -h, --help             Show this help message
 
 WHAT THIS SCRIPT DELETES:
-    1. Cloud Run service (rusty-compass)
-    2. Cloud SQL instance (rusty-compass-db) and all data
+    1. Cloud Run service (agentic-hybrid-search)
+    2. Cloud SQL instance (agentic-hybrid-search-db) and all data
     3. Secret Manager secrets (API keys, passwords)
     4. Artifact Registry images
 
@@ -98,7 +98,7 @@ echo ""
 echo "This will permanently delete:"
 echo "  - Cloud Run service:   $SERVICE_NAME"
 echo "  - Cloud SQL instance:  $CLOUD_SQL_INSTANCE (all data)"
-echo "  - Secrets:             rusty-compass-* in Secret Manager"
+echo "  - Secrets:             agentic-hybrid-search-* in Secret Manager"
 echo "  - Docker images:       $ARTIFACT_REPO in Artifact Registry"
 echo ""
 read -p "Are you sure you want to continue? (y/N): " -n 1 -r
@@ -143,7 +143,7 @@ fi
 # ============================================================================
 
 log "Deleting Secret Manager secrets..."
-for secret_name in rusty-compass-google-api-key rusty-compass-api-key rusty-compass-db-password rusty-compass-opensearch-user rusty-compass-opensearch-password; do
+for secret_name in agentic-hybrid-search-google-api-key agentic-hybrid-search-api-key agentic-hybrid-search-db-password agentic-hybrid-search-opensearch-user agentic-hybrid-search-opensearch-password; do
     if gcloud secrets describe "$secret_name" --project="$PROJECT_ID" &>/dev/null; then
         gcloud secrets delete "$secret_name" --project="$PROJECT_ID" --quiet
         log "Deleted secret: $secret_name"

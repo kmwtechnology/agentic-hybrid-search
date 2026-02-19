@@ -1,11 +1,11 @@
 #!/bin/bash
-# Rusty Compass Start Script
+# Agentic Hybrid Search Start Script
 # Starts backend API and frontend development server
 
 set -e  # Exit on error
 
 
-echo "🚀 Starting Rusty Compass..."
+echo "🚀 Starting Agentic Hybrid Search..."
 echo ""
 
 # Get the directory where this script is located

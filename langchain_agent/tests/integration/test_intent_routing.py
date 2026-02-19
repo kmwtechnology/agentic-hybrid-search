@@ -322,7 +322,7 @@ def print_result(result: TestResult, index: int):
 
 async def main():
     print(f"\n{BOLD}{'='*80}")
-    print(f"  RUSTY COMPASS INTENT TEST SUITE")
+    print(f"  AGENTIC HYBRID SEARCH INTENT TEST SUITE")
     print(f"{'='*80}{RESET}\n")
 
     # Validate API key is available for CLI usage

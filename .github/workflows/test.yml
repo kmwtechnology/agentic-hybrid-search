@@ -22,7 +22,7 @@ jobs:
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
-          POSTGRES_DB: rusty_compass_test
+          POSTGRES_DB: agentic_hybrid_search_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -70,7 +70,7 @@ jobs:
           POSTGRES_PASSWORD=test
           POSTGRES_HOST=localhost
           POSTGRES_PORT=5432
-          POSTGRES_DB=rusty_compass_test
+          POSTGRES_DB=agentic_hybrid_search_test
           OPENSEARCH_HOST=localhost
           OPENSEARCH_PORT=9200
           OPENSEARCH_USE_SSL=false
@@ -207,7 +207,7 @@ jobs:
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
-          POSTGRES_DB: rusty_compass_test
+          POSTGRES_DB: agentic_hybrid_search_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -254,7 +254,7 @@ jobs:
           POSTGRES_PASSWORD=test
           POSTGRES_HOST=localhost
           POSTGRES_PORT=5432
-          POSTGRES_DB=rusty_compass_test
+          POSTGRES_DB=agentic_hybrid_search_test
           OPENSEARCH_HOST=localhost
           OPENSEARCH_PORT=9200
           OPENSEARCH_USE_SSL=false

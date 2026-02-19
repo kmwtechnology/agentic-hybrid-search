@@ -1,4 +1,4 @@
-# Rusty Compass
+# Agentic Hybrid Search
 
 A production-grade **LangGraph agent** with real-time streaming, hybrid search,
 LLM-based reranking, and multi-capability intent routing. Deployed on
@@ -223,7 +223,7 @@ and expandable detail cards.
 ## Directory Structure
 
 ```text
-rusty-compass/
+agentic-hybrid-search/
 ├── README.md                     # This file
 ├── docker-compose.yml            # PostgreSQL + PGVector (local dev)
 ├── langchain_agent/
@@ -315,8 +315,8 @@ gcloud logging read resource.type=cloud_run_revision --project=<PROJECT_ID>
 ```
 
 **Note**: OpenSearch is hosted externally (GCP VM at 34.138.97.13:9200). Credentials
-are stored in Secret Manager as `rusty-compass-opensearch-user` and
-`rusty-compass-opensearch-password`.
+are stored in Secret Manager as `agentic-hybrid-search-opensearch-user` and
+`agentic-hybrid-search-opensearch-password`.
 
 ### Local Development
 

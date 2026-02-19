@@ -1,11 +1,11 @@
 #!/bin/bash
-# Rusty Compass Stop Script
+# Agentic Hybrid Search Stop Script
 # Stops backend API and frontend development server
 #
 # Strategy: Kill by port (most reliable) → fallback to PID file → fallback to process name
 # This ensures even stale .pid files don't prevent proper shutdown.
 
-echo "🛑 Stopping Rusty Compass..."
+echo "🛑 Stopping Agentic Hybrid Search..."
 echo ""
 
 # Get the directory where this script is located

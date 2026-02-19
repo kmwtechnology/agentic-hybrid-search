@@ -162,7 +162,7 @@ def test_type_imports():
 
 def main():
     print("=" * 60)
-    print("Rusty Compass Pipeline Optimization - Verification Tests")
+    print("Agentic Hybrid Search Pipeline Optimization - Verification Tests")
     print("=" * 60)
 
     results = []

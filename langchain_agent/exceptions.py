@@ -1,5 +1,5 @@
 """
-Custom exceptions for Rusty Compass agent.
+Custom exceptions for Agentic Hybrid Search agent.
 
 Provides a structured exception hierarchy for better error handling,
 debugging, and user feedback.
@@ -8,9 +8,9 @@ debugging, and user feedback.
 from typing import Optional
 
 
-class RustyCompassError(Exception):
+class AgenticHybridSearchError(Exception):
     """
-    Base exception for all Rusty Compass errors.
+    Base exception for all Agentic Hybrid Search errors.
 
     All custom exceptions inherit from this class, making it easy to
     catch any agent-related error with a single except clause.
@@ -38,7 +38,7 @@ class RustyCompassError(Exception):
         return self.message
 
 
-class ConfigurationError(RustyCompassError):
+class ConfigurationError(AgenticHybridSearchError):
     """
     Raised when configuration is invalid or missing.
 
@@ -54,7 +54,7 @@ class ConfigurationError(RustyCompassError):
         self.config_key = config_key
 
 
-class DatabaseError(RustyCompassError):
+class DatabaseError(AgenticHybridSearchError):
     """
     Raised when database operations fail.
 
@@ -83,7 +83,7 @@ class DatabaseError(RustyCompassError):
         self.table = table
 
 
-class OpenSearchError(RustyCompassError):
+class OpenSearchError(AgenticHybridSearchError):
     """
     Raised when OpenSearch operations fail.
 
@@ -112,7 +112,7 @@ class OpenSearchError(RustyCompassError):
         self.index = index
 
 
-class LLMError(RustyCompassError):
+class LLMError(AgenticHybridSearchError):
     """
     Raised when LLM operations fail.
 
@@ -142,7 +142,7 @@ class LLMError(RustyCompassError):
         self.operation = operation
 
 
-class RetrievalError(RustyCompassError):
+class RetrievalError(AgenticHybridSearchError):
     """
     Raised when document retrieval fails.
 
@@ -173,7 +173,7 @@ class RetrievalError(RustyCompassError):
         self.query = query
 
 
-class LinkVerificationError(RustyCompassError):
+class LinkVerificationError(AgenticHybridSearchError):
     """
     Raised when link verification fails.
 
@@ -202,7 +202,7 @@ class LinkVerificationError(RustyCompassError):
         self.status_code = status_code
 
 
-class StreamingError(RustyCompassError):
+class StreamingError(AgenticHybridSearchError):
     """
     Raised when streaming operations fail.
 
@@ -223,7 +223,7 @@ class StreamingError(RustyCompassError):
         self.event_type = event_type
 
 
-class StateError(RustyCompassError):
+class StateError(AgenticHybridSearchError):
     """
     Raised when agent state is invalid.
 
@@ -252,7 +252,7 @@ class StateError(RustyCompassError):
         self.node = node
 
 
-class RerankerLLMError(RustyCompassError):
+class RerankerLLMError(AgenticHybridSearchError):
     """
     Raised when LLM-based reranking fails.
 
@@ -281,7 +281,7 @@ class RerankerLLMError(RustyCompassError):
         self.batch_size = batch_size
 
 
-class RerankerValidationError(RustyCompassError):
+class RerankerValidationError(AgenticHybridSearchError):
     """
     Raised when reranked output validation fails.
 
@@ -310,7 +310,7 @@ class RerankerValidationError(RustyCompassError):
         self.num_docs = num_docs
 
 
-class SearchValidationError(RustyCompassError):
+class SearchValidationError(AgenticHybridSearchError):
     """
     Raised when search query validation fails.
 
@@ -331,7 +331,7 @@ class SearchValidationError(RustyCompassError):
         self.query = query
 
 
-class SearchFailureError(RustyCompassError):
+class SearchFailureError(AgenticHybridSearchError):
     """
     Raised when search operation fails.
 
@@ -352,7 +352,7 @@ class SearchFailureError(RustyCompassError):
         self.index = index
 
 
-class EmbeddingError(RustyCompassError):
+class EmbeddingError(AgenticHybridSearchError):
     """
     Raised when embedding generation fails.
 
@@ -373,7 +373,7 @@ class EmbeddingError(RustyCompassError):
         self.dimension = dimension
 
 
-class SearchTimeoutError(RustyCompassError):
+class SearchTimeoutError(AgenticHybridSearchError):
     """
     Raised when search operation times out.
 
@@ -402,7 +402,7 @@ class SearchTimeoutError(RustyCompassError):
         self.timeout_ms = timeout_ms
 
 
-class AgentError(RustyCompassError):
+class AgentError(AgenticHybridSearchError):
     """
     Raised when agent execution fails.
 
@@ -423,7 +423,7 @@ class AgentError(RustyCompassError):
         self.node = node
 
 
-class AgentTimeoutError(RustyCompassError):
+class AgentTimeoutError(AgenticHybridSearchError):
     """
     Raised when agent execution times out.
 
@@ -452,7 +452,7 @@ class AgentTimeoutError(RustyCompassError):
         self.node = node
 
 
-class RerankerError(RustyCompassError):
+class RerankerError(AgenticHybridSearchError):
     """
     Raised when reranking operation fails.
 

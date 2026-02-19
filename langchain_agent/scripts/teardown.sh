@@ -1,8 +1,8 @@
 #!/bin/bash
-# Rusty Compass Teardown Script
+# Agentic Hybrid Search Teardown Script
 # Completely removes all installed components and data
 
-echo "⚠️  Rusty Compass Teardown"
+echo "⚠️  Agentic Hybrid Search Teardown"
 echo ""
 echo "This will remove:"
 echo "  - Running services (backend, frontend)"

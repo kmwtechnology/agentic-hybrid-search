@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rusty Compass — GCP Database & Document Initialization
+# Agentic Hybrid Search — GCP Database & Document Initialization
 # One-time script to initialize Cloud SQL (checkpoints) and ingest docs to OpenSearch.
 #
 # This script:
@@ -28,7 +28,7 @@ set -euo pipefail
 # ============================================================================
 
 REGION="us-central1"
-CLOUD_SQL_INSTANCE="rusty-compass-db"
+CLOUD_SQL_INSTANCE="agentic-hybrid-search-db"
 DB_NAME="langchain_agent"
 DB_USER="postgres"
 PROXY_PORT="15432"  # Use non-standard port to avoid conflicts with local postgres
@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
             cat << 'EOF'
 Usage: ./scripts/gcp-init.sh [OPTIONS]
 
-Initialize GCP resources for Rusty Compass.
+Initialize GCP resources for Agentic Hybrid Search.
 This is a one-time operation after the first deployment.
 
 Cloud SQL (PostgreSQL) is used for LangGraph checkpoints only.
@@ -187,7 +187,7 @@ fi
 log "Retrieving database password from Secret Manager..."
 
 DB_PASSWORD=$(gcloud secrets versions access latest \
-    --secret=rusty-compass-db-password \
+    --secret=agentic-hybrid-search-db-password \
     --project="$PROJECT_ID" 2>/dev/null) || \
     err "Could not retrieve DB password from Secret Manager. Was deploy.sh run first?"
 

@@ -1,4 +1,4 @@
-# Rusty Compass Test Suite
+# Agentic Hybrid Search Test Suite
 
 Comprehensive testing framework organized by test scope and purpose.
 
@@ -171,7 +171,7 @@ See `.github/workflows/test.yml` for configuration.
 
 ```bash
 # Solution: Always set PYTHONPATH
-PYTHONPATH=/Users/kevin/github/personal/rusty-compass/langchain_agent .venv/bin/pytest tests/
+PYTHONPATH=/Users/kevin/github/personal/agentic-hybrid-search/langchain_agent .venv/bin/pytest tests/
 ```
 
 ### ImportError: cannot import name 'XyzError'

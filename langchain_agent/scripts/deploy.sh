@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rusty Compass — Google Cloud Run Deployment Script
+# Agentic Hybrid Search — Google Cloud Run Deployment Script
 # Deploys the application to Cloud Run with Cloud SQL (PostgreSQL for checkpoints)
 # and hosted OpenSearch (document search).
 #
@@ -21,11 +21,11 @@ set -euo pipefail
 # ============================================================================
 
 REGION="us-central1"
-SERVICE_NAME="rusty-compass"
-CLOUD_SQL_INSTANCE="rusty-compass-db"
+SERVICE_NAME="agentic-hybrid-search"
+CLOUD_SQL_INSTANCE="agentic-hybrid-search-db"
 DB_NAME="langchain_agent"
 DB_USER="postgres"
-ARTIFACT_REPO="rusty-compass"
+ARTIFACT_REPO="agentic-hybrid-search"
 MEMORY="512Mi"
 CPU="1"
 MIN_INSTANCES="0"
@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
             cat << 'EOF'
 Usage: ./scripts/deploy.sh [OPTIONS]
 
-Deploy Rusty Compass to Google Cloud Run.
+Deploy Agentic Hybrid Search to Google Cloud Run.
 
 Cloud SQL (PostgreSQL) is used for LangGraph checkpoints only.
 Document search uses hosted OpenSearch (configured via env vars).
@@ -179,7 +179,7 @@ if ! gcloud artifacts repositories describe "$ARTIFACT_REPO" \
         --repository-format=docker \
         --location="$REGION" \
         --project="$PROJECT_ID" \
-        --description="Rusty Compass container images"
+        --description="Agentic Hybrid Search container images"
     log "Artifact Registry repository created."
 else
     log "Artifact Registry repository already exists."
@@ -199,7 +199,7 @@ if $DRY_RUN; then
         --database-flags=max_connections=100
     run gcloud sql users set-password "$DB_USER" \
         --instance="$CLOUD_SQL_INSTANCE" --project="$PROJECT_ID" --password=GENERATED
-    run gcloud secrets create rusty-compass-db-password --data-file=- --project="$PROJECT_ID"
+    run gcloud secrets create agentic-hybrid-search-db-password --data-file=- --project="$PROJECT_ID"
     run gcloud sql databases create "$DB_NAME" \
         --instance="$CLOUD_SQL_INSTANCE" --project="$PROJECT_ID"
 elif ! gcloud sql instances describe "$CLOUD_SQL_INSTANCE" \
@@ -230,13 +230,13 @@ elif ! gcloud sql instances describe "$CLOUD_SQL_INSTANCE" \
     log "Database password set. Storing in Secret Manager..."
 
     # Store DB password in Secret Manager
-    if ! gcloud secrets describe rusty-compass-db-password \
+    if ! gcloud secrets describe agentic-hybrid-search-db-password \
         --project="$PROJECT_ID" &>/dev/null; then
-        echo -n "$DB_PASSWORD" | gcloud secrets create rusty-compass-db-password \
+        echo -n "$DB_PASSWORD" | gcloud secrets create agentic-hybrid-search-db-password \
             --data-file=- \
             --project="$PROJECT_ID"
     else
-        echo -n "$DB_PASSWORD" | gcloud secrets versions add rusty-compass-db-password \
+        echo -n "$DB_PASSWORD" | gcloud secrets versions add agentic-hybrid-search-db-password \
             --data-file=- \
             --project="$PROJECT_ID"
     fi
@@ -244,7 +244,7 @@ else
     log "Cloud SQL instance already exists."
     # Retrieve existing password from Secret Manager
     DB_PASSWORD=$(gcloud secrets versions access latest \
-        --secret=rusty-compass-db-password \
+        --secret=agentic-hybrid-search-db-password \
         --project="$PROJECT_ID" 2>/dev/null) || \
         warn "Could not retrieve DB password from Secret Manager. You may need to set it manually."
 fi
@@ -302,15 +302,15 @@ store_secret() {
     fi
 }
 
-store_secret "rusty-compass-google-api-key" "GOOGLE_API_KEY (from https://aistudio.google.com/apikey)"
-store_secret "rusty-compass-api-key" "API_KEY (app authentication key, or press Enter to auto-generate)"
+store_secret "agentic-hybrid-search-google-api-key" "GOOGLE_API_KEY (from https://aistudio.google.com/apikey)"
+store_secret "agentic-hybrid-search-api-key" "API_KEY (app authentication key, or press Enter to auto-generate)"
 
 # Auto-generate API_KEY if not provided
 if $DRY_RUN; then
     echo "[DRY RUN] Auto-generate API_KEY and store in Secret Manager"
-elif ! gcloud secrets describe "rusty-compass-api-key" --project="$PROJECT_ID" &>/dev/null; then
+elif ! gcloud secrets describe "agentic-hybrid-search-api-key" --project="$PROJECT_ID" &>/dev/null; then
     API_KEY_VALUE=$(openssl rand -hex 32)
-    echo -n "$API_KEY_VALUE" | gcloud secrets create "rusty-compass-api-key" \
+    echo -n "$API_KEY_VALUE" | gcloud secrets create "agentic-hybrid-search-api-key" \
         --data-file=- \
         --project="$PROJECT_ID"
     log "Auto-generated API_KEY and stored in Secret Manager."
@@ -318,7 +318,7 @@ fi
 
 # Grant Secret Manager access to the Compute Engine default service account
 log "Granting secret access to Cloud Run service account..."
-for secret_name in rusty-compass-google-api-key rusty-compass-api-key rusty-compass-db-password; do
+for secret_name in agentic-hybrid-search-google-api-key agentic-hybrid-search-api-key agentic-hybrid-search-db-password; do
     run gcloud secrets add-iam-policy-binding "$secret_name" \
         --member="serviceAccount:${COMPUTE_SA}" \
         --role="roles/secretmanager.secretAccessor" \
@@ -393,13 +393,13 @@ OPENSEARCH_HOST=34.138.97.13,\
 OPENSEARCH_PORT=9200,\
 OPENSEARCH_USE_SSL=true,\
 OPENSEARCH_VERIFY_CERTS=false,\
-OPENSEARCH_INDEX_NAME=rusty_compass_docs" \
+OPENSEARCH_INDEX_NAME=agentic_hybrid_search_docs" \
     --set-secrets="\
-GOOGLE_API_KEY=rusty-compass-google-api-key:latest,\
-API_KEY=rusty-compass-api-key:latest,\
-POSTGRES_PASSWORD=rusty-compass-db-password:latest,\
-OPENSEARCH_USER=rusty-compass-opensearch-user:latest,\
-OPENSEARCH_PASSWORD=rusty-compass-opensearch-password:latest" \
+GOOGLE_API_KEY=agentic-hybrid-search-google-api-key:latest,\
+API_KEY=agentic-hybrid-search-api-key:latest,\
+POSTGRES_PASSWORD=agentic-hybrid-search-db-password:latest,\
+OPENSEARCH_USER=agentic-hybrid-search-opensearch-user:latest,\
+OPENSEARCH_PASSWORD=agentic-hybrid-search-opensearch-password:latest" \
     --quiet
 
 # ============================================================================

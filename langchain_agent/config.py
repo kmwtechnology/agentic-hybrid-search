@@ -194,7 +194,7 @@ OPENSEARCH_USER = os.getenv("OPENSEARCH_USER", "admin")
 OPENSEARCH_PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "")
 OPENSEARCH_USE_SSL = os.getenv("OPENSEARCH_USE_SSL", "true").lower() == "true"
 OPENSEARCH_VERIFY_CERTS = os.getenv("OPENSEARCH_VERIFY_CERTS", "false").lower() == "true"
-OPENSEARCH_INDEX_NAME = os.getenv("OPENSEARCH_INDEX_NAME", "rusty_compass_docs")
+OPENSEARCH_INDEX_NAME = os.getenv("OPENSEARCH_INDEX_NAME", "agentic_hybrid_search_docs")
 OPENSEARCH_SEARCH_PIPELINE = os.getenv("OPENSEARCH_SEARCH_PIPELINE", "hybrid_search_pipeline")
 OPENSEARCH_TIMEOUT = int(os.getenv("OPENSEARCH_TIMEOUT", 30))
 
@@ -436,7 +436,7 @@ LOG_INCLUDE_TIMESTAMP = True
 # LangSmith tracing (optional - requires API key from https://smith.langchain.com)
 # Enable by setting LANGSMITH_API_KEY environment variable
 LANGSMITH_API_KEY = os.getenv("LANGSMITH_API_KEY")
-LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "rusty-compass")
+LANGSMITH_PROJECT = os.getenv("LANGSMITH_PROJECT", "agentic-hybrid-search")
 LANGSMITH_TRACING_ENABLED = LANGSMITH_API_KEY is not None
 
 # ============================================================================

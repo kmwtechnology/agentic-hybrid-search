@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rusty Compass Logs Script
+# Agentic Hybrid Search Logs Script
 # View logs from backend and frontend services
 
 
