@@ -401,20 +401,20 @@ class EcommerceSearchAgent:
 Query to analyze: "{last_user_msg}"
 
 === ALPHA GUIDE (0.0=pure lexical/BM25, 1.0=pure semantic/vector) ===
-- 0.00-0.15: PURE LEXICAL - Version numbers, identifiers, class names, exact terms
-- 0.15-0.40: LEXICAL-HEAVY - Specific features, APIs, technical terms
-- 0.40-0.60: BALANCED - Feature tutorials, patterns, how-to guides
-- 0.60-0.75: SEMANTIC-HEAVY - Architectural concepts, optimization strategies
-- 0.75-1.0: PURE SEMANTIC - Conceptual "What is" questions, general explanations
+- 0.00-0.15: PURE LEXICAL - Exact product model numbers, ASINs, UPCs, brand+model combos
+- 0.15-0.40: LEXICAL-HEAVY - Brand + category, specific features, color/size combos
+- 0.40-0.60: BALANCED - Feature comparisons, activity-based product queries, how-to usage
+- 0.60-0.75: SEMANTIC-HEAVY - Conceptual needs, occasion-based queries, comfort/quality focus
+- 0.75-1.0: PURE SEMANTIC - Gift ideas, mood/style queries, open-ended exploration
 
 === EXAMPLES ===
-"LangChain 0.3.0 release notes" → alpha=0.05 (version number needs exact match)
-"LANGCHAIN_API_KEY env var" → alpha=0.08 (exact identifier)
-"BaseChatModel class" → alpha=0.10 (class name - lexical)
-"checkpointer setup" → alpha=0.25 (specific feature)
-"state management patterns" → alpha=0.45 (patterns - balanced)
-"How to build multi-agent systems" → alpha=0.55 (how-to - semantic helps)
-"What is RAG?" → alpha=0.65 (conceptual question)
+"Sony WH-1000XM5" → alpha=0.05 (exact model number needs exact match)
+"B07XJ8C8F5" → alpha=0.05 (ASIN identifier, pure lexical)
+"Samsung noise cancelling headphones" → alpha=0.25 (brand + feature, lexical-heavy)
+"blue running shoes size 10" → alpha=0.30 (specific attributes, lexical-heavy)
+"best headphones for long flights" → alpha=0.55 (activity-based, balanced)
+"comfortable office chair for back pain" → alpha=0.65 (conceptual need, semantic-heavy)
+"good gift ideas for music lovers" → alpha=0.85 (open-ended exploration, semantic)
 
 === OUTPUT ===
 Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{last_user_msg}", not copy example text.
@@ -650,7 +650,12 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
                 url = doc.metadata.get("url")
                 if not url:
-                    continue
+                    # Generate Amazon product URL from ASIN
+                    product_id = doc.metadata.get("product_id", "")
+                    if product_id:
+                        url = f"https://www.amazon.com/dp/{product_id}"
+                    else:
+                        continue
                 # If URL already tracked, just append the doc index
                 if url in citations_dict:
                     citations_dict[url][1].append(i)
@@ -788,9 +793,22 @@ INSTRUCTIONS:
             return query
 
         # Check if query already contains a specific topic - skip LLM expansion
-        # "What about LangSmith?" already has a topic, don't expand
+        # "What about Sony WH-1000XM5?" already has a topic, don't expand
+        # But "Which is Better?" should NOT count as having a topic
         query_lower = query.lower()
-        has_specific_topic = any(word[0].isupper() for word in query.split() if len(word) > 2)
+        query_words = query.split()
+        # Words users capitalize that are NOT specific product/brand topics
+        _NON_TOPIC_CAPS = {
+            "better", "cheaper", "worse", "more", "less", "those", "these",
+            "them", "one", "two", "three", "which", "what", "how", "compare",
+            "vs", "versus", "first", "second", "both", "either", "that",
+            "this", "any", "some", "all", "best", "most", "does", "can",
+        }
+        has_specific_topic = any(
+            word[0].isupper() and word.lower() not in _NON_TOPIC_CAPS
+            for word in query_words[1:]  # skip first word (sentence-start capitalization)
+            if len(word) > 2
+        )
 
         # Detect vague follow-up queries that need context expansion
         # These are queries that reference the previous topic but lack specific context
@@ -813,18 +831,47 @@ INSTRUCTIONS:
         if starts_with_action and not has_specific_topic:
             is_vague = True
 
+        # Pronoun references to prior products
+        pronoun_patterns = ["it ", "it?", " it.", "them ", "them?", "those ", "those?",
+                            "these ", "these?", "does it", "is it", "can it", "will it"]
+        has_pronoun_ref = any(p in f" {query_lower} " or query_lower.endswith(p.rstrip()) for p in pronoun_patterns)
+
+        # Comparative/contrast queries
+        comparative_patterns = ["which is", "which one", "which are", "compare",
+                                " vs ", "versus", "difference between",
+                                "cheaper", "better", "worse", "more expensive"]
+        has_comparative = any(p in query_lower for p in comparative_patterns)
+
+        # Short attribute questions (<=6 words, starts with question word)
+        attribute_q = ["how much", "what color", "what brand", "what size",
+                       "how big", "how heavy", "is it", "does it come", "are they"]
+        is_attr_question = len(query_words) <= 6 and any(query_lower.startswith(p) for p in attribute_q)
+
+        is_vague = is_vague or (has_pronoun_ref and not has_specific_topic) or has_comparative or is_attr_question
+
         if not is_vague:
             # Query has specific content, don't risk LLM hallucination
             return query
 
         # Use LLM only for truly vague queries
-        prompt = f"""The user said "{query}" as a follow-up. Based on the conversation, what topic are they asking about?
+        prompt = f"""Rewrite a follow-up message to be self-contained by resolving references from conversation context.
+
+USER MESSAGE: "{query}"
 
 CONVERSATION CONTEXT:
 {context}
 
-Expand the query to include the topic. Return ONLY the expanded query text.
-Example: If context discusses RAG and user says "tell me more", return "tell me more about RAG"
+RULES:
+- Replace pronouns ("it", "them", "those") with the actual product name/type from context.
+- For comparisons ("Which is cheaper?"), name the products being compared.
+- For attribute questions without a subject ("How much?"), add the product being discussed.
+- If the message is already self-contained, return it unchanged.
+- Return ONLY the rewritten query text, nothing else.
+
+EXAMPLES:
+- Context discusses Sony headphones → "Does it come in white?" → "Does the Sony WH-1000XM5 come in white?"
+- Context shows headphone results → "Which is cheaper?" → "Which noise-cancelling headphone is cheaper?"
+- Context about running shoes → "How much?" → "How much do the running shoes cost?"
 
 OUTPUT:"""
 
