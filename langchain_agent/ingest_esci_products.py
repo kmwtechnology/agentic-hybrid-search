@@ -77,12 +77,14 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
     """
     Load or create a cached sample of products.
 
+    Returns DataFrame with products (embeddings may be None if not yet generated).
+
     Args:
         limit: Number of products to sample (default 10000)
         force_resample: If True, ignore cached sample and resample
 
     Returns:
-        DataFrame with sampled products
+        DataFrame with sampled products (may include cached 'embedding' column)
 
     Raises:
         FileNotFoundError: If main products parquet file not found
@@ -95,7 +97,10 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
     # Return cached sample if it exists and not forcing resample
     if sample_file.exists() and not force_resample:
         logger.info(f"Loading cached sample from {sample_file.name}")
-        return pd.read_parquet(sample_file)
+        df_sample = pd.read_parquet(sample_file)
+        has_embeddings = "embedding" in df_sample.columns
+        logger.info(f"  Products: {len(df_sample)}, Embeddings cached: {has_embeddings}")
+        return df_sample
 
     # Load full dataset and filter to US English products
     logger.info(f"Loading products from {ESCI_PRODUCTS_FILE.name}...")
@@ -110,10 +115,13 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
     # Sample deterministically
     if limit < len(df_us):
         df_sample = df_us.sample(n=limit, random_state=42)
-        logger.info(f"Sampled {limit} US products (deterministic)")
+        logger.info(f"Sampled {limit} US products (deterministic, seed=42)")
     else:
         df_sample = df_us
         logger.info(f"Using all {len(df_us)} US products (limit {limit} >= dataset size)")
+
+    # Initialize embedding column as None (will be populated during ingestion)
+    df_sample["embedding"] = None
 
     # Cache the sample parquet for idempotent future runs
     ESCI_DATASET_DIR.mkdir(parents=True, exist_ok=True)
@@ -156,13 +164,15 @@ def ingest_product(
     brand: str,
     color: str,
     locale: str,
+    cached_embedding: Optional[List[float]],
     embeddings: GoogleGenerativeAIEmbeddings,
     client=None,
-) -> Tuple[int, int]:
+) -> Tuple[int, int, Optional[List[float]]]:
     """
     Ingest a single product into OpenSearch.
 
     Each chunk becomes a standalone OpenSearch document.
+    Uses cached embedding if available, otherwise generates new one.
 
     Args:
         product_id: Unique product identifier
@@ -172,11 +182,12 @@ def ingest_product(
         brand: Product brand
         color: Product color
         locale: Product locale (e.g., "us")
+        cached_embedding: Pre-generated embedding (from parquet) or None
         embeddings: Embeddings model instance
         client: OpenSearch client instance
 
     Returns:
-        Tuple of (docs_inserted, chunks_inserted)
+        Tuple of (docs_inserted, chunks_inserted, generated_embedding or None)
     """
     # Concatenate product text
     chunk_text_content = "\n".join(
@@ -185,11 +196,12 @@ def ingest_product(
 
     # Skip if combined text is too short
     if not chunk_text_content or len(chunk_text_content) < 50:
-        return 0, 0
+        return 0, 0, None
 
     try:
         chunks = chunk_text(chunk_text_content)
         actions = []
+        generated_embedding = None
 
         base_fields = {
             "document_id": product_id,
@@ -204,7 +216,14 @@ def ingest_product(
         }
 
         for chunk_idx, chunk in enumerate(chunks):
-            chunk_embedding = embeddings.embed_query(chunk)
+            # Use cached embedding if available, otherwise generate
+            if cached_embedding is not None and isinstance(cached_embedding, list):
+                chunk_embedding = cached_embedding
+            else:
+                chunk_embedding = embeddings.embed_query(chunk)
+                if chunk_idx == 0:  # Save first chunk's embedding for parquet
+                    generated_embedding = chunk_embedding
+
             doc = {
                 **base_fields,
                 "chunk_index": chunk_idx,
@@ -221,13 +240,34 @@ def ingest_product(
             success, errors = os_helpers.bulk(client, actions, refresh=False)
             if errors:
                 logger.warning(f"Bulk ingestion errors for product '{product_id}': {errors}")
-            return 1, len(actions)
+            return 1, len(actions), generated_embedding
 
-        return 0, 0
+        return 0, 0, generated_embedding
 
     except Exception as e:
         logger.warning(f"Error ingesting product '{product_id}': {e}")
-        return 0, 0
+        return 0, 0, None
+
+
+def get_indexed_product_ids(client) -> set:
+    """Get set of product IDs already indexed in OpenSearch."""
+    try:
+        # Query for all unique product_ids in index
+        query = {
+            "size": 0,
+            "aggs": {
+                "product_ids": {
+                    "terms": {"field": "product_id", "size": 100000}
+                }
+            }
+        }
+        response = client.search(index=OPENSEARCH_INDEX_NAME, body=query)
+        product_ids = {bucket["key"] for bucket in response["aggregations"]["product_ids"]["buckets"]}
+        logger.info(f"Found {len(product_ids)} products already indexed")
+        return product_ids
+    except Exception as e:
+        logger.warning(f"Could not retrieve indexed product IDs: {e}")
+        return set()
 
 
 def ingest_esci_products(
@@ -236,7 +276,10 @@ def ingest_esci_products(
     all_products: bool = False,
 ) -> Tuple[int, int]:
     """
-    Ingest ESCI products into OpenSearch.
+    Ingest ESCI products into OpenSearch with embedding caching.
+
+    Embeddings are cached in the sample parquet file to avoid regeneration.
+    Products already indexed in OpenSearch are skipped.
 
     Args:
         limit: Number of products to sample (ignored if all_products=True)
@@ -260,7 +303,20 @@ def ingest_esci_products(
         print("   ⚠️  No products loaded")
         return 0, 0
 
-    print(f"   Processing {len(df)} products...")
+    # Initialize OpenSearch client
+    client = create_opensearch_client()
+    ensure_index_exists(client)
+
+    # Check which products are already indexed
+    indexed_ids = get_indexed_product_ids(client)
+    products_to_ingest = [idx for idx, row in df.iterrows()
+                          if str(row.get("product_id", "")) not in indexed_ids]
+
+    if not products_to_ingest:
+        print(f"   ✓ All {len(df)} products already indexed in OpenSearch")
+        return 0, 0
+
+    print(f"   Processing {len(products_to_ingest)}/{len(df)} new products...")
 
     # Initialize embeddings
     embeddings = GoogleGenerativeAIEmbeddings(
@@ -268,16 +324,14 @@ def ingest_esci_products(
         output_dimensionality=VECTOR_DIMENSION,
     )
 
-    # Initialize OpenSearch client
-    client = create_opensearch_client()
-    ensure_index_exists(client)
-
     total_docs = 0
     total_chunks = 0
+    embeddings_updated = False
 
     # Ingest each product
-    for idx, row in df.iterrows():
+    for count, idx in enumerate(products_to_ingest, 1):
         try:
+            row = df.loc[idx]
             product_id = str(row.get("product_id", ""))
             title = str(row.get("product_title", ""))
             description = str(row.get("product_description", ""))
@@ -286,7 +340,18 @@ def ingest_esci_products(
             color = str(row.get("product_color", ""))
             locale = str(row.get("product_locale", "us"))
 
-            docs, chunks = ingest_product(
+            # Use cached embedding if available
+            cached_embedding = row.get("embedding")
+            if cached_embedding is not None and isinstance(cached_embedding, (list, str)):
+                # If it's a string (JSON), parse it
+                if isinstance(cached_embedding, str):
+                    import json
+                    try:
+                        cached_embedding = json.loads(cached_embedding)
+                    except:
+                        cached_embedding = None
+
+            docs, chunks, generated_embedding = ingest_product(
                 product_id=product_id,
                 title=title,
                 description=description,
@@ -294,18 +359,35 @@ def ingest_esci_products(
                 brand=brand,
                 color=color,
                 locale=locale,
+                cached_embedding=cached_embedding,
                 embeddings=embeddings,
                 client=client,
             )
+
+            # Update parquet if new embedding was generated
+            if generated_embedding is not None and cached_embedding is None:
+                df.at[idx, "embedding"] = generated_embedding
+                embeddings_updated = True
+
             total_docs += docs
             total_chunks += chunks
 
-            if (idx + 1) % 500 == 0:
-                print(f"      Processed {idx + 1}/{len(df)} products...")
+            if count % 500 == 0:
+                print(f"      Processed {count}/{len(products_to_ingest)} new products...")
 
         except Exception as e:
             logger.warning(f"Error processing product at row {idx}: {e}")
             continue
+
+    # Save updated embeddings back to parquet
+    if embeddings_updated:
+        sample_file = ESCI_DATASET_DIR / f"esci_products_sample_{limit}.parquet"
+        try:
+            df.to_parquet(sample_file)
+            logger.info(f"Saved embeddings to {sample_file.name}")
+            print(f"   ✓ Cached embeddings for future runs")
+        except Exception as e:
+            logger.warning(f"Could not save embeddings to parquet: {e}")
 
     # Refresh index to make all documents searchable
     client.indices.refresh(index=OPENSEARCH_INDEX_NAME)
