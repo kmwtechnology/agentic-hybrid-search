@@ -1574,48 +1574,23 @@ Respond with JSON only. No other text."""
         Intent routes mapping:
         - "clarify" → agent node (direct clarification response)
         - "summary" → summary node (skip retrieval)
-        - "config_builder" → config_resolver node (config pipeline)
-        - "doc_writer" → content_type_classifier or doc_planner node (doc pipeline)
-        - "other" → query_evaluator node (normal Q&A pipeline)
-
-        Special case: If awaiting_clarification=True (from previous turn),
-        route to clarification resolver instead of normal flow.
+        - "other" → query_evaluator node (normal Q&A pipeline for all product questions)
         """
-        from config import ENABLE_CONFIG_BUILDER, ENABLE_DOC_WRITER, ENABLE_CONTENT_TYPE_CLASSIFICATION
-
-        # Check if we're awaiting user's clarification response
-        if state.get("awaiting_clarification"):
-            clarification_type = state.get("clarification_type", "format")
-            if clarification_type == "format" and ENABLE_CONTENT_TYPE_CLASSIFICATION:
-                logger.info("User responding to format clarification")
-                return "format_resolver"
-            elif clarification_type == "topic" and ENABLE_CONTENT_TYPE_CLASSIFICATION:
-                logger.info("User responding to topic clarification")
-                return "topic_resolver"
-
         intent = state.get("intent", "question")
 
-        # Handle disabled features - remap to question for RAG processing
-        if intent == "config_request" and not ENABLE_CONFIG_BUILDER:
-            logger.info(f"Config builder disabled - remapping config_request to question")
+        # All intents (config_request, documentation_request, etc.) are now treated as questions
+        # since Lucille-specific features have been removed
+        if intent in ("config_request", "documentation_request"):
+            logger.info(f"Lucille-specific intent '{intent}' remapped to question for product search")
             state["intent"] = "question"
             intent = "question"
 
-        if intent == "documentation_request" and not ENABLE_DOC_WRITER:
-            logger.info(f"Doc writer disabled - remapping documentation_request to question")
-            state["intent"] = "question"
-            intent = "question"
-
-        # Route based on intent - MUST return the KEY from intent_routes, not the node name
+        # Route based on intent
         if intent == "clarify":
-            return "clarify"  # Key in intent_routes; maps to "agent" node
+            return "clarify"  # Maps to "agent" node
         if intent == "summary":
-            return "summary"  # Key in intent_routes; maps to "summary" node
-        if intent == "config_request" and ENABLE_CONFIG_BUILDER:
-            return "config_builder"  # Key in intent_routes; maps to "config_resolver" node
-        if intent == "documentation_request" and ENABLE_DOC_WRITER:
-            return "doc_writer"  # Key in intent_routes; maps to content classifier/planner
-        return "other"  # Key in intent_routes; maps to "query_evaluator" node
+            return "summary"  # Maps to "summary" node
+        return "other"  # Default: maps to "query_evaluator" node for product search
 
     def _route_after_query_evaluator(self, state: CustomAgentState) -> str:
         """Route after query evaluator to retriever.
@@ -1884,59 +1859,14 @@ Return ONLY the rewritten query, nothing else."""
 
         workflow.add_node("agent", self.agent_node)
 
-        # Add Config Builder nodes (Phase 2)
-        if ENABLE_CONFIG_BUILDER:
-            from config_builder import config_resolver_node, config_generator_node, config_response_node
-            workflow.add_node("config_resolver", lambda state: config_resolver_node(state, self))
-            workflow.add_node("config_generator", lambda state: config_generator_node(state, self))
-            workflow.add_node("config_response", lambda state: config_response_node(state, self))
-
-        # Add Documentation Writer nodes (Phase 3)
-        if ENABLE_DOC_WRITER:
-            from config import ENABLE_CONTENT_TYPE_CLASSIFICATION
-            from doc_writer import doc_planner_node, doc_gatherer_node, doc_synthesizer_node
-
-            # Add content type classifier if enabled
-            if ENABLE_CONTENT_TYPE_CLASSIFICATION:
-                from content_generators import (
-                    content_type_classifier_node,
-                    format_clarification_resolver_node,
-                    topic_clarification_resolver_node,
-                    social_content_generator_node,
-                    blog_content_generator_node,
-                    article_content_generator_node,
-                    tutorial_generator_node,
-                )
-
-                workflow.add_node("content_type_classifier", lambda state: content_type_classifier_node(state, self))
-                workflow.add_node("format_clarification_resolver", lambda state: format_clarification_resolver_node(state, self))
-                workflow.add_node("topic_clarification_resolver", lambda state: topic_clarification_resolver_node(state, self))
-                workflow.add_node("social_content_generator", lambda state: social_content_generator_node(state, self))
-                workflow.add_node("blog_content_generator", lambda state: blog_content_generator_node(state, self))
-                workflow.add_node("article_content_generator", lambda state: article_content_generator_node(state, self))
-                workflow.add_node("tutorial_generator", lambda state: tutorial_generator_node(state, self))
-
-            # Add comprehensive doc writer nodes
-            workflow.add_node("doc_planner", lambda state: doc_planner_node(state, self))
-            workflow.add_node("doc_gatherer", lambda state: doc_gatherer_node(state, self))
-            workflow.add_node("doc_synthesizer", lambda state: doc_synthesizer_node(state, self))
+        # Config Builder and Doc Writer nodes removed (Lucille-specific features deprecated)
 
         # Set entry point
         workflow.set_entry_point("intent_classifier")
 
         # Build routing map for intent classifier
         intent_routes = {"summary": "summary", "clarify": "agent", "other": "query_evaluator"}
-        if ENABLE_CONFIG_BUILDER:
-            intent_routes["config_builder"] = "config_resolver"
-        if ENABLE_DOC_WRITER:
-            from config import ENABLE_CONTENT_TYPE_CLASSIFICATION
-            # Route to classifier first if enabled, otherwise directly to doc_planner
-            if ENABLE_CONTENT_TYPE_CLASSIFICATION:
-                intent_routes["doc_writer"] = "content_type_classifier"
-                intent_routes["format_resolver"] = "format_clarification_resolver"
-                intent_routes["topic_resolver"] = "topic_clarification_resolver"
-            else:
-                intent_routes["doc_writer"] = "doc_planner"
+        # config_builder and doc_writer routes removed (Lucille-specific features deprecated)
 
         # Add core edges with conditional routing
         workflow.add_conditional_edges(
