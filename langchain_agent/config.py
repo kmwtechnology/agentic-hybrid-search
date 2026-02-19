@@ -66,14 +66,9 @@ __all__ = [
     "QUERY_EVAL_MODEL",
     "QUERY_EVAL_TEMPERATURE",
     "QUERY_EVAL_MAX_TOKENS",
-    # Alpha refinement configuration (Phase 3)
-    "ENABLE_ALPHA_REFINEMENT",
-    "ALPHA_REFINEMENT_THRESHOLD",
-    # Iterative retrieval configuration (Phase 4)
-    "ENABLE_ITERATIVE_RETRIEVAL",
-    "CONFIDENCE_THRESHOLD",
-    "MAX_RETRIEVAL_ATTEMPTS",
-    "QUERY_REWRITER_MODEL",
+    # Quality gate configuration
+    "ENABLE_QUALITY_GATE",
+    "QUALITY_GATE_THRESHOLD",
     # Link verification configuration
     "ENABLE_LINK_VERIFICATION",
     "LINK_VERIFICATION_TIMEOUT_MS",
@@ -271,39 +266,16 @@ QUERY_EVAL_TEMPERATURE = float(os.getenv("QUERY_EVAL_TEMPERATURE", "0"))
 QUERY_EVAL_MAX_TOKENS = int(os.getenv("QUERY_EVAL_MAX_TOKENS", "1024"))
 
 # ============================================================================
-# ALPHA REFINEMENT CONFIGURATION (Phase 3)
+# QUALITY GATE CONFIGURATION
 # ============================================================================
 
-# Enable automatic alpha refinement when initial results have low relevance
-# Single retry with adjusted alpha if top reranker score < threshold
-ENABLE_ALPHA_REFINEMENT = os.getenv("ENABLE_ALPHA_REFINEMENT", "true").lower() == "true"
+# Enable quality gate that retries retrieval with adjusted alpha when results have low relevance
+# Single retry with alpha shifted ±0.3 if top reranker score < threshold
+ENABLE_QUALITY_GATE = os.getenv("ENABLE_QUALITY_GATE", "true").lower() == "true"
 
 # Retry if top reranker score is below this threshold (0.0-1.0)
 # Default: 0.5 (moderate threshold)
-ALPHA_REFINEMENT_THRESHOLD = float(os.getenv("ALPHA_REFINEMENT_THRESHOLD", "0.5"))
-
-# ============================================================================
-# ITERATIVE RETRIEVAL CONFIGURATION (Phase 4)
-# ============================================================================
-
-# Enable confidence-based retrieval loops (OPT-IN - disabled by default)
-# When enabled, checks if top reranker score < CONFIDENCE_THRESHOLD
-# If low confidence, rewrites query and retries (max MAX_RETRIEVAL_ATTEMPTS times)
-ENABLE_ITERATIVE_RETRIEVAL = os.getenv("ENABLE_ITERATIVE_RETRIEVAL", "false").lower() == "true"
-
-# Retry if top reranker score is below this threshold (0.0-1.0)
-# Default: 0.6 (moderate confidence threshold)
-# Only used if ENABLE_ITERATIVE_RETRIEVAL is true
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.6"))
-
-# Maximum total retrieval attempts (includes initial attempt)
-# Default: 3 (initial + 2 retries)
-# Only used if ENABLE_ITERATIVE_RETRIEVAL is true
-MAX_RETRIEVAL_ATTEMPTS = int(os.getenv("MAX_RETRIEVAL_ATTEMPTS", "3"))
-
-# Model for query rewriting (lightweight)
-# Default: gemini-2.5-flash-lite (same as query evaluator)
-QUERY_REWRITER_MODEL = os.getenv("QUERY_REWRITER_MODEL", "gemini-2.5-flash-lite")
+QUALITY_GATE_THRESHOLD = float(os.getenv("QUALITY_GATE_THRESHOLD", "0.5"))
 
 # ============================================================================
 # LINK VERIFICATION CONFIGURATION

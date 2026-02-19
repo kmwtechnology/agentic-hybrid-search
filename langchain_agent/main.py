@@ -593,18 +593,18 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 user_query = msg.content
                 break
 
-        # Check if retrieval failed even after alpha refinement retry
-        # If alpha was adjusted and max relevance is still very low, return honest acknowledgment
+        # Check if retrieval failed even after quality gate retry
+        # If quality gate retried and max relevance is still very low, return honest acknowledgment
         MIN_RELEVANCE_THRESHOLD = 0.10  # Same as citation suppression threshold
-        alpha_adjusted = state.get("alpha_adjusted", False)
+        quality_gate_retried = state.get("quality_gate_retried", False)
         max_relevance = max(
             (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
             default=0.0
         )
 
-        if alpha_adjusted and max_relevance < MIN_RELEVANCE_THRESHOLD:
+        if quality_gate_retried and max_relevance < MIN_RELEVANCE_THRESHOLD:
             logger.info(
-                f"Agent: retrieval failed after alpha refinement "
+                f"Agent: retrieval failed after quality gate retry "
                 f"(max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
             )
             no_info_response = (
@@ -1175,35 +1175,28 @@ Respond with JSON only. No other text."""
 
     def retriever_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        Automatic retrieval node - performs hybrid search + reranking.
+        Automatic retrieval node - performs hybrid search (no reranking).
 
         This is a deterministic node that always runs after query_evaluator.
-        No LLM involvement - uses original query (or rewritten query for retries) with dynamic alpha.
-
-        Increments retrieval_attempts counter for Phase 4 iterative retrieval tracking.
+        No LLM involvement - uses original query with dynamic alpha.
+        Reranking is handled by the separate reranker_node.
         """
         start_time = time.time()
         messages = state["messages"]
         alpha = state.get("alpha", 0.25)
         intent = state.get("intent", "question")
 
-        # Increment attempt counter (Phase 4)
-        attempts = state.get("retrieval_attempts", 1)
-        new_attempts = attempts + 1
-
         # Early exit for summary intent - no retrieval needed
         if intent == "summary":
             logger.debug("Retriever: skipping hybrid search because intent is summary")
-            return {"retrieved_documents": [], "retrieval_attempts": new_attempts}
+            return {"retrieved_documents": []}
 
-        # Use rewritten query if available (Phase 4), otherwise use original
-        query = state.get("query_transformed")
-        if not query:
-            # Extract original user query from messages
-            for msg in reversed(messages):
-                if isinstance(msg, HumanMessage):
-                    query = msg.content
-                    break
+        # Extract original user query from messages
+        query = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                query = msg.content
+                break
 
         # Expand vague follow-up queries using conversation context
         if query:
@@ -1211,7 +1204,7 @@ Respond with JSON only. No other text."""
 
         if not query:
             logger.warning("Retriever: no user query found in messages")
-            return {"retrieved_documents": [], "retrieval_attempts": new_attempts}
+            return {"retrieved_documents": []}
 
         logger.info(f"Retriever: query='{query[:50]}...', alpha={alpha:.2f}")
 
@@ -1245,7 +1238,7 @@ Respond with JSON only. No other text."""
             except Exception as e:
                 logger.debug(f"Could not emit vector search progress event: {e}")
 
-        # Get initial results
+        # Get results
         retrieve_start = time.time()
         results = retriever.invoke(query)
         retrieve_elapsed = time.time() - retrieve_start
@@ -1290,226 +1283,178 @@ Respond with JSON only. No other text."""
             except Exception as e:
                 logger.debug(f"Could not emit hybrid search result event: {e}")
 
-        # Apply reranking if enabled
-        if ENABLE_RERANKING and self.reranker and results:
-            # Emit reranker start event
-            if RerankerStartEvent:
-                try:
-                    reranker_event = RerankerStartEvent(
-                        model=RERANKER_MODEL,
-                        candidate_count=len(results),
-                    )
-                    self._emit_event_from_sync(reranker_event)
-                except Exception as e:
-                    logger.debug(f"Could not emit reranker start event: {e}")
-            # Store original ranks
-            original_sources = [doc.metadata.get('source', 'unknown') for doc in results]
-            for i, doc in enumerate(results, 1):
-                doc.metadata['original_rank'] = i
-
-            # Calculate total content size for throughput metrics
-            total_content_chars = sum(len(doc.page_content) for doc in results)
-            batch_size = self.reranker.batch_size
-            num_batches = (len(results) + batch_size - 1) // batch_size
-
-            rerank_start = time.time()
-            logger.info(f"Reranker: processing {len(results)} candidates, batch_size={batch_size}, device={self.reranker.device}")
-
-            # Emit initial progress
-            if RerankerProgressEvent:
-                try:
-                    self._emit_event_from_sync(RerankerProgressEvent(
-                        stage="scoring",
-                        progress=0.0,
-                        message=f"Scoring {len(results)} documents..."
-                    ))
-                except Exception as e:
-                    logger.debug(f"Could not emit reranker progress event: {e}")
-
-            reranked_results = self.reranker.rerank(query, results, RERANKER_TOP_K)
-            rerank_elapsed = time.time() - rerank_start
-
-            # Emit completion progress
-            if RerankerProgressEvent:
-                try:
-                    self._emit_event_from_sync(RerankerProgressEvent(
-                        stage="ranking",
-                        progress=1.0,
-                        message=f"Ranking complete - {len(results)} documents scored"
-                    ))
-                except Exception as e:
-                    logger.debug(f"Could not emit reranker completion event: {e}")
-
-            # Extract documents with scores
-            results_with_scores = [(doc, score) for doc, score in reranked_results]
-            results = [doc for doc, score in results_with_scores]
-
-            # Store reranker scores in metadata
-            for i, (doc, score) in enumerate(results_with_scores, 1):
-                doc.metadata['reranker_score'] = score
-
-            # Calculate throughput metrics
-            docs_per_sec = len(results) / rerank_elapsed if rerank_elapsed > 0 else 0
-            chars_per_sec = total_content_chars / rerank_elapsed if rerank_elapsed > 0 else 0
-            ms_per_doc = (rerank_elapsed * 1000) / len(results) if results else 0
-
-            # Log reranking results with detailed timing
-            avg_score = sum(score for _, score in results_with_scores) / len(results_with_scores) if results_with_scores else 0
-            logger.info(f"Reranker: complete in {rerank_elapsed:.3f}s, top {len(results)} selected, avg_score={avg_score:.4f}")
-            logger.debug(f"Reranker throughput: {docs_per_sec:.1f} docs/s, {chars_per_sec:.0f} chars/s, {ms_per_doc:.1f} ms/doc")
-
-            # Log individual scores at debug level
-            for i, (doc, score) in enumerate(results_with_scores, 1):
-                source = doc.metadata.get('source', 'unknown')
-                logger.debug(f"  {i}. score={score:.4f} [{source}]")
-
-            # Log order changes
-            reranked_sources = [doc.metadata.get('source', 'unknown') for doc in results]
-            if original_sources[:len(reranked_sources)] != reranked_sources:
-                logger.debug("Reranker: order changed (reranking improved relevance)")
-            else:
-                logger.debug("Reranker: order unchanged (already optimally ranked)")
-        else:
-            logger.debug("Retriever: no reranking (disabled or no documents)")
-
         elapsed = time.time() - start_time
         logger.info(f"Retriever: total time {elapsed:.3f}s")
 
-        # Store initial results before any alpha adjustment (for comparison after retry)
-        # Only store if this is the first retrieval (alpha_adjusted is not True)
-        return_state: Dict[str, Any] = {
+        return {
             "retrieved_documents": results,
-            "retrieval_attempts": new_attempts
+            "user_query": query,
         }
 
-        if not state.get("alpha_adjusted", False):
-            # First retrieval - save results for later comparison
-            max_score = max(
-                (doc.metadata.get("reranker_score", 0.0) for doc in results),
-                default=0.0
-            )
-            return_state["_initial_retrieved_documents"] = results
-            return_state["_initial_max_score"] = max_score
-            logger.debug(f"Retriever: stored initial results (max_score={max_score:.3f})")
-
-        return return_state
-
-    def alpha_refiner_node(self, state: CustomAgentState) -> Dict[str, Any]:
+    def reranker_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        Check if retrieval results have low relevance and retry with adjusted alpha.
+        Reranker node - scores and reorders retrieved documents by relevance.
 
-        This node implements Phase 3: single retry strategy with alpha adjustment.
-        - If max reranker_score < ALPHA_REFINEMENT_THRESHOLD and not already adjusted
-        - Adjust alpha based on strategy and trigger retrieval retry
-        - Otherwise, pass through to agent
-
-        Args:
-            state: Current agent state with retrieved documents
-
-        Returns:
-            Updated state with potentially adjusted alpha
+        Reads retrieved_documents from state, applies LLM reranking if enabled,
+        and returns reranked documents with reranker_max_score for quality gate.
         """
-        from config import ENABLE_ALPHA_REFINEMENT, ALPHA_REFINEMENT_THRESHOLD
-
-        current_alpha = state.get("alpha", DEFAULT_ALPHA)
-
-        # Early return if refinement disabled
-        if not ENABLE_ALPHA_REFINEMENT:
-            return {
-                "alpha_adjusted": False,
-                "_needs_retrieval_retry": False,
-                "alpha_refinement_reason": "Refinement disabled in config",
-                "original_alpha": current_alpha,
-                "max_score": 0.0
-            }
-
-        # Early return if already adjusted (prevent multiple retries)
-        if state.get("alpha_adjusted", False):
-            # Compare retry results with initial results - keep the better one
-            retrieved_documents = state.get("retrieved_documents", [])
-            retry_max_score = max(
-                (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
-                default=0.0
-            )
-
-            initial_documents = state.get("_initial_retrieved_documents", [])
-            initial_max_score = state.get("_initial_max_score", 0.0)
-
-            # Choose the better results
-            if initial_max_score > retry_max_score and initial_documents:
-                # Initial was better - restore it
-                logger.info(
-                    f"AlphaRefiner: initial results better "
-                    f"(initial={initial_max_score:.3f} > retry={retry_max_score:.3f}), restoring initial"
-                )
-                return {
-                    "_needs_retrieval_retry": False,
-                    "alpha_refinement_reason": f"Kept initial results (score {initial_max_score:.3f} > retry {retry_max_score:.3f})",
-                    "original_alpha": current_alpha,
-                    "max_score": initial_max_score,
-                    "retrieved_documents": initial_documents,  # Restore initial results
-                }
-            else:
-                # Retry was better or equal - keep retry results
-                logger.info(
-                    f"AlphaRefiner: retry results better or equal "
-                    f"(retry={retry_max_score:.3f} >= initial={initial_max_score:.3f}), keeping retry"
-                )
-                return {
-                    "_needs_retrieval_retry": False,
-                    "alpha_refinement_reason": f"Kept retry results (score {retry_max_score:.3f} >= initial {initial_max_score:.3f})",
-                    "original_alpha": current_alpha,
-                    "max_score": retry_max_score
-                }
-
         retrieved_documents = state.get("retrieved_documents", [])
 
+        if not ENABLE_RERANKING or not self.reranker or not retrieved_documents:
+            logger.debug("Reranker: skipped (disabled or no documents)")
+            return {
+                "retrieved_documents": retrieved_documents,
+                "reranker_max_score": 0.0,
+            }
+
+        # Extract query for reranking
+        query = state.get("user_query", "")
+        if not query:
+            messages = state["messages"]
+            for msg in reversed(messages):
+                if isinstance(msg, HumanMessage):
+                    query = msg.content
+                    break
+
+        # Emit reranker start event
+        if RerankerStartEvent:
+            try:
+                self._emit_event_from_sync(RerankerStartEvent(
+                    model=RERANKER_MODEL,
+                    candidate_count=len(retrieved_documents),
+                ))
+            except Exception as e:
+                logger.debug(f"Could not emit reranker start event: {e}")
+
+        # Store original ranks
+        original_sources = [doc.metadata.get('source', 'unknown') for doc in retrieved_documents]
+        for i, doc in enumerate(retrieved_documents, 1):
+            doc.metadata['original_rank'] = i
+
+        # Calculate total content size for throughput metrics
+        total_content_chars = sum(len(doc.page_content) for doc in retrieved_documents)
+        batch_size = self.reranker.batch_size
+
+        rerank_start = time.time()
+        logger.info(f"Reranker: processing {len(retrieved_documents)} candidates, batch_size={batch_size}, device={self.reranker.device}")
+
+        # Emit initial progress
+        if RerankerProgressEvent:
+            try:
+                self._emit_event_from_sync(RerankerProgressEvent(
+                    stage="scoring",
+                    progress=0.0,
+                    message=f"Scoring {len(retrieved_documents)} documents..."
+                ))
+            except Exception as e:
+                logger.debug(f"Could not emit reranker progress event: {e}")
+
+        reranked_results = self.reranker.rerank(query, retrieved_documents, RERANKER_TOP_K)
+        rerank_elapsed = time.time() - rerank_start
+
+        # Emit completion progress
+        if RerankerProgressEvent:
+            try:
+                self._emit_event_from_sync(RerankerProgressEvent(
+                    stage="ranking",
+                    progress=1.0,
+                    message=f"Ranking complete - {len(retrieved_documents)} documents scored"
+                ))
+            except Exception as e:
+                logger.debug(f"Could not emit reranker completion event: {e}")
+
+        # Extract documents with scores
+        results_with_scores = [(doc, score) for doc, score in reranked_results]
+        results = [doc for doc, score in results_with_scores]
+
+        # Store reranker scores in metadata
+        for i, (doc, score) in enumerate(results_with_scores, 1):
+            doc.metadata['reranker_score'] = score
+
+        # Calculate throughput metrics
+        docs_per_sec = len(results) / rerank_elapsed if rerank_elapsed > 0 else 0
+        chars_per_sec = total_content_chars / rerank_elapsed if rerank_elapsed > 0 else 0
+        ms_per_doc = (rerank_elapsed * 1000) / len(results) if results else 0
+
+        # Log reranking results with detailed timing
+        avg_score = sum(score for _, score in results_with_scores) / len(results_with_scores) if results_with_scores else 0
+        max_score = max((score for _, score in results_with_scores), default=0.0)
+        logger.info(f"Reranker: complete in {rerank_elapsed:.3f}s, top {len(results)} selected, avg_score={avg_score:.4f}")
+        logger.debug(f"Reranker throughput: {docs_per_sec:.1f} docs/s, {chars_per_sec:.0f} chars/s, {ms_per_doc:.1f} ms/doc")
+
+        # Log individual scores at debug level
+        for i, (doc, score) in enumerate(results_with_scores, 1):
+            source = doc.metadata.get('source', 'unknown')
+            logger.debug(f"  {i}. score={score:.4f} [{source}]")
+
+        # Log order changes
+        reranked_sources = [doc.metadata.get('source', 'unknown') for doc in results]
+        if original_sources[:len(reranked_sources)] != reranked_sources:
+            logger.debug("Reranker: order changed (reranking improved relevance)")
+        else:
+            logger.debug("Reranker: order unchanged (already optimally ranked)")
+
+        return {
+            "retrieved_documents": results,
+            "reranker_max_score": max_score,
+        }
+
+    def quality_gate_node(self, state: CustomAgentState) -> Dict[str, Any]:
+        """
+        Quality gate - checks reranker scores and retries with adjusted alpha if needed.
+
+        Logic:
+        - If reranker_max_score >= threshold: continue to agent
+        - If reranker_max_score < threshold AND not yet retried: adjust alpha ±0.3, retry retriever
+        - If already retried: continue to agent (accept best results)
+        """
+        from config import ENABLE_QUALITY_GATE, QUALITY_GATE_THRESHOLD
+
+        current_alpha = state.get("alpha", DEFAULT_ALPHA)
+        max_score = state.get("reranker_max_score", 0.0)
+
+        # Early return if quality gate disabled
+        if not ENABLE_QUALITY_GATE:
+            return {
+                "quality_gate_retried": False,
+                "quality_gate_reason": "Quality gate disabled in config",
+            }
+
+        # Already retried once - accept results
+        if state.get("quality_gate_retried", False):
+            logger.info(f"QualityGate: already retried, accepting results (max_score={max_score:.3f})")
+            return {
+                "quality_gate_reason": f"Accepted after retry (max_score={max_score:.3f})",
+            }
+
         # No documents to evaluate
-        if not retrieved_documents:
+        if not state.get("retrieved_documents", []):
             return {
-                "alpha_adjusted": False,
-                "_needs_retrieval_retry": False,
-                "alpha_refinement_reason": "No documents to evaluate",
-                "original_alpha": current_alpha,
-                "max_score": 0.0
+                "quality_gate_retried": False,
+                "quality_gate_reason": "No documents to evaluate",
             }
 
-        # Get max reranker score
-        max_score = max(
-            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
-            default=0.0
-        )
-
-        # Check if refinement is needed
-        if max_score >= ALPHA_REFINEMENT_THRESHOLD:
+        # Score above threshold - good results, continue
+        if max_score >= QUALITY_GATE_THRESHOLD:
             return {
-                "alpha_adjusted": False,
-                "_needs_retrieval_retry": False,
-                "alpha_refinement_reason": f"Max score {max_score:.3f} above threshold {ALPHA_REFINEMENT_THRESHOLD}",
-                "original_alpha": current_alpha,
-                "max_score": max_score
+                "quality_gate_retried": False,
+                "quality_gate_reason": f"Max score {max_score:.3f} above threshold {QUALITY_GATE_THRESHOLD}",
             }
 
-        # Refinement triggered - adjust alpha toward the OPPOSITE end
-        # If initial search was semantic-heavy and failed, try lexical (and vice versa)
+        # Score below threshold - adjust alpha and retry
         if current_alpha >= 0.5:
-            # Was semantic-heavy, try lexical
-            new_alpha = max(0.0, current_alpha - 0.4)
+            new_alpha = max(0.0, current_alpha - 0.3)
             direction = "lexical"
         else:
-            # Was lexical-heavy, try semantic
-            new_alpha = min(1.0, current_alpha + 0.4)
+            new_alpha = min(1.0, current_alpha + 0.3)
             direction = "semantic"
 
-        logger.info(f"AlphaRefiner: low relevance (max_score={max_score:.3f}), adjusting alpha {current_alpha:.2f} → {new_alpha:.2f} ({direction}-boost)")
+        logger.info(f"QualityGate: low relevance (max_score={max_score:.3f}), adjusting alpha {current_alpha:.2f} → {new_alpha:.2f} ({direction}-boost)")
 
         return {
             "alpha": new_alpha,
-            "alpha_adjusted": True,
-            "_needs_retrieval_retry": True,  # Signal router to retry retrieval
-            "alpha_refinement_reason": f"Triggered by low max score ({max_score:.3f}) - adjusted to {new_alpha:.2f}",
-            "original_alpha": current_alpha,
-            "max_score": max_score
+            "quality_gate_retried": True,
+            "quality_gate_reason": f"Retry triggered (max_score={max_score:.3f} < {QUALITY_GATE_THRESHOLD}), alpha → {new_alpha:.2f}",
         }
 
     def _route_after_intent(self, state: CustomAgentState) -> str:
@@ -1551,299 +1496,74 @@ Respond with JSON only. No other text."""
             return "done"
         return "continue"
 
-    def _should_retry_retrieval(self, state: CustomAgentState) -> str:
-        """Determine if alpha refinement should retry retrieval.
-
-        Uses _needs_retrieval_retry transient signal to prevent infinite loops.
-        This signal is only True when alpha was JUST adjusted this pass.
-        """
-        if state.get("_needs_retrieval_retry", False):
+    def _quality_gate_route(self, state: CustomAgentState) -> str:
+        """Route after quality gate: retry retrieval or continue to agent."""
+        # If quality_gate_retried just became True AND the current alpha was just changed,
+        # we need to retry. Check if retried flag was set AND we haven't been through
+        # the quality gate a second time yet.
+        reason = state.get("quality_gate_reason", "")
+        if "Retry triggered" in reason and state.get("quality_gate_retried", False):
+            # Only retry if this is the first time (reason contains "Retry triggered")
+            # After retry, quality_gate will set a different reason
             return "retry"
-        return "continue"
-
-    def _route_after_content_type_classifier(self, state: CustomAgentState) -> str:
-        """Route after content type classification.
-
-        Checks if clarification is needed (awaiting_clarification=True).
-        If yes, returns END to wait for user's clarification response.
-        If no, routes to appropriate content generator.
-        """
-        if state.get("awaiting_clarification"):
-            logger.info("Content type clarification needed, waiting for user response")
-            return END
-
-        # Otherwise, route by content type
-        return self._route_by_content_type(state)
-
-    def _route_by_content_type(self, state: CustomAgentState) -> str:
-        """Route based on detected content type.
-
-        Returns semantic route KEYS that map to appropriate generators:
-        - "social" → social_content_generator
-        - "blog" → blog_content_generator
-        - "article" → article_content_generator
-        - "tutorial" → tutorial_generator
-        - "comprehensive" → doc_planner (existing pipeline)
-
-        Default: "comprehensive" (comprehensive documentation)
-
-        This function follows the same pattern as other routing functions,
-        returning semantic keys that are mapped to node names in conditional_edges.
-        """
-        content_type = state.get("content_type", "comprehensive_docs")
-
-        # Map content types to semantic route keys
-        # These keys are resolved to actual node names in conditional_edges dicts
-        routing_map = {
-            "social_post": "social",
-            "blog_post": "blog",
-            "technical_article": "article",
-            "tutorial": "tutorial",
-            "comprehensive_docs": "comprehensive",
-        }
-
-        route = routing_map.get(content_type, "comprehensive")
-        logger.info(f"Routing content type '{content_type}' to '{route}'")
-        return route
-
-    def confidence_evaluator_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Evaluate retrieval confidence based on reranker scores (Phase 4).
-
-        Checks if top result has sufficient relevance. If confidence is low,
-        triggers query rewriting and retry.
-
-        Only active if ENABLE_ITERATIVE_RETRIEVAL is true.
-
-        Args:
-            state: Current agent state with retrieved documents
-
-        Returns:
-            Updated state with confidence metrics and potential retry trigger
-        """
-        from config import (
-            ENABLE_ITERATIVE_RETRIEVAL, CONFIDENCE_THRESHOLD,
-            MAX_RETRIEVAL_ATTEMPTS
-        )
-
-        # Early return if iterative retrieval disabled
-        if not ENABLE_ITERATIVE_RETRIEVAL:
-            return {}
-
-        retrieved_documents = state.get("retrieved_documents", [])
-
-        # No documents to evaluate
-        if not retrieved_documents:
-            return {
-                "confidence_score": 0.0,
-                "low_confidence_reason": "No documents retrieved"
-            }
-
-        # Get max reranker score
-        max_score = max(
-            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
-            default=0.0
-        )
-
-        attempts = state.get("retrieval_attempts", 1)
-
-        # Check if confidence is sufficient
-        if max_score >= CONFIDENCE_THRESHOLD:
-            logger.debug(f"ConfidenceEvaluator: confidence sufficient (max_score={max_score:.3f})")
-            return {
-                "confidence_score": max_score,
-                "low_confidence_reason": None
-            }
-
-        # Check if we can retry
-        if attempts >= MAX_RETRIEVAL_ATTEMPTS:
-            logger.info(f"ConfidenceEvaluator: low confidence ({max_score:.3f}) but max attempts ({MAX_RETRIEVAL_ATTEMPTS}) reached")
-            return {
-                "confidence_score": max_score,
-                "low_confidence_reason": f"Low confidence ({max_score:.3f}) but max attempts reached"
-            }
-
-        # Low confidence and can retry
-        logger.info(f"ConfidenceEvaluator: low confidence ({max_score:.3f}) - will rewrite query")
-        return {
-            "confidence_score": max_score,
-            "low_confidence_reason": f"Score {max_score:.3f} below threshold {CONFIDENCE_THRESHOLD}"
-        }
-
-    def query_rewriter_node(self, state: CustomAgentState) -> Dict[str, Any]:
-        """
-        Rewrite query for improved retrieval when confidence is low (Phase 4).
-
-        Uses lightweight LLM to suggest better query formulation.
-        Only called if iterative retrieval is enabled and confidence is low.
-
-        Args:
-            state: Current agent state with low confidence results
-
-        Returns:
-            Updated state with rewritten query and incremented attempt counter
-        """
-        from config import ENABLE_ITERATIVE_RETRIEVAL, QUERY_REWRITER_MODEL
-
-        # Early return if iterative retrieval disabled
-        if not ENABLE_ITERATIVE_RETRIEVAL:
-            return {}
-
-        # Extract original query
-        messages = state["messages"]
-        original_query = ""
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                original_query = msg.content if hasattr(msg, "content") else ""
-                break
-
-        if not original_query:
-            return {}
-
-        confidence_score = state.get("confidence_score", 0.0)
-        reason = state.get("low_confidence_reason", "")
-        attempts = state.get("retrieval_attempts", 1)
-
-        # Build rewrite prompt
-        prompt = f"""The initial search returned low-confidence results.
-Original query: "{original_query}"
-Confidence issue: {reason}
-
-Rewrite this query to improve retrieval. Consider:
-- Adding more specific terms or context
-- Removing ambiguous words
-- Using synonyms or related concepts
-- Reframing the question if needed
-
-Return ONLY the rewritten query, nothing else."""
-
-        logger.info(f"QueryRewriter: rewriting query (attempt {attempts})")
-
-        try:
-            # Use same rewriter model as query evaluator
-            if not hasattr(self, 'query_rewriter_llm') or self.query_rewriter_llm is None:
-                self.query_rewriter_llm = ChatGoogleGenerativeAI(
-                    model=QUERY_REWRITER_MODEL,
-                    temperature=0,
-                )
-
-            response = self.query_rewriter_llm.invoke(prompt)
-            transformed_query = response.content.strip() if hasattr(response, "content") else str(response)
-
-            logger.info(f"QueryRewriter: original='{original_query[:50]}...', rewritten='{transformed_query[:50]}...'")
-
-            return {
-                "query_transformed": transformed_query,
-                "retrieval_attempts": attempts + 1
-            }
-        except Exception as e:
-            logger.warning(f"Query rewriting failed ({e}), continuing with original query")
-            return {
-                "query_transformed": original_query,
-                "retrieval_attempts": attempts + 1
-            }
-
-    def _should_continue_or_rewrite(self, state: CustomAgentState) -> str:
-        """Determine if confidence is low enough to trigger query rewrite"""
-        from config import ENABLE_ITERATIVE_RETRIEVAL, MAX_RETRIEVAL_ATTEMPTS
-
-        if not ENABLE_ITERATIVE_RETRIEVAL:
-            return "continue"
-
-        low_confidence_reason = state.get("low_confidence_reason")
-        attempts = state.get("retrieval_attempts", 1)
-
-        if low_confidence_reason and attempts < MAX_RETRIEVAL_ATTEMPTS:
-            return "rewrite"
         return "continue"
 
     def create_agent_graph(self):
         """Create custom StateGraph with automatic retrieval pipeline.
 
-        Base flow: intent_classifier → query_evaluator → summary → retriever → alpha_refiner → agent → END
+        Flow: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent → END
 
-        Config builder flow: intent_classifier → config_resolver → config_generator → config_response → END
-        Doc writer flow: intent_classifier → doc_planner → doc_gatherer → doc_synthesizer → END
-
-        With Phase 4 enabled:
-          - Adds confidence_evaluator after alpha_refiner
-          - Adds query_rewriter for low-confidence results
-          - Implements retrieval retry loop
-
-        Phases:
-        - Phase 1: Intent classification (always on)
-        - Phase 2: Progress events (always on)
-        - Phase 3: Alpha refinement (configurable, default enabled)
-        - Phase 4: Iterative retrieval (configurable, default disabled)
+        The quality_gate can route back to retriever for a single retry with adjusted alpha.
         """
-        from config import ENABLE_ITERATIVE_RETRIEVAL
-
         logger.info("Creating agent graph with automatic retrieval")
 
         # Build the graph
         workflow = StateGraph(CustomAgentState)
 
-        # Add core nodes (always present)
+        # Add core nodes
         workflow.add_node("intent_classifier", self.intent_classifier_node)
         workflow.add_node("query_evaluator", self.query_evaluator_node)
         workflow.add_node("summary", self.summary_node)
         workflow.add_node("retriever", self.retriever_node)
-        workflow.add_node("alpha_refiner", self.alpha_refiner_node)
-
-        # Add Phase 4 nodes (conditional)
-        if ENABLE_ITERATIVE_RETRIEVAL:
-            workflow.add_node("confidence_evaluator", self.confidence_evaluator_node)
-            workflow.add_node("query_rewriter", self.query_rewriter_node)
-
+        workflow.add_node("reranker", self.reranker_node)
+        workflow.add_node("quality_gate", self.quality_gate_node)
         workflow.add_node("agent", self.agent_node)
 
         # Set entry point
         workflow.set_entry_point("intent_classifier")
 
-        # Build routing map for intent classifier
+        # Intent classifier routing
         intent_routes = {"summary": "summary", "clarify": "agent", "other": "query_evaluator"}
-
-        # Add core edges with conditional routing
         workflow.add_conditional_edges(
             "intent_classifier",
             self._route_after_intent,
             intent_routes,
         )
+
+        # Core pipeline edges
         workflow.add_edge("query_evaluator", "retriever")
         workflow.add_conditional_edges(
             "summary",
             self._route_after_summary,
             {"done": "agent", "continue": "retriever"}
         )
-        workflow.add_edge("retriever", "alpha_refiner")
+        workflow.add_edge("retriever", "reranker")
+        workflow.add_edge("reranker", "quality_gate")
 
-        # Alpha refiner routing (Phase 3)
+        # Quality gate routing: retry retrieval or continue to agent
         workflow.add_conditional_edges(
-            "alpha_refiner",
-            self._should_retry_retrieval,
-            {"retry": "retriever", "continue": "confidence_evaluator" if ENABLE_ITERATIVE_RETRIEVAL else "agent"}
+            "quality_gate",
+            self._quality_gate_route,
+            {"retry": "retriever", "continue": "agent"}
         )
 
-        # Phase 4 routing (if enabled)
-        if ENABLE_ITERATIVE_RETRIEVAL:
-            workflow.add_conditional_edges(
-                "confidence_evaluator",
-                self._should_continue_or_rewrite,
-                {"rewrite": "query_rewriter", "continue": "agent"}
-            )
-            workflow.add_edge("query_rewriter", "retriever")
-
-        # Config builder edges
-        # Documentation writer edges
-        # Agent is the final step for RAG pipeline
+        # Agent is the final step
         workflow.add_edge("agent", END)
 
         # Compile with checkpointer
         self.app = workflow.compile(checkpointer=self.checkpointer)
 
-        # Log graph structure
-        modes = ["RAG"]
-        logger.info(f"Agent graph created with modes: {', '.join(modes)}")
+        logger.info("Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent")
 
     def generate_thread_id(self):
         """Generate a unique thread ID for conversation persistence"""

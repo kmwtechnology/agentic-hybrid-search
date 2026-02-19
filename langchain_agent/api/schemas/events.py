@@ -147,11 +147,11 @@ class QueryExpansionEvent(BaseEvent):
     expansion_reason: str
 
 
-class AlphaRefinementEvent(BaseEvent):
-    """Emitted when alpha is adjusted due to low relevance scores."""
+class QualityGateEvent(BaseEvent):
+    """Emitted when quality gate evaluates reranker scores and decides whether to retry."""
 
-    type: Literal["alpha_refinement"] = "alpha_refinement"
-    node: Literal["alpha_refiner"] = "alpha_refiner"
+    type: Literal["quality_gate"] = "quality_gate"
+    node: Literal["quality_gate"] = "quality_gate"
     triggered: bool
     original_alpha: AlphaWeight  # Validated to [0.0, 1.0]
     new_alpha: Optional[AlphaWeight] = None  # Validated to [0.0, 1.0] if set
@@ -214,7 +214,7 @@ class RerankerStartEvent(BaseEvent):
     """Emitted when reranking begins."""
 
     type: Literal["reranker_start"] = "reranker_start"
-    node: Literal["retriever"] = "retriever"
+    node: Literal["reranker"] = "reranker"
     model: str
     candidate_count: int
 
@@ -270,7 +270,7 @@ class RerankerProgressEvent(BaseEvent):
     """Emitted during reranking to show real-time progress."""
 
     type: Literal["reranker_progress"] = "reranker_progress"
-    node: Literal["retriever"] = "retriever"
+    node: Literal["reranker"] = "reranker"
     stage: Literal["scoring", "ranking"] = "scoring"
     progress: ProgressPercent = 0.0  # 0.0-1.0, validated
     message: str  # e.g., "Scoring document 20/40..."
@@ -727,7 +727,7 @@ AgentEvent = (
     | DocumentGradingSummaryEvent
     | QueryTransformationEvent
     | QueryExpansionEvent
-    | AlphaRefinementEvent
+    | QualityGateEvent
     | LLMReasoningStartEvent
     | LLMReasoningChunkEvent
     | LLMResponseStartEvent

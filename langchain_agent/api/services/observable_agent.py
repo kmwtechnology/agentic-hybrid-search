@@ -59,13 +59,7 @@ from api.schemas.events import (
     AgentErrorEvent,
     MetricsEvent,
     QueryExpansionEvent,
-    AlphaRefinementEvent,
-    ConfigBuilderStartEvent,
-    ComponentSpecRetrievalEvent,
-    ConfigGeneratedEvent,
-    DocOutlineEvent,
-    DocSectionProgressEvent,
-    DocCompleteEvent,
+    QualityGateEvent,
 )
 
 
@@ -187,13 +181,13 @@ class ObservableAgentService:
             ))
 
             # Build initial state
-            # Reset per-query state (alpha, alpha_adjusted) while preserving conversation history via checkpoint
+            # Reset per-query state while preserving conversation history via checkpoint
             from config import DEFAULT_ALPHA
             initial_state = {
                 "messages": [HumanMessage(content=message)],
                 "alpha": DEFAULT_ALPHA,
                 "query_analysis": "",
-                "alpha_adjusted": False,  # Reset for each new message
+                "quality_gate_retried": False,  # Reset for each new message
             }
 
             config = {"configurable": {"thread_id": thread_id}}
@@ -248,6 +242,7 @@ class ObservableAgentService:
             await emit(MetricsEvent(
                 query_evaluation_ms=metrics.get("query_evaluator"),
                 retrieval_ms=metrics.get("retriever"),
+                reranking_ms=metrics.get("reranker"),
                 document_grading_ms=None,
                 llm_generation_ms=metrics.get("agent"),
                 response_grading_ms=None,
@@ -294,16 +289,8 @@ class ObservableAgentService:
         """
         # Known LangGraph nodes to track (filter out internal chains)
         tracked_nodes = {
-            "intent_classifier", "query_evaluator", "summary", "retriever", "alpha_refiner", "agent",
-            # Config builder nodes
-            "config_resolver", "config_generator", "config_response",
-            # Doc writer nodes - content type classification
-            "content_type_classifier",
-            # Doc writer nodes - content generators
-            "social_content_generator", "blog_content_generator",
-            "article_content_generator", "tutorial_generator",
-            # Doc writer nodes - comprehensive docs
-            "doc_planner", "doc_gatherer", "doc_synthesizer",
+            "intent_classifier", "query_evaluator", "summary",
+            "retriever", "reranker", "quality_gate", "agent",
         }
         current_node: Optional[str] = None
         accumulated_output: Dict[str, Any] = {}
@@ -372,7 +359,7 @@ class ObservableAgentService:
                             # Pass streaming flag for agent node to avoid duplicate response emission
                             await self._emit_node_events(
                                 event_name, output, emit,
-                                already_streamed=response_streaming_started if event_name in ("agent", "doc_synthesizer") else False
+                                already_streamed=response_streaming_started if event_name == "agent" else False
                             )
 
                             # Emit any events queued by retriever_node
@@ -402,9 +389,6 @@ class ObservableAgentService:
                     # (query_evaluator outputs JSON which shouldn't be shown to user)
                     streaming_nodes = {
                         "agent",
-                        "social_content_generator", "blog_content_generator",
-                        "article_content_generator", "tutorial_generator",
-                        "doc_synthesizer",
                     }
                     if current_node in streaming_nodes:
                         chunk = event_data.get("chunk")
@@ -477,12 +461,15 @@ class ObservableAgentService:
                 summary_text=output.get("summary_text"),
                 message_count=output.get("message_count", 0),
             ))
+
         elif node_name == "retriever":
-            # Emit reranking result events if enabled
-            # (hybrid_search_result and reranker_start are now emitted from within retriever_node)
+            # Search events (hybrid_search_result etc.) are emitted from within retriever_node
+            pass
+
+        elif node_name == "reranker":
+            # Emit reranker result event with detailed document information
             documents = output.get("retrieved_documents", [])
             if documents and ENABLE_RERANKING:
-                # Emit reranker result event with detailed document information
                 reranked_docs = self._compute_reranked_documents(documents)
                 reranking_changed_order = self._check_if_order_changed(documents, reranked_docs)
 
@@ -491,67 +478,18 @@ class ObservableAgentService:
                     reranking_changed_order=reranking_changed_order,
                 ))
 
-        elif node_name == "alpha_refiner":
-            # Emit alpha refinement event
-            from config import ALPHA_REFINEMENT_THRESHOLD, DEFAULT_ALPHA
-            triggered = output.get("_needs_retrieval_retry", False)
-            await emit(AlphaRefinementEvent(
+        elif node_name == "quality_gate":
+            from config import QUALITY_GATE_THRESHOLD, DEFAULT_ALPHA
+            reason = output.get("quality_gate_reason", "")
+            triggered = "Retry triggered" in reason
+            await emit(QualityGateEvent(
                 triggered=triggered,
-                original_alpha=output.get("original_alpha", DEFAULT_ALPHA),
+                original_alpha=output.get("alpha", DEFAULT_ALPHA) if not triggered else DEFAULT_ALPHA,
                 new_alpha=output.get("alpha") if triggered else None,
-                max_score=output.get("max_score", 0.0),
-                threshold=ALPHA_REFINEMENT_THRESHOLD,
-                reason=output.get("alpha_refinement_reason", ""),
+                max_score=0.0,  # max_score is in state, not output; use 0.0 as fallback
+                threshold=QUALITY_GATE_THRESHOLD,
+                reason=reason,
             ))
-
-        elif node_name == "config_resolver":
-            # Config builder events are emitted inline from config_resolver_node
-            pass
-
-        elif node_name == "config_generator":
-            # Config generation events are emitted inline from config_generator_node
-            pass
-
-        elif node_name == "config_response":
-            # Config response produces final output - emit full content
-            messages = output.get("messages", [])
-            for msg in messages:
-                if isinstance(msg, AIMessage) and msg.content:
-                    await emit(LLMResponseStartEvent())
-                    await emit(LLMResponseChunkEvent(content=msg.content, is_complete=True))
-
-        elif node_name == "content_type_classifier":
-            # Emit clarification messages (hardcoded AIMessages, not LLM-streamed)
-            messages = output.get("messages", [])
-            for msg in messages:
-                if isinstance(msg, AIMessage) and msg.content:
-                    await emit(LLMResponseStartEvent())
-                    await emit(LLMResponseChunkEvent(content=msg.content, is_complete=True))
-
-        elif node_name in (
-            "social_content_generator", "blog_content_generator",
-            "article_content_generator", "tutorial_generator",
-            "doc_synthesizer",
-        ):
-            # Content was streamed token-by-token via on_chat_model_stream.
-            # Emit completion marker so frontend finalizes the message.
-            if already_streamed:
-                await emit(LLMResponseChunkEvent(content="", is_complete=True))
-            else:
-                # Fallback: emit full content if streaming didn't happen
-                messages = output.get("messages", [])
-                for msg in messages:
-                    if isinstance(msg, AIMessage) and msg.content:
-                        await emit(LLMResponseStartEvent())
-                        await emit(LLMResponseChunkEvent(content=msg.content, is_complete=True))
-
-        elif node_name == "doc_planner":
-            # Doc planner events are emitted inline from doc_planner_node
-            pass
-
-        elif node_name == "doc_gatherer":
-            # Doc gatherer progress events are emitted inline from doc_gatherer_node
-            pass
 
         elif node_name == "agent":
             # Emit LLM events
@@ -718,25 +656,17 @@ class ObservableAgentService:
         if node_name == "query_evaluator":
             return "Evaluating query type for optimal search strategy"
         elif node_name == "retriever":
-            return "Executing hybrid search + reranking"
+            return "Executing hybrid search"
+        elif node_name == "reranker":
+            return "Reranking documents by relevance"
+        elif node_name == "quality_gate":
+            return "Evaluating result quality"
         elif node_name == "agent":
             return "Generating response from documents"
         elif node_name == "intent_classifier":
             return "Classifying user intent"
         elif node_name == "summary":
             return "Preparing conversation summary"
-        elif node_name == "config_resolver":
-            return "Resolving pipeline components"
-        elif node_name == "config_generator":
-            return "Generating HOCON configuration"
-        elif node_name == "config_response":
-            return "Formatting config response"
-        elif node_name == "doc_planner":
-            return "Planning documentation outline"
-        elif node_name == "doc_gatherer":
-            return "Gathering content for sections"
-        elif node_name == "doc_synthesizer":
-            return "Synthesizing documentation"
         return ""
 
     def _summarize_output(self, node_name: str, output: Dict[str, Any]) -> str:
@@ -746,6 +676,13 @@ class ObservableAgentService:
         elif node_name == "retriever":
             docs = output.get("retrieved_documents", [])
             return f"{len(docs)} documents retrieved"
+        elif node_name == "reranker":
+            docs = output.get("retrieved_documents", [])
+            max_score = output.get("reranker_max_score", 0.0)
+            return f"{len(docs)} documents reranked (max={max_score:.3f})"
+        elif node_name == "quality_gate":
+            reason = output.get("quality_gate_reason", "")
+            return reason
         elif node_name == "agent":
             messages = output.get("messages", [])
             if messages:
@@ -761,34 +698,6 @@ class ObservableAgentService:
             if summary_text:
                 return f"{message_count} messages summarized"
             return f"Summary skipped ({message_count} msgs)"
-        elif node_name == "config_resolver":
-            components = output.get("config_components", [])
-            resolved = sum(1 for c in components if c.get("resolved"))
-            fallback = len(components) - resolved
-            parts = []
-            if resolved:
-                parts.append(f"{resolved} spec-matched")
-            if fallback:
-                parts.append(f"{fallback} search-fallback")
-            not_found = output.get("config_validation_notes", [])
-            missing = [n for n in not_found if "not found" in n.lower()]
-            if missing:
-                parts.append(f"{len(missing)} not found")
-            return f"{len(components)} components ({', '.join(parts)})" if parts else f"{len(components)} components resolved"
-        elif node_name == "config_generator":
-            config = output.get("config_output", "")
-            return f"Config generated ({len(config)} chars)"
-        elif node_name == "config_response":
-            return "Config response formatted"
-        elif node_name == "doc_planner":
-            sections = output.get("doc_outline", [])
-            return f"{len(sections)} sections planned"
-        elif node_name == "doc_gatherer":
-            gathered = output.get("doc_sections_gathered", 0)
-            total = output.get("doc_sections_total", 0)
-            return f"{gathered}/{total} sections gathered"
-        elif node_name == "doc_synthesizer":
-            return "Documentation synthesized"
         return ""
 
     async def _generate_title(

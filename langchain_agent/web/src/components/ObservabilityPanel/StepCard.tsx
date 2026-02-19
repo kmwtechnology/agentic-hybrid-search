@@ -9,16 +9,13 @@ import type {
   IntentClassificationEvent,
   ObservabilityStep,
   SummaryEvent,
-  AlphaRefinementEvent,
+  QualityGateEvent,
 } from '../../types/events'
 import { QueryEvaluatorDetails } from './details/QueryEvaluatorDetails'
 import { SearchDetails } from './details/SearchDetails'
 import { LLMAgentDetails } from './details/LLMAgentDetails'
 import { IntentClassifierDetails } from './details/IntentClassifierDetails'
 import { SummaryDetails } from './details/SummaryDetails'
-import { ConfigBuilderDetails } from './details/ConfigBuilderDetails'
-import { DocWriterDetails } from './details/DocWriterDetails'
-import { ContentTypeDetails } from './details/ContentTypeDetails'
 import clsx from 'clsx'
 
 interface StepCardProps {
@@ -43,8 +40,13 @@ const nodeConfig: Record<string, { label: string; color: string; bgColor: string
     color: 'text-violet-400',
     bgColor: 'bg-violet-500/10 border-violet-500/30',
   },
-  alpha_refiner: {
-    label: 'Alpha Refiner',
+  reranker: {
+    label: 'LLM Reranker',
+    color: 'text-indigo-400',
+    bgColor: 'bg-indigo-500/10 border-indigo-500/30',
+  },
+  quality_gate: {
+    label: 'Quality Gate',
     color: 'text-orange-400',
     bgColor: 'bg-orange-500/10 border-orange-500/30',
   },
@@ -52,64 +54,6 @@ const nodeConfig: Record<string, { label: string; color: string; bgColor: string
     label: 'Intent Classifier',
     color: 'text-emerald-400',
     bgColor: 'bg-emerald-500/10 border-emerald-500/30',
-  },
-  // Config builder nodes (amber)
-  config_resolver: {
-    label: 'Config Resolver',
-    color: 'text-amber-400',
-    bgColor: 'bg-amber-500/10 border-amber-500/30',
-  },
-  config_generator: {
-    label: 'Config Generator',
-    color: 'text-amber-400',
-    bgColor: 'bg-amber-500/10 border-amber-500/30',
-  },
-  config_response: {
-    label: 'Config Response',
-    color: 'text-amber-400',
-    bgColor: 'bg-amber-500/10 border-amber-500/30',
-  },
-  // Doc writer nodes (teal)
-  doc_planner: {
-    label: 'Doc Planner',
-    color: 'text-teal-400',
-    bgColor: 'bg-teal-500/10 border-teal-500/30',
-  },
-  doc_gatherer: {
-    label: 'Doc Gatherer',
-    color: 'text-teal-400',
-    bgColor: 'bg-teal-500/10 border-teal-500/30',
-  },
-  doc_synthesizer: {
-    label: 'Doc Synthesizer',
-    color: 'text-teal-400',
-    bgColor: 'bg-teal-500/10 border-teal-500/30',
-  },
-  // Content type nodes (purple)
-  content_type_classifier: {
-    label: 'Content Type Classifier',
-    color: 'text-purple-400',
-    bgColor: 'bg-purple-500/10 border-purple-500/30',
-  },
-  social_content_generator: {
-    label: 'Social Post Generator',
-    color: 'text-purple-400',
-    bgColor: 'bg-purple-500/10 border-purple-500/30',
-  },
-  blog_content_generator: {
-    label: 'Blog Post Generator',
-    color: 'text-purple-400',
-    bgColor: 'bg-purple-500/10 border-purple-500/30',
-  },
-  article_content_generator: {
-    label: 'Technical Article Generator',
-    color: 'text-purple-400',
-    bgColor: 'bg-purple-500/10 border-purple-500/30',
-  },
-  tutorial_generator: {
-    label: 'Tutorial Generator',
-    color: 'text-purple-400',
-    bgColor: 'bg-purple-500/10 border-purple-500/30',
   },
 }
 
@@ -194,13 +138,16 @@ export function StepCard({ step, index }: StepCardProps) {
 }
 
 function StepDetails({ step }: { step: ObservabilityStep }) {
-  const { queryExpansion, alphaRefinement } = useObservabilityStore()
+  const { queryExpansion, qualityGate } = useObservabilityStore()
 
   switch (step.node) {
     case 'query_evaluator':
       return <QueryEvaluatorDetails />
 
     case 'retriever':
+      return <SearchDetails />
+
+    case 'reranker':
       return <SearchDetails />
 
     case 'agent':
@@ -211,35 +158,15 @@ function StepDetails({ step }: { step: ObservabilityStep }) {
       return <IntentClassifierDetails event={intentEvent} queryExpansion={queryExpansion} />
     }
 
-    case 'alpha_refiner': {
-      const refinementEvent = step.events.find(isAlphaRefinementEvent)
-      return <AlphaRefinerDetails event={refinementEvent ?? alphaRefinement} />
+    case 'quality_gate': {
+      const gateEvent = step.events.find(isQualityGateEvent)
+      return <QualityGateDetails event={gateEvent ?? qualityGate} />
     }
 
     case 'summary': {
       const summaryEvent = step.events.find(isSummaryEvent)
       return <SummaryDetails event={summaryEvent} status={step.status} />
     }
-
-    // Config builder nodes
-    case 'config_resolver':
-    case 'config_generator':
-    case 'config_response':
-      return <ConfigBuilderDetails node={step.node} />
-
-    // Doc writer nodes
-    case 'doc_planner':
-    case 'doc_gatherer':
-    case 'doc_synthesizer':
-      return <DocWriterDetails node={step.node} />
-
-    // Content type nodes
-    case 'content_type_classifier':
-    case 'social_content_generator':
-    case 'blog_content_generator':
-    case 'article_content_generator':
-    case 'tutorial_generator':
-      return <ContentTypeDetails node={step.node} />
 
     default:
       return (
@@ -258,16 +185,16 @@ function isSummaryEvent(event: AgentEvent): event is SummaryEvent {
   return event.type === 'summary_generated'
 }
 
-function isAlphaRefinementEvent(event: AgentEvent): event is AlphaRefinementEvent {
-  return event.type === 'alpha_refinement'
+function isQualityGateEvent(event: AgentEvent): event is QualityGateEvent {
+  return event.type === 'quality_gate'
 }
 
-// Inline AlphaRefinerDetails component
-function AlphaRefinerDetails({ event }: { event?: AlphaRefinementEvent | null }) {
+// Inline QualityGateDetails component
+function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
   if (!event) {
     return (
       <div className="text-sm text-gray-400 animate-pulse">
-        Evaluating alpha refinement…
+        Evaluating result quality...
       </div>
     )
   }
@@ -283,7 +210,7 @@ function AlphaRefinerDetails({ event }: { event?: AlphaRefinementEvent | null })
             ? 'bg-orange-500/20 text-orange-400'
             : 'bg-gray-500/20 text-gray-400'
         )}>
-          {event.triggered ? 'Refinement Triggered' : 'No Refinement Needed'}
+          {event.triggered ? 'Retry Triggered' : 'Passed'}
         </span>
       </div>
 

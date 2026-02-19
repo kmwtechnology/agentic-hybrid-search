@@ -71,9 +71,9 @@ export interface QueryExpansionEvent extends BaseEvent {
   expansion_reason: string
 }
 
-export interface AlphaRefinementEvent extends BaseEvent {
-  type: 'alpha_refinement'
-  node: 'alpha_refiner'
+export interface QualityGateEvent extends BaseEvent {
+  type: 'quality_gate'
+  node: 'quality_gate'
   triggered: boolean
   original_alpha: number
   new_alpha?: number
@@ -118,7 +118,7 @@ export interface HybridSearchResultEvent extends BaseEvent {
 // Reranker events
 export interface RerankerStartEvent extends BaseEvent {
   type: 'reranker_start'
-  node: 'retriever'
+  node: 'reranker'
   model: string
   candidate_count: number
 }
@@ -140,7 +140,7 @@ export interface RerankedDocument {
 
 export interface RerankerResultEvent extends BaseEvent {
   type: 'reranker_result'
-  node: 'retriever'
+  node: 'reranker'
   results: RerankedDocument[]
   reranking_changed_order: boolean
 }
@@ -155,7 +155,7 @@ export interface SearchProgressEvent extends BaseEvent {
 
 export interface RerankerProgressEvent extends BaseEvent {
   type: 'reranker_progress'
-  node: 'retriever'
+  node: 'reranker'
   stage: 'scoring' | 'ranking'
   progress: number  // 0.0-1.0
   message: string
@@ -457,7 +457,7 @@ export type AgentEvent =
   | QueryEvaluationEvent
   | IntentClassificationEvent
   | QueryExpansionEvent
-  | AlphaRefinementEvent
+  | QualityGateEvent
   | SummaryEvent
   | HybridSearchStartEvent
   | HybridSearchResultEvent
@@ -523,8 +523,8 @@ export function isQueryExpansion(event: AgentEvent): event is QueryExpansionEven
   return event.type === 'query_expansion'
 }
 
-export function isAlphaRefinement(event: AgentEvent): event is AlphaRefinementEvent {
-  return event.type === 'alpha_refinement'
+export function isQualityGate(event: AgentEvent): event is QualityGateEvent {
+  return event.type === 'quality_gate'
 }
 
 export function isIntentClassification(event: AgentEvent): event is IntentClassificationEvent {
@@ -535,21 +535,11 @@ export function isIntentClassification(event: AgentEvent): event is IntentClassi
 export type NodeName =
   | 'query_evaluator'
   | 'retriever'
-  | 'alpha_refiner'
+  | 'reranker'
+  | 'quality_gate'
   | 'agent'
   | 'intent_classifier'
   | 'summary'
-  | 'config_resolver'
-  | 'config_generator'
-  | 'config_response'
-  | 'content_type_classifier'
-  | 'social_content_generator'
-  | 'blog_content_generator'
-  | 'article_content_generator'
-  | 'tutorial_generator'
-  | 'doc_planner'
-  | 'doc_gatherer'
-  | 'doc_synthesizer'
 
 // Node status for UI
 export type NodeStatus = 'idle' | 'running' | 'complete' | 'error'

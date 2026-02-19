@@ -17,19 +17,7 @@ import type {
   ConversationContextEvent,
   IntentClassificationEvent,
   QueryExpansionEvent,
-  AlphaRefinementEvent,
-  ConfigBuilderStartEvent,
-  ComponentSpecRetrievalEvent,
-  ConfigGeneratedEvent,
-  DocOutlineEvent,
-  DocSectionProgressEvent,
-  DocCompleteEvent,
-  ContentTypeClassificationEvent,
-  SocialPostProgressEvent,
-  BlogPostProgressEvent,
-  ArticleProgressEvent,
-  TutorialProgressEvent,
-  ContentCompleteEvent,
+  QualityGateEvent,
 } from '../types/events'
 
 interface ObservabilityState {
@@ -45,7 +33,7 @@ interface ObservabilityState {
   queryEvaluation: QueryEvaluationEvent | null
   intentClassification: IntentClassificationEvent | null
   queryExpansion: QueryExpansionEvent | null
-  alphaRefinement: AlphaRefinementEvent | null
+  qualityGate: QualityGateEvent | null
   searchCandidates: SearchCandidate[]
   rerankedDocuments: RerankedDocument[]
   documentGradingSummary: DocumentGradingSummaryEvent | null
@@ -54,24 +42,6 @@ interface ObservabilityState {
   // Search status for interim messages ('idle' | 'running' | 'done')
   searchStatus: 'idle' | 'running' | 'done'
   rerankerStatus: 'idle' | 'running' | 'done'
-
-  // Config builder state
-  configBuilderStart: ConfigBuilderStartEvent | null
-  componentSpecRetrieval: ComponentSpecRetrievalEvent | null
-  configGenerated: ConfigGeneratedEvent | null
-
-  // Doc writer state
-  docOutline: DocOutlineEvent | null
-  docSectionProgress: DocSectionProgressEvent | null
-  docComplete: DocCompleteEvent | null
-
-  // Content type state
-  contentTypeClassification: ContentTypeClassificationEvent | null
-  socialPostProgress: SocialPostProgressEvent[]
-  blogPostProgress: BlogPostProgressEvent[]
-  articleProgress: ArticleProgressEvent[]
-  tutorialProgress: TutorialProgressEvent[]
-  contentComplete: ContentCompleteEvent | null
 
   // Progress messages for real-time display
   searchProgressMessage: string | null
@@ -102,25 +72,13 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
   queryEvaluation: null,
   intentClassification: null,
   queryExpansion: null,
-  alphaRefinement: null,
+  qualityGate: null,
   searchCandidates: [],
   rerankedDocuments: [],
   documentGradingSummary: null,
   responseGrading: null,
   searchStatus: 'idle',
   rerankerStatus: 'idle',
-  configBuilderStart: null,
-  componentSpecRetrieval: null,
-  configGenerated: null,
-  docOutline: null,
-  docSectionProgress: null,
-  docComplete: null,
-  contentTypeClassification: null,
-  socialPostProgress: [],
-  blogPostProgress: [],
-  articleProgress: [],
-  tutorialProgress: [],
-  contentComplete: null,
   searchProgressMessage: null,
   rerankerProgressMessage: null,
   rerankerProgress: 0,
@@ -136,25 +94,13 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     queryEvaluation: null,
     intentClassification: null,
     queryExpansion: null,
-    alphaRefinement: null,
+    qualityGate: null,
     searchCandidates: [],
     rerankedDocuments: [],
     documentGradingSummary: null,
     responseGrading: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
-    configBuilderStart: null,
-    componentSpecRetrieval: null,
-    configGenerated: null,
-    docOutline: null,
-    docSectionProgress: null,
-    docComplete: null,
-    contentTypeClassification: null,
-    socialPostProgress: [],
-    blogPostProgress: [],
-    articleProgress: [],
-    tutorialProgress: [],
-    contentComplete: null,
     searchProgressMessage: null,
     rerankerProgressMessage: null,
     rerankerProgress: 0,
@@ -188,8 +134,8 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
         set({ queryExpansion: event as QueryExpansionEvent })
         break
 
-      case 'alpha_refinement':
-        set({ alphaRefinement: event as AlphaRefinementEvent })
+      case 'quality_gate':
+        set({ qualityGate: event as QualityGateEvent })
         break
 
       case 'hybrid_search_start':
@@ -234,55 +180,6 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
         })
         break
 
-      // Config builder events
-      case 'config_builder_start':
-        set({ configBuilderStart: event as ConfigBuilderStartEvent })
-        break
-      case 'component_spec_retrieval':
-        set({ componentSpecRetrieval: event as ComponentSpecRetrievalEvent })
-        break
-      case 'config_generated':
-        set({ configGenerated: event as ConfigGeneratedEvent })
-        break
-
-      // Doc writer events
-      case 'doc_outline':
-        set({ docOutline: event as DocOutlineEvent })
-        break
-      case 'doc_section_progress':
-        set({ docSectionProgress: event as DocSectionProgressEvent })
-        break
-      case 'doc_complete':
-        set({ docComplete: event as DocCompleteEvent })
-        break
-
-      // Content type events
-      case 'content_type_classification':
-        set({ contentTypeClassification: event as ContentTypeClassificationEvent })
-        break
-      case 'social_post_progress':
-        set((s) => ({
-          socialPostProgress: [...s.socialPostProgress, event as SocialPostProgressEvent],
-        }))
-        break
-      case 'blog_post_progress':
-        set((s) => ({
-          blogPostProgress: [...s.blogPostProgress, event as BlogPostProgressEvent],
-        }))
-        break
-      case 'article_progress':
-        set((s) => ({
-          articleProgress: [...s.articleProgress, event as ArticleProgressEvent],
-        }))
-        break
-      case 'tutorial_progress':
-        set((s) => ({
-          tutorialProgress: [...s.tutorialProgress, event as TutorialProgressEvent],
-        }))
-        break
-      case 'content_complete':
-        set({ contentComplete: event as ContentCompleteEvent })
-        break
     }
 
     // Add event to current step if there is one
@@ -375,19 +272,13 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     queryEvaluation: null,
     intentClassification: null,
     queryExpansion: null,
-    alphaRefinement: null,
+    qualityGate: null,
     searchCandidates: [],
     rerankedDocuments: [],
     documentGradingSummary: null,
     responseGrading: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
-    configBuilderStart: null,
-    componentSpecRetrieval: null,
-    configGenerated: null,
-    docOutline: null,
-    docSectionProgress: null,
-    docComplete: null,
     expandedSteps: new Set(),
     expandedEvents: new Set(),
   }),

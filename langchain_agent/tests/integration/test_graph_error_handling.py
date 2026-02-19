@@ -327,17 +327,10 @@ def create_valid_agent_state() -> Dict[str, Any]:
         "intent": None,
         "intent_confidence": 0.0,
         "user_query": "",
-        "expanded_query": None,
         "alpha": 0.5,
-        "search_strategy": "balanced",
         "retrieved_documents": [],
-        "reranked_documents": [],
-        "agent_mode": "rag",
-        "content_type": None,
-        "content_type_confidence": 0.0,
-        "awaiting_clarification": False,
-        "clarification_type": None,
-        "clarification_candidates": [],
+        "reranker_max_score": 0.0,
+        "quality_gate_retried": False,
     }
 
 
