@@ -127,18 +127,16 @@ echo "✓ Node.js found"
 echo ""
 
 # 2. Setup ESCI dataset repository
-log "Step 2/11: Setting up ESCI dataset repository..."
+log "Step 2: Setting up ESCI dataset repository..."
 echo "📦 Setting up ESCI dataset..."
 
 ESCI_REPO_DIR="$PARENT_DIR/esci"
 ESCI_FILE="$ESCI_REPO_DIR/shopping_queries_dataset/shopping_queries_dataset_products.parquet"
 
 if [ ! -d "$ESCI_REPO_DIR" ]; then
-    log "   Cloning ESCI dataset from GitHub..."
-    echo "   Cloning ESCI dataset from GitHub..."
-    cd "$PARENT_DIR"
-    git clone https://github.com/amazon-science/esci-data.git esci > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
+    log "   Cloning ESCI dataset from GitHub (~1GB, may take a few minutes)..."
+    echo "   Cloning ESCI dataset from GitHub (~1GB, may take a few minutes)..."
+    if git clone https://github.com/amazon-science/esci-data.git "$PARENT_DIR/esci"; then
         log "   ✓ ESCI dataset cloned successfully"
         echo "   ✓ ESCI dataset cloned successfully"
     else
@@ -148,7 +146,6 @@ if [ ! -d "$ESCI_REPO_DIR" ]; then
         echo "      Manual download: Extract shopping_queries_dataset/ to ../esci/"
         exit 1
     fi
-    cd "$PROJECT_DIR"
 else
     log "✓ ESCI dataset directory exists"
     echo "✓ ESCI dataset directory exists"
@@ -216,16 +213,15 @@ fi
 
 echo ""
 
-# 4. Create and setup root .venv
-log "Step 4/11: Creating Python virtual environment..."
+# 3. Create and setup .venv
+log "Step 3: Creating Python virtual environment..."
 echo "📦 Python Virtual Environment..."
 
-VENV_PATH="$PARENT_DIR/.venv"
+VENV_PATH="$PROJECT_DIR/.venv"
 if [ ! -d "$VENV_PATH" ]; then
     log "   Creating venv at $VENV_PATH..."
-    echo "   Creating virtual environment at $PARENT_DIR/.venv..."
-    python3 -m venv "$VENV_PATH"
-    if [ $? -eq 0 ]; then
+    echo "   Creating virtual environment at $VENV_PATH..."
+    if python3 -m venv "$VENV_PATH"; then
         log "   ✓ Virtual environment created"
         echo "   ✓ Virtual environment created"
     else
@@ -233,6 +229,8 @@ if [ ! -d "$VENV_PATH" ]; then
         echo "   ❌ Failed to create virtual environment"
         exit 1
     fi
+else
+    echo "   ✓ Virtual environment exists"
 fi
 
 log "   Activating venv and installing dependencies..."
@@ -244,7 +242,7 @@ log "✓ Python dependencies installed"
 echo "✓ Python dependencies installed"
 echo ""
 
-# 5. Install frontend dependencies
+# 4. Install frontend dependencies
 echo "📦 Installing frontend dependencies..."
 
 cd "$PROJECT_DIR/web"
@@ -257,11 +255,8 @@ fi
 cd "$PROJECT_DIR"
 echo ""
 
-# Skip javadoc generation (ESCI products don't require it)
-echo ""
-
-# 8. Start Docker containers (PostgreSQL + OpenSearch)
-log "Step 8/11: Starting Docker containers..."
+# 5. Start Docker containers (PostgreSQL + OpenSearch)
+log "Step 5: Starting Docker containers..."
 echo "🐘 Starting Docker containers..."
 
 cd "$PARENT_DIR"
@@ -328,12 +323,12 @@ fi
 cd "$PROJECT_DIR"
 echo ""
 
-# 9. Initialize database, OpenSearch index, and ingest ESCI products
+# 6. Initialize database, OpenSearch index, and ingest ESCI products
 # setup.py handles everything: DB init, index creation, API validation, and product ingestion
-log "Step 9: Initializing database, OpenSearch, and ingesting products..."
+log "Step 6: Initializing database, OpenSearch, and ingesting products..."
 echo "💾 Initializing database, OpenSearch, and ingesting products..."
 
-source "$PARENT_DIR/.venv/bin/activate"
+source "$PROJECT_DIR/.venv/bin/activate"
 cd "$PROJECT_DIR"
 
 mkdir -p logs
