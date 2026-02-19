@@ -185,24 +185,8 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
     fi
 
     echo "   ✓ Generated API_KEY"
-
-    # Prompt for Google API key
-    echo ""
-    echo "   🔑 Google API Key required for Gemini AI models"
+    echo "   ⚠ Set GOOGLE_API_KEY in .env before running."
     echo "   Get your key from: https://aistudio.google.com/apikey"
-    echo ""
-    read -rp "   Enter your GOOGLE_API_KEY: " GOOGLE_API_KEY_INPUT
-
-    if [ -n "$GOOGLE_API_KEY_INPUT" ]; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' "s/your-google-api-key-here/$GOOGLE_API_KEY_INPUT/" "$PROJECT_DIR/.env"
-        else
-            sed -i "s/your-google-api-key-here/$GOOGLE_API_KEY_INPUT/" "$PROJECT_DIR/.env"
-        fi
-        echo "   ✓ GOOGLE_API_KEY configured"
-    else
-        echo "   ⚠ No key entered. Set GOOGLE_API_KEY in .env before running."
-    fi
 else
     # Extract existing API_KEY
     API_KEY=$(grep "^API_KEY=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
@@ -211,22 +195,8 @@ else
     # Check if GOOGLE_API_KEY is still the placeholder
     EXISTING_GOOGLE_KEY=$(grep "^GOOGLE_API_KEY=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
     if [ "$EXISTING_GOOGLE_KEY" = "your-google-api-key-here" ] || [ -z "$EXISTING_GOOGLE_KEY" ]; then
-        echo ""
-        echo "   🔑 Google API Key not yet configured"
+        echo "   ⚠ GOOGLE_API_KEY not configured. Set it in .env before running."
         echo "   Get your key from: https://aistudio.google.com/apikey"
-        echo ""
-        read -rp "   Enter your GOOGLE_API_KEY: " GOOGLE_API_KEY_INPUT
-
-        if [ -n "$GOOGLE_API_KEY_INPUT" ]; then
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                sed -i '' "s/^GOOGLE_API_KEY=.*/GOOGLE_API_KEY=$GOOGLE_API_KEY_INPUT/" "$PROJECT_DIR/.env"
-            else
-                sed -i "s/^GOOGLE_API_KEY=.*/GOOGLE_API_KEY=$GOOGLE_API_KEY_INPUT/" "$PROJECT_DIR/.env"
-            fi
-            echo "   ✓ GOOGLE_API_KEY configured"
-        else
-            echo "   ⚠ No key entered. Set GOOGLE_API_KEY in .env before running."
-        fi
     else
         echo "   ✓ Using existing GOOGLE_API_KEY"
     fi
