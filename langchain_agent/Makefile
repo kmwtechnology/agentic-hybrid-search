@@ -1,5 +1,8 @@
 .PHONY: help setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web
 
+# Virtual environment — all Python/pip commands use this
+VENV := .venv/bin
+
 help:
 	@echo "Agentic Hybrid Search - Development Commands"
 	@echo ""
@@ -32,50 +35,47 @@ help:
 
 setup:
 	@echo "[1/1] Running complete setup..."
-	python3 setup.py
+	PYTHONPATH=. $(VENV)/python setup.py
 
 test:
 	@echo "[1/3] Running reranker tests..."
-	python3 test_reranker.py || exit 1
+	PYTHONPATH=. $(VENV)/python test_reranker.py || exit 1
 	@echo ""
 	@echo "[2/3] Running hybrid search tests..."
-	python3 test_hybrid_search.py || exit 1
+	PYTHONPATH=. $(VENV)/python test_hybrid_search.py || exit 1
 	@echo ""
 	@echo "[3/3] Running query evaluator tests..."
-	python3 test_query_evaluator.py || exit 1
+	PYTHONPATH=. $(VENV)/python test_query_evaluator.py || exit 1
 	@echo ""
 	@echo "✓ All tests passed!"
 
 test-reranker:
 	@echo "Running reranker tests..."
-	python3 test_reranker.py
+	PYTHONPATH=. $(VENV)/python test_reranker.py
 
 test-hybrid:
 	@echo "Running hybrid search tests..."
-	python3 test_hybrid_search.py
+	PYTHONPATH=. $(VENV)/python test_hybrid_search.py
 
 test-query:
 	@echo "Running query evaluator tests..."
-	python3 test_query_evaluator.py
+	PYTHONPATH=. $(VENV)/python test_query_evaluator.py
 
 lint:
 	@echo "Running code quality checks..."
-	@command -v pylint >/dev/null 2>&1 || { echo "pylint not installed. Install with: pip install pylint"; exit 1; }
-	pylint main.py config.py setup.py --disable=missing-docstring || true
+	$(VENV)/pylint main.py config.py setup.py --disable=missing-docstring || true
 
 format:
 	@echo "Formatting code with black..."
-	@command -v black >/dev/null 2>&1 || { echo "black not installed. Install with: pip install black"; exit 1; }
-	black main.py config.py setup.py test_*.py
+	$(VENV)/black main.py config.py setup.py test_*.py
 
 type-check:
 	@echo "Checking types with mypy..."
-	@command -v mypy >/dev/null 2>&1 || { echo "mypy not installed. Install with: pip install mypy"; exit 1; }
-	mypy main.py config.py --ignore-missing-imports || true
+	$(VENV)/mypy main.py config.py --ignore-missing-imports || true
 
 run:
 	@echo "Starting Agentic Hybrid Search agent..."
-	python3 main.py
+	PYTHONPATH=. $(VENV)/python main.py
 
 stop:
 	@echo "Stopping all services..."
@@ -107,7 +107,7 @@ clean-db:
 	@echo "⚠ WARNING: This will delete ALL data in PostgreSQL database!"
 	@echo "Press Ctrl+C to cancel, or continue..."
 	@sleep 3
-	python3 -c "from setup import drop_all_tables; drop_all_tables()" || echo "Database cleanup failed or database not initialized"
+	PYTHONPATH=. $(VENV)/python -c "from setup import drop_all_tables; drop_all_tables()" || echo "Database cleanup failed or database not initialized"
 	@echo "✓ Database cleaned"
 
 # Web UI development
@@ -118,7 +118,7 @@ install-web:
 dev-api:
 	@echo "Starting FastAPI backend on http://localhost:8000..."
 	@echo "API docs available at http://localhost:8000/docs"
-	uvicorn api.main:app --reload --port 8000
+	PYTHONPATH=. $(VENV)/uvicorn api.main:app --reload --port 8000
 
 dev-web:
 	@echo "Starting React frontend on http://localhost:5173..."
@@ -134,6 +134,6 @@ dev:
 	@echo "  Terminal 2: make dev-web"
 	@echo ""
 	@echo "Or start both now (backend in background):"
-	@( uvicorn api.main:app --reload --port 8000 & ) && cd web && npm run dev
+	@( PYTHONPATH=. $(VENV)/uvicorn api.main:app --reload --port 8000 & ) && cd web && npm run dev
 
 .SILENT: help
