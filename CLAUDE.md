@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Lucille documentation. Features hybrid search (vector + BM25), LLM-based reranking, multi-capability intent routing, real-time streaming via WebSocket, and multi-format content generation. Deployed on GCP Cloud Run with Google Gemini AI.
+**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Features hybrid search (vector + BM25), LLM-based reranking, intent routing, real-time streaming via WebSocket, and conversational product discovery. Deployed on GCP Cloud Run with Google Gemini AI.
 
 ## Repository Layout
 
@@ -16,13 +16,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `vector_store.py` — `OpenSearchVectorStore` + `OpenSearchRetriever` with RRF fusion
   - `reranker.py` — `GeminiReranker` with Pydantic-validated 0.0–1.0 scoring
   - `content_generators.py` — 5 content types with varying temperature/retrieval depth
-  - `config_builder.py` — Natural language → Lucille HOCON config generation
   - `link_verifier.py` — URL validation with thread-safe cache (60-min TTL)
   - `embedding_cache.py` — Query embedding cache for performance
   - `retry_utils.py` — Retry logic utilities
   - `doc_replacer.py` — Document replacement logic
   - `logging_config.py` — Structured logging with structlog (JSON/console output)
-  - `ingest_lucille_docs.py` — Documentation ingestion into OpenSearch
+  - `ingest_esci_products.py` — ESCI e-commerce product ingestion into OpenSearch (idempotent sampling, chunking, embedding)
   - `api/` — FastAPI backend
     - `api/routes/chat.py` — WebSocket chat endpoint
     - `api/routes/conversations.py` — Conversation CRUD
@@ -58,7 +57,7 @@ make dev                      # both (backend backgrounded)
 make stop                     # kill all dev processes
 
 # Full lifecycle scripts
-./scripts/setup.sh            # one-time: Docker, venv, deps, DB init, doc ingestion
+./scripts/setup.sh            # one-time: Docker, venv, deps, DB init, product ingestion
 ./scripts/start.sh            # start Docker + backend + frontend
 ./scripts/stop.sh             # stop everything
 
@@ -88,7 +87,7 @@ npm run lint                  # eslint
 
 # Deployment
 ./scripts/deploy.sh --project <GCP_PROJECT_ID>
-./scripts/gcp-init.sh --project <GCP_PROJECT_ID>  # first-time: Cloud SQL tables + doc ingestion
+./scripts/gcp-init.sh --project <GCP_PROJECT_ID>  # first-time: Cloud SQL tables + product ingestion
 ```
 
 ## Architecture
@@ -99,7 +98,7 @@ npm run lint                  # eslint
 Intent Classifier → Query Evaluator → Retriever → Alpha Refiner → Reranker → Agent
 ```
 
-- **Intent classification**: 5 classes — `question`, `config_request`, `documentation_request`, `summary`, `follow_up`. Keyword fast-path + LLM fallback. Confidence < 0.7 triggers clarification.
+- **Intent classification**: 3 classes — `question` (product/search queries), `summary` (summarize results), `follow_up` (continuation). Keyword fast-path + LLM fallback. Confidence < 0.7 triggers clarification.
 - **Dynamic alpha**: Controls lexical/semantic balance (0.0 = pure lexical, 1.0 = pure semantic). Default 0.25.
 - **Alpha refinement**: If max reranker score < 0.5, retries with opposite search strategy.
 - **Streaming**: WebSocket emits typed Pydantic events (`SearchProgressEvent`, `RerankerProgressEvent`, `LinkVerificationEvent`, `LLMResponseChunkEvent`, etc.) rendered in the React ObservabilityPanel.
