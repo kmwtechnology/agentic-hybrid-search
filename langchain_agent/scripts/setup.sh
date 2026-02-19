@@ -328,9 +328,10 @@ fi
 cd "$PROJECT_DIR"
 echo ""
 
-# 9. Initialize database and OpenSearch index
-log "Step 9/11: Initializing database and OpenSearch index..."
-echo "💾 Initializing database and OpenSearch..."
+# 9. Initialize database, OpenSearch index, and ingest ESCI products
+# setup.py handles everything: DB init, index creation, API validation, and product ingestion
+log "Step 9: Initializing database, OpenSearch, and ingesting products..."
+echo "💾 Initializing database, OpenSearch, and ingesting products..."
 
 source "$PARENT_DIR/.venv/bin/activate"
 cd "$PROJECT_DIR"
@@ -341,43 +342,19 @@ PYTHONPATH=. python setup.py 2>&1 | tee -a logs/setup.log
 
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
     echo ""
-    log "✓ Database and OpenSearch index initialized"
-    echo "✓ Database and OpenSearch index initialized"
-else
-    echo ""
-    log "✗ Database initialization failed. Check logs/setup.log"
-    echo "✗ Database initialization failed. Check logs/setup.log"
-    exit 1
-fi
-echo ""
-
-# 10. Generate 10K sample and ingest ESCI products
-log "Step 10/11: Preparing ESCI e-commerce products..."
-echo "🛍️  Preparing ESCI e-commerce products..."
-echo "   Step 1: Create 10K deterministic sample (seed=42) → esci_products_sample_10000.parquet"
-echo "   Step 2: Generate embeddings (~10K requests × 150 tokens = ~$0.30)"
-echo "   Step 3: Index into OpenSearch"
-echo ""
-
-log "   Running: python ingest_esci_products.py"
-PYTHONPATH=. python ingest_esci_products.py 2>&1 | tee -a logs/ingest.log
-
-if [ ${PIPESTATUS[0]} -eq 0 ]; then
-    echo ""
     SAMPLE_FILE="$PARENT_DIR/esci/shopping_queries_dataset/esci_products_sample_10000.parquet"
     if [ -f "$SAMPLE_FILE" ]; then
         SAMPLE_SIZE=$(du -h "$SAMPLE_FILE" | cut -f1)
-        log "✓ 10K product sample created: $SAMPLE_SIZE"
-        echo "✓ 10K product sample created: $SAMPLE_SIZE"
-        echo "   Location: esci/shopping_queries_dataset/esci_products_sample_10000.parquet"
+        log "✓ 10K product sample: $SAMPLE_SIZE"
+        echo "✓ 10K product sample: $SAMPLE_SIZE"
     fi
-    log "✓ ESCI products ingested and indexed successfully"
-    echo "✓ ESCI products ingested and indexed successfully"
+    log "✓ Setup complete"
+    echo "✓ Setup complete"
 else
     echo ""
-    log "❌ Product ingestion failed. Check logs/ingest.log"
-    echo "❌ Product ingestion failed. Check logs/ingest.log"
-    echo "   You can retry later with: PYTHONPATH=. python ingest_esci_products.py"
+    log "✗ Setup failed. Check logs/setup.log"
+    echo "✗ Setup failed. Check logs/setup.log"
+    echo "   You can retry product ingestion with: PYTHONPATH=. python ingest_esci_products.py"
     exit 1
 fi
 

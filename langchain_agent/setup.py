@@ -329,14 +329,17 @@ def main():
         if not args.skip_docs:
             print("\n[6/7] Loading ESCI e-commerce products...")
             print("      Ensure ESCI dataset files are present in ../esci/shopping_queries_dataset/")
+            print("      Embeddings are batched (100/call) — progress shown per batch.", flush=True)
             try:
                 from ingest_esci_products import ingest_esci_products
                 docs_loaded, chunks_loaded = ingest_esci_products()
                 print(f"      ✓ Loaded {docs_loaded:,} products ({chunks_loaded:,} chunks)")
             except Exception as e:
                 print(f"      ⚠ Error loading ESCI products: {e}")
+                import traceback
+                traceback.print_exc()
                 print("      You can manually load products later with:")
-                print("      python ingest_esci_products.py")
+                print("      PYTHONPATH=. python ingest_esci_products.py")
 
         # Summary
         print("\n" + "=" * 70)
