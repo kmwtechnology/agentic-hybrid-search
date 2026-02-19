@@ -1,5 +1,9 @@
 """
-Documentation Writer nodes for generating comprehensive Lucille documentation.
+⚠️ DEPRECATED: Documentation Writer nodes for generating comprehensive Lucille documentation.
+
+This module is specific to the Lucille ETL framework and is no longer used with the
+ESCI e-commerce product knowledge base. It is retained for potential future use but
+can be safely deleted in a follow-up cleanup PR.
 
 Provides three LangGraph nodes:
 1. doc_planner_node - Creates documentation outline from user request

@@ -1,5 +1,9 @@
 """
-Structured component spec extraction for Lucille documentation.
+⚠️ DEPRECATED: Structured component spec extraction for Lucille documentation.
+
+This module is specific to the Lucille ETL framework and is no longer used with the
+ESCI e-commerce product knowledge base. It is retained for potential future use but
+can be safely deleted in a follow-up cleanup PR.
 
 Parses javadoc-extracted text into structured ComponentParam/ComponentSpec
 dataclasses for use by the Config Builder and Documentation Writer.

@@ -1,5 +1,9 @@
 """
-Auto-generated catalog documents for Lucille components.
+⚠️ DEPRECATED: Auto-generated catalog documents for Lucille components.
+
+This module is specific to the Lucille ETL framework and is no longer used with the
+ESCI e-commerce product knowledge base. It is retained for potential future use but
+can be safely deleted in a follow-up cleanup PR.
 
 Creates compact index and category catalog documents that help answer
 enumeration queries like "What stages are available?" by generating

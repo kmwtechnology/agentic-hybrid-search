@@ -1,5 +1,9 @@
 """
-Config Builder nodes for generating Lucille HOCON pipeline configurations.
+⚠️ DEPRECATED: Config Builder nodes for generating Lucille HOCON pipeline configurations.
+
+This module is specific to the Lucille ETL framework and is no longer used with the
+ESCI e-commerce product knowledge base. It is retained for potential future use but
+can be safely deleted in a follow-up cleanup PR.
 
 Provides three LangGraph nodes:
 1. config_resolver_node - Parses user request into needed components, resolves specs

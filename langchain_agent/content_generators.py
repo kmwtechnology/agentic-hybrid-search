@@ -123,7 +123,7 @@ def _is_vague_documentation_request(query: str, content_type: str) -> bool:
     - "blog post" (vague - no topic)
     - "write a tutorial" (vague - tutorial about what?)
     - "create documentation" (vague - document what?)
-    - "Write a LinkedIn post about Lucille" (NOT vague - has topic)
+    - "Write a LinkedIn post about products" (NOT vague - has topic)
 
     Args:
         query: User's query
@@ -381,9 +381,9 @@ Reply with the number or describe the format you want."""
 
                 # Build topic clarification message
                 topic_examples = [
-                    "Lucille connectors",
-                    "OpenSearch vector search",
-                    "Pipeline configuration best practices"
+                    "product search features",
+                    "e-commerce best practices",
+                    "customer experience optimization"
                 ]
 
                 clarification_text = f"""What topic would you like me to write about?
@@ -1104,8 +1104,8 @@ Respond with 3 main sections that follow this structure:
 Format as a simple list, one section per line. Be specific and technical.
 
 Example format:
-- The Challenge: Understanding hybrid search tradeoffs
-- The Solution: Lucille's adaptive alpha weighting system
+- The Challenge: Understanding product discovery needs
+- The Solution: Hybrid search with semantic and lexical ranking
 - Deep Dive: Implementation details and performance optimization
 
 Your outline:"""
