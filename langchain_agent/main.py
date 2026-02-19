@@ -211,7 +211,7 @@ class EcommerceSearchAgent:
             )["count"]
             if count == 0:
                 print(f"✗ No documents found in OpenSearch index")
-                print("  Run: python ingest_lucille_docs.py")
+                print("  Run: python ingest_esci_products.py")
                 sys.exit(1)
             print(f"✓ OpenSearch has {count} document chunks")
         except Exception as e:

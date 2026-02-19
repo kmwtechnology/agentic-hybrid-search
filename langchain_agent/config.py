@@ -1,5 +1,5 @@
 """
-Configuration constants for Lucille Documentation RAG Agent
+Configuration constants for E-Commerce Search Agent (ESCI Products)
 """
 
 import os

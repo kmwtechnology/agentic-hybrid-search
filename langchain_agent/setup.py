@@ -298,7 +298,7 @@ def main():
     args = parser.parse_args()
 
     print("\n" + "=" * 70)
-    print("LUCILLE DOCUMENTATION RAG AGENT - COMPLETE SETUP")
+    print("E-COMMERCE SEARCH AGENT - COMPLETE SETUP")
     print("=" * 70)
     print("\nThis script will:")
     print("  1. Create PostgreSQL database (for checkpoints)")
