@@ -139,6 +139,7 @@ from config import (
     QUERY_EVAL_MODEL,
     QUERY_EVAL_TEMPERATURE,
     QUERY_EVAL_MAX_TOKENS,
+    SEARCH_DEFAULTS,
 )
 
 
@@ -383,9 +384,10 @@ class EcommerceSearchAgent:
                 break
 
         if not last_user_msg:
-            # No user message, use optimized default (0.25 = lexical-heavy from benchmarks)
+            # No user message, use collection-aware default
+            collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
             return {
-                "alpha": 0.25,
+                "alpha": collection_defaults.get("alpha", DEFAULT_ALPHA),
                 "query_analysis": "No query detected",
             }
 
@@ -449,11 +451,13 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             }
 
         except Exception as e:
-            # Fallback to default if evaluation fails
+            # Fallback to collection-aware default if evaluation fails
             elapsed = time.time() - start_time
-            logger.warning(f"Query evaluation failed: {e}, using default alpha=0.25, elapsed={elapsed:.3f}s")
+            collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
+            fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
+            logger.warning(f"Query evaluation failed: {e}, using default alpha={fallback_alpha}, elapsed={elapsed:.3f}s")
             return {
-                "alpha": 0.25,
+                "alpha": fallback_alpha,
                 "query_analysis": f"Evaluation failed: {str(e)}",
             }
 
@@ -661,8 +665,6 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 # If still no label, extract class/method name from source path
                 if not label and "source" in doc.metadata:
                     source = doc.metadata["source"]
-                    # For Java classes: "com/kmwllc/lucille/core/Connector.html" → "Connector"
-                    # For markdown: "lucille-examples/README.md" → "Lucille Examples README"
                     if source.endswith(".html"):
                         # Java documentation - extract class name
                         label = source.split("/")[-1].replace(".html", "")
@@ -1521,13 +1523,6 @@ Respond with JSON only. No other text."""
         """
         intent = state.get("intent", "question")
 
-        # All intents (config_request, documentation_request, etc.) are now treated as questions
-        # since Lucille-specific features have been removed
-        if intent in ("config_request", "documentation_request"):
-            logger.info(f"Lucille-specific intent '{intent}' remapped to question for product search")
-            state["intent"] = "question"
-            intent = "question"
-
         # Route based on intent
         if intent == "clarify":
             return "clarify"  # Maps to "agent" node
@@ -1802,14 +1797,11 @@ Return ONLY the rewritten query, nothing else."""
 
         workflow.add_node("agent", self.agent_node)
 
-        # Config Builder and Doc Writer nodes removed (Lucille-specific features deprecated)
-
         # Set entry point
         workflow.set_entry_point("intent_classifier")
 
         # Build routing map for intent classifier
         intent_routes = {"summary": "summary", "clarify": "agent", "other": "query_evaluator"}
-        # config_builder and doc_writer routes removed (Lucille-specific features deprecated)
 
         # Add core edges with conditional routing
         workflow.add_conditional_edges(
@@ -2342,7 +2334,7 @@ Summary:"""
             # Prepare input for the agent with new state schema
             input_data = {
                 "messages": [],
-                "alpha": 0.25,  # Default alpha (will be set by query_evaluator_node)
+                "alpha": SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {}).get("alpha", DEFAULT_ALPHA),  # Collection-aware default
                 "query_analysis": "",
                 "intent": "question",
                 "summary_text": None,

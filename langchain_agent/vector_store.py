@@ -79,21 +79,21 @@ INDEX_MAPPING = {
             },
             "doc_type": {"type": "keyword"},
             "url": {"type": "keyword"},
-            # E-commerce product fields
+            # E-commerce product fields (dual-mapped: text for BM25 search + keyword for faceting/filtering)
             "product_id": {"type": "keyword"},
-            "product_brand": {"type": "keyword"},
-            "product_color": {"type": "keyword"},
+            "product_brand": {
+                "type": "text",
+                "analyzer": "english_analyzer",
+                "fields": {"keyword": {"type": "keyword"}},
+            },
+            "product_color": {
+                "type": "text",
+                "analyzer": "english_analyzer",
+                "fields": {"keyword": {"type": "keyword"}},
+            },
             "product_locale": {"type": "keyword"},
             "esci_labels": {"type": "keyword"},
-            # Legacy Lucille fields (unused, kept for schema compatibility)
-            "component_type": {"type": "keyword"},
-            "class_name": {
-                "type": "keyword",
-                "fields": {"text": {"type": "text"}},
-            },
-            "component_spec": {"type": "object", "enabled": False},
             "collection": {"type": "keyword"},
-            "catalog_type": {"type": "keyword"},
         }
     },
 }
@@ -465,158 +465,6 @@ class OpenSearchVectorStore:
             logger.error(f"Error during text search: {e}")
             return []
 
-    def list_components(self, component_type: str) -> List[Dict]:
-        """
-        List all components of a given type with their specs.
-
-        Args:
-            component_type: "stage", "connector", "indexer", "core", or "other_api"
-
-        Returns:
-            List of metadata dicts containing class_name, component_spec, title, etc.
-        """
-        from exceptions import OpenSearchError
-
-        try:
-            body = {
-                "size": 1000,
-                "_source": {
-                    "excludes": ["embedding", "chunk_text"],
-                },
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {"term": {"collection_id": self.collection_id}},
-                            {"term": {"component_type": component_type}},
-                            {"term": {"doc_type": "api_reference"}},
-                        ]
-                    }
-                },
-                "sort": [{"class_name": {"order": "asc"}}],
-                "collapse": {"field": "document_id"},
-            }
-
-            response = self.client.search(index=self.index_name, body=body)
-            results = []
-            for hit in response["hits"]["hits"]:
-                src = hit["_source"]
-                metadata = {
-                    "source": src.get("source", ""),
-                    "title": src.get("title", ""),
-                    "doc_type": src.get("doc_type", ""),
-                    "url": src.get("url", ""),
-                    "collection": src.get("collection", ""),
-                    "component_type": src.get("component_type", ""),
-                    "class_name": src.get("class_name", ""),
-                }
-                if "component_spec" in src:
-                    metadata["component_spec"] = src["component_spec"]
-                results.append(metadata)
-            return results
-
-        except Exception as e:
-            logger.error(f"Vector store: Error listing {component_type}", extra={"error": str(e)})
-            raise OpenSearchError(
-                f"Unable to list {component_type} components",
-                operation="list_components",
-                index=self.index_name,
-                recoverable=True,
-            )
-
-    def get_component_spec(self, class_name: str) -> Optional[Dict]:
-        """
-        Look up a component spec by class name (fully-qualified or short name).
-
-        Args:
-            class_name: e.g. "CopyFields" or "com.kmwllc.lucille.stage.CopyFields"
-
-        Returns:
-            Component spec dict, or None if not found
-        """
-        from exceptions import OpenSearchError
-
-        try:
-            # Try exact match first (check multiple chunks since
-            # component_spec is stored with enabled:false and can't be queried)
-            body = {
-                "size": 5,
-                "_source": ["component_spec"],
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {"term": {"collection_id": self.collection_id}},
-                            {"term": {"class_name": class_name}},
-                        ]
-                    }
-                },
-            }
-            response = self.client.search(index=self.index_name, body=body)
-            for hit in response["hits"]["hits"]:
-                spec = hit["_source"].get("component_spec")
-                if spec:
-                    return spec
-
-            # Try wildcard match for short class name
-            body["query"]["bool"]["filter"][1] = {
-                "wildcard": {"class_name": f"*.{class_name}"}
-            }
-            response = self.client.search(index=self.index_name, body=body)
-            for hit in response["hits"]["hits"]:
-                spec = hit["_source"].get("component_spec")
-                if spec:
-                    return spec
-
-            return None
-
-        except Exception as e:
-            logger.error(f"Vector store: Error looking up {class_name}", extra={"error": str(e)})
-            raise OpenSearchError(
-                f"Unable to lookup component spec for {class_name}",
-                operation="get_component_spec",
-                index=self.index_name,
-                recoverable=True,
-            )
-
-    def get_components_by_type(self, component_type: str) -> List[Document]:
-        """
-        Get full Document objects for all components of a given type.
-
-        Args:
-            component_type: "stage", "connector", "indexer", etc.
-
-        Returns:
-            List of LangChain Document objects with full content and metadata
-        """
-        from exceptions import OpenSearchError
-
-        try:
-            body = {
-                "size": 1000,
-                "_source": {"excludes": ["embedding"]},
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {"term": {"collection_id": self.collection_id}},
-                            {"term": {"component_type": component_type}},
-                        ]
-                    }
-                },
-                "sort": [{"class_name": {"order": "asc"}}],
-                "collapse": {"field": "document_id"},
-            }
-
-            response = self.client.search(index=self.index_name, body=body)
-            return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
-
-        except Exception as e:
-            logger.error(f"Vector store: Error getting {component_type}", extra={"error": str(e)})
-            raise OpenSearchError(
-                f"Unable to get {component_type} components",
-                operation="get_components_by_type",
-                index=self.index_name,
-                recoverable=True,
-            )
-
     @staticmethod
     def _hit_to_document(hit: dict) -> Document:
         """Convert an OpenSearch hit to a LangChain Document."""
@@ -626,15 +474,50 @@ class OpenSearchVectorStore:
             "title": src.get("title", ""),
             "doc_type": src.get("doc_type", ""),
             "url": src.get("url", ""),
-            "collection": src.get("collection", ""),
-            "component_type": src.get("component_type", ""),
-            "class_name": src.get("class_name", ""),
+            "collection_id": src.get("collection_id", ""),
+            "product_id": src.get("product_id", ""),
+            "product_brand": src.get("product_brand", ""),
+            "product_color": src.get("product_color", ""),
         }
-        if "component_spec" in src:
-            metadata["component_spec"] = src["component_spec"]
-        if "catalog_type" in src:
-            metadata["catalog_type"] = src["catalog_type"]
         return Document(page_content=src.get("chunk_text", ""), metadata=metadata)
+
+    def get_facets(
+        self,
+        facet_fields: Optional[List[str]] = None,
+        size: int = 50,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get aggregated facet values for the current collection.
+
+        Args:
+            facet_fields: Fields to aggregate (default: product_brand, product_color)
+            size: Max number of buckets per facet
+
+        Returns:
+            Dict mapping field names to lists of {value, count} dicts
+        """
+        if facet_fields is None:
+            facet_fields = ["product_brand", "product_color"]
+
+        agg_body: Dict[str, Any] = {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "filter": [{"term": {"collection_id": self.collection_id}}]
+                }
+            },
+            "aggs": {},
+        }
+        for field in facet_fields:
+            keyword_field = f"{field}.keyword" if not field.endswith(".keyword") else field
+            agg_body["aggs"][field] = {"terms": {"field": keyword_field, "size": size}}
+
+        response = self.client.search(index=self.index_name, body=agg_body)
+        facets = {}
+        for field in facet_fields:
+            buckets = response.get("aggregations", {}).get(field, {}).get("buckets", [])
+            facets[field] = [{"value": b["key"], "count": b["doc_count"]} for b in buckets]
+        return facets
 
 
 class OpenSearchRetriever:
@@ -653,6 +536,35 @@ class OpenSearchRetriever:
         self.k = k
         self.fetch_k = fetch_k
         self.alpha = alpha
+
+    @staticmethod
+    def collapse_by_document(
+        documents: List[Document],
+        collapse_field: str = "product_id",
+    ) -> List[Document]:
+        """
+        Collapse multiple chunks from the same document into one result.
+
+        Keeps only the first (highest-scored) chunk per unique document.
+        Applied to product collections where chunks are redundant fragments
+        of the same product, not distinct perspectives.
+
+        Args:
+            documents: Retrieved documents (assumed ranked by relevance)
+            collapse_field: Metadata field to deduplicate by
+
+        Returns:
+            Documents with at most one per unique collapse_field value
+        """
+        seen_ids: set = set()
+        collapsed: List[Document] = []
+        for doc in documents:
+            doc_id = doc.metadata.get(collapse_field)
+            if not doc_id or doc_id not in seen_ids:
+                if doc_id:
+                    seen_ids.add(doc_id)
+                collapsed.append(doc)
+        return collapsed
 
     def invoke(
         self,
@@ -674,13 +586,19 @@ class OpenSearchRetriever:
             query = str(input_dict)
 
         if self.search_type == "hybrid":
-            return self.vector_store.hybrid_search(
+            documents = self.vector_store.hybrid_search(
                 query,
                 k=self.k,
                 fetch_k=self.fetch_k,
                 alpha=self.alpha,
             )
         elif self.search_type == "similarity":
-            return self.vector_store.similarity_search(query, k=self.k)
+            documents = self.vector_store.similarity_search(query, k=self.k)
         else:
             raise ValueError(f"Unknown search_type: {self.search_type}")
+
+        # Deduplicate product chunks — keep only the top-scoring chunk per product
+        if self.vector_store.collection_id == "esci_products":
+            documents = self.collapse_by_document(documents, "product_id")
+
+        return documents

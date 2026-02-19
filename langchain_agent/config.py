@@ -85,6 +85,8 @@ __all__ = [
     "ESCI_DATASET_DIR",
     "ESCI_PRODUCT_LOCALE",
     "ESCI_INGEST_LIMIT",
+    "CHUNKING_STRATEGY",
+    "SEARCH_DEFAULTS",
     # Sample data
     "DEFAULT_THREAD_ID",
     # Conversation compaction
@@ -360,6 +362,30 @@ ESCI_PRODUCT_LOCALE = os.getenv("ESCI_PRODUCT_LOCALE", "us")
 
 # Default number of products to ingest (can be overridden with --limit flag)
 ESCI_INGEST_LIMIT = int(os.getenv("ESCI_INGEST_LIMIT", "10000"))
+
+# ============================================================================
+# CHUNKING STRATEGY (per-collection)
+# ============================================================================
+# Products are short (50-500 words) and should be indexed as whole units.
+# New collections can override with {"enabled": True, "chunk_size": 1000, "chunk_overlap": 200}.
+CHUNKING_STRATEGY = {
+    "esci_products": {
+        "enabled": False,
+    },
+}
+
+# ============================================================================
+# SEARCH DEFAULTS (per-collection)
+# ============================================================================
+# Products need higher semantic weight (α=0.65) for similarity matching.
+# New collections can define their own alpha/fetch_k/reranker_top_k.
+SEARCH_DEFAULTS = {
+    "esci_products": {
+        "alpha": 0.65,
+        "fetch_k": 40,
+        "reranker_top_k": 10,
+    },
+}
 
 # ============================================================================
 # SAMPLE DATA

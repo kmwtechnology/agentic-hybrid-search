@@ -15,13 +15,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `exceptions.py` — Exception hierarchy, all inherit from `AgenticHybridSearchError`
   - `vector_store.py` — `OpenSearchVectorStore` + `OpenSearchRetriever` with RRF fusion
   - `reranker.py` — `GeminiReranker` with Pydantic-validated 0.0–1.0 scoring
-  - `content_generators.py` — 5 content types with varying temperature/retrieval depth
   - `link_verifier.py` — URL validation with thread-safe cache (60-min TTL)
   - `embedding_cache.py` — Query embedding cache for performance
   - `retry_utils.py` — Retry logic utilities
   - `doc_replacer.py` — Document replacement logic
   - `logging_config.py` — Structured logging with structlog (JSON/console output)
-  - `ingest_esci_products.py` — ESCI e-commerce product ingestion into OpenSearch (idempotent sampling, chunking, embedding)
+  - `ingest_esci_products.py` — ESCI e-commerce product ingestion into OpenSearch (idempotent sampling, whole-product embedding)
   - `api/` — FastAPI backend
     - `api/routes/chat.py` — WebSocket chat endpoint
     - `api/routes/conversations.py` — Conversation CRUD
@@ -107,7 +106,7 @@ Intent Classifier → Query Evaluator → Retriever → Alpha Refiner → Rerank
 ```
 
 - **Intent classification**: 3 classes — `question` (product/search queries), `summary` (summarize results), `follow_up` (continuation). Keyword fast-path + LLM fallback. Confidence < 0.7 triggers clarification.
-- **Dynamic alpha**: Controls lexical/semantic balance (0.0 = pure lexical, 1.0 = pure semantic). Default 0.25.
+- **Dynamic alpha**: Controls lexical/semantic balance (0.0 = pure lexical, 1.0 = pure semantic). Collection-aware defaults via `SEARCH_DEFAULTS` in config.py (esci_products: α=0.65).
 - **Alpha refinement**: If max reranker score < 0.5, retries with opposite search strategy.
 - **Streaming**: WebSocket emits typed Pydantic events (`SearchProgressEvent`, `RerankerProgressEvent`, `LinkVerificationEvent`, `LLMResponseChunkEvent`, etc.) rendered in the React ObservabilityPanel.
 
@@ -131,6 +130,10 @@ Intent Classifier → Query Evaluator → Retriever → Alpha Refiner → Rerank
 - **State access**: `CustomAgentState` uses `total=False`. Only `messages` is guaranteed. Always use `state.get("field", default)`, never `state["field"]` for optional fields.
 - **Observable events**: Pipeline emits Pydantic-typed events over WebSocket for real-time UI visualization. Event schemas in `api/schemas/events.py` must stay in sync with frontend types in `web/src/types/events.ts`.
 - **Hybrid search**: Vector + full-text results fused via Reciprocal Rank Fusion (k=60). The `alpha` parameter controls weighting (0.0 = pure lexical, 1.0 = pure semantic).
+- **Product deduplication**: `OpenSearchRetriever.collapse_by_document()` removes duplicate product chunks from results. Applied automatically for `esci_products` collection.
+- **No chunking for products**: ESCI products are indexed as whole units (not chunked). Controlled by `CHUNKING_STRATEGY` in config.py. Products are short (50-500 words) and don't benefit from 1000-char chunking.
+- **Dual-mapped attributes**: `product_brand` and `product_color` are mapped as both `text` (for BM25 search) and `keyword` (for faceting/filtering). Use `.keyword` suffix for aggregations.
+- **Faceting**: `OpenSearchVectorStore.get_facets()` returns aggregated attribute values (brands, colors) for the collection.
 - **Error hierarchy**: Custom exceptions in `exceptions.py` — all inherit from `AgenticHybridSearchError`. Used by `reranker.py`, `vector_store.py`, `retry_utils.py`, and test files.
 - **Auth**: API_KEY env var required; validated via middleware on protected routes (`api/middleware/auth.py`).
 
@@ -143,9 +146,9 @@ The `ingest_esci_products.py` script loads Amazon ESCI e-commerce products from 
 2. **Filter**: Selects English (US) products only (`product_locale == "us"`)
 3. **Sample**: Deterministic sampling with `random_state=42` for reproducibility
 4. **Cache**: Saves sample as `esci/shopping_queries_dataset/esci_products_sample_{limit}.parquet` (idempotent — cached parquets reused on subsequent runs)
-5. **Chunk**: Concatenates product title + description + bullet points; chunks into 1000-char segments with 200-char overlap
-6. **Embed**: Generates 768-dim Gemini embeddings for each chunk
-7. **Index**: Bulk uploads to OpenSearch with metadata (product_id, product_brand, product_color, product_locale)
+5. **Concatenate**: Combines product title + description + bullet points into a single document (no chunking — products are 50-500 words)
+6. **Embed**: Generates one 768-dim Gemini embedding per product
+7. **Index**: Bulk uploads to OpenSearch with dual-mapped metadata (product_id, product_brand, product_color, product_locale)
 
 ### Configuration
 Key environment variables in `.env` (see `langchain_agent/.env.example`):

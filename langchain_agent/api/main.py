@@ -82,8 +82,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Lucille Documentation RAG API",
-    description="WebSocket-based API for observing agent execution with full observability",
+    title="Agentic Hybrid Search API",
+    description="WebSocket-based API for e-commerce product search with hybrid search and observability",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",

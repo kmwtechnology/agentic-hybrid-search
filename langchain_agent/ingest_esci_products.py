@@ -32,12 +32,13 @@ from config import (
     EMBEDDINGS_MODEL,
     VECTOR_DIMENSION,
     OPENSEARCH_INDEX_NAME,
+    CHUNKING_STRATEGY,
 )
 from vector_store import create_opensearch_client, INDEX_MAPPING, SEARCH_PIPELINE, OPENSEARCH_SEARCH_PIPELINE
 
 logger = logging.getLogger(__name__)
 
-# Document chunking settings (matching Lucille ingestion)
+# Chunking settings — only used if CHUNKING_STRATEGY enables chunking for the collection
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
@@ -199,7 +200,12 @@ def ingest_product(
         return 0, 0, None
 
     try:
-        chunks = chunk_text(chunk_text_content)
+        # Products are indexed as whole units (no chunking) per CHUNKING_STRATEGY
+        strategy = CHUNKING_STRATEGY.get(ESCI_COLLECTION_NAME, {})
+        if strategy.get("enabled", False):
+            chunks = chunk_text(chunk_text_content)
+        else:
+            chunks = [chunk_text_content]
         actions = []
         generated_embedding = None
 
