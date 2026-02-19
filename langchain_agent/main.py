@@ -866,7 +866,7 @@ OUTPUT:"""
             - confidence: 0.0-1.0 confidence score
             - clarifying_questions: List of questions to ask if confidence is low
         """
-        from config import ENABLE_CONFIG_BUILDER, ENABLE_DOC_WRITER
+        
 
         prompt = self._build_intent_prompt(user_input, messages)
 
@@ -891,21 +891,13 @@ OUTPUT:"""
 
 
     def _build_intent_prompt(self, user_input: str, messages: Sequence[BaseMessage]) -> str:
-        from config import ENABLE_CONFIG_BUILDER, ENABLE_DOC_WRITER
-
         history_block = self._build_recent_context(messages, limit=6)
 
-        # Build available intents list based on feature flags
+        # Available intents for product search
         available_intents = ["question", "summary", "follow_up"]
-        if ENABLE_CONFIG_BUILDER:
-            available_intents.insert(1, "config_request")
-        if ENABLE_DOC_WRITER:
-            available_intents.insert(2 if ENABLE_CONFIG_BUILDER else 1, "documentation_request")
 
         intents_str = "|".join(available_intents)
-
-        # Build example format with first available intent
-        example_intent = available_intents[0] if available_intents else "question"
+        example_intent = "question"
 
         prompt = f"""Classify user intent. Return ONLY valid JSON.
 
@@ -943,46 +935,10 @@ CLASSIFICATION RULES:
    - Key: Conversational questions expecting direct answers, NOT multi-section publications
    - This is the DEFAULT intent for most queries"""
 
-        # Only include CONFIG_REQUEST rules if feature is enabled
-        if ENABLE_CONFIG_BUILDER:
-            prompt += """
+        # Only product search intents - simplified rules
+        prompt += """
 
-2. CONFIG_REQUEST: User wants a Lucille pipeline configuration generated
-   - TRIGGER KEYWORD: "pipeline" anywhere in message → ALWAYS this intent
-   - Other keywords: "config", "HOCON", "configuration file"
-   - Examples that MUST be config_request:
-     * "Build me a CSV to Solr pipeline"
-     * "Create a pipeline with CopyFields"
-     * "Generate a pipeline configuration"
-   - If you see "pipeline", classify as config_request immediately"""
-
-        # Only include DOCUMENTATION_REQUEST rules if feature is enabled
-        if ENABLE_DOC_WRITER:
-            rule_num = 3 if ENABLE_CONFIG_BUILDER else 2
-            prompt += f"""
-
-{rule_num}. DOCUMENTATION_REQUEST: User wants multi-section content for publication
-   - Includes: API documentation, tutorials, guides, how-to articles, blog posts
-   - Action verbs: "write", "create", "document", "draft", "compose"
-   - Content types: "tutorial", "guide", "article", "blog post", "documentation", "reference"
-   - Examples:
-     * "Write a tutorial on how to create a pipeline"
-     * "Create a guide for beginners"
-     * "Write documentation for the CSVConnector"
-     * "Document all available stages"
-     * "Write an article about search optimization"
-   - Key: If requesting structured, publication-ready content → documentation_request"""
-
-        # Continue with remaining rules
-        rule_num = 2
-        if ENABLE_CONFIG_BUILDER:
-            rule_num += 1
-        if ENABLE_DOC_WRITER:
-            rule_num += 1
-
-        prompt += f"""
-
-{rule_num}. SUMMARY: User explicitly requests a recap/summary of the conversation
+2. SUMMARY: User explicitly requests a recap/summary of the conversation
    - Requires keywords: "summarize", "recap", "summary", "what have we covered"
    - Must be about the CONVERSATION itself, not about a topic
    - Examples: "Summarize what we discussed", "Recap the conversation"
@@ -1005,22 +961,9 @@ CLASSIFICATION RULES:
      * "OK", "Got it", "Thanks"
 
 PRIORITY ORDER - Check in this exact order:
-1. SUMMARY if "summarize", "recap", or "summary" present"""
-
-        priority_num = 2
-        if ENABLE_CONFIG_BUILDER:
-            prompt += f"""
-{priority_num}. CONFIG_REQUEST if "pipeline", "config", or "HOCON" present"""
-            priority_num += 1
-
-        if ENABLE_DOC_WRITER:
-            prompt += f"""
-{priority_num}. DOCUMENTATION_REQUEST if requesting publication content ("write", "create", "tutorial", "guide", "article", "blog", "document")"""
-            priority_num += 1
-
-        prompt += f"""
-{priority_num}. FOLLOW_UP if very short acknowledgment (<5 words: "ok", "got it", "thanks", "understood", "i see", "interesting")
-{priority_num + 1}. QUESTION for everything else (DEFAULT)
+1. SUMMARY if "summarize", "recap", or "summary" present
+2. FOLLOW_UP if very short acknowledgment (<5 words: "ok", "got it", "thanks", "understood", "i see", "interesting")
+3. QUESTION for everything else (DEFAULT) - the standard intent for product search queries"""
 
 CONFIDENCE GUIDELINES:
 - 0.9-1.0: Very clear intent, unambiguous message
@@ -1838,7 +1781,7 @@ Return ONLY the rewritten query, nothing else."""
         - Phase 3: Alpha refinement (configurable, default enabled)
         - Phase 4: Iterative retrieval (configurable, default disabled)
         """
-        from config import ENABLE_ITERATIVE_RETRIEVAL, ENABLE_CONFIG_BUILDER, ENABLE_DOC_WRITER
+        from config import ENABLE_ITERATIVE_RETRIEVAL
 
         logger.info("Creating agent graph with automatic retrieval")
 
@@ -1899,67 +1842,7 @@ Return ONLY the rewritten query, nothing else."""
             workflow.add_edge("query_rewriter", "retriever")
 
         # Config builder edges
-        if ENABLE_CONFIG_BUILDER:
-            workflow.add_edge("config_resolver", "config_generator")
-            workflow.add_edge("config_generator", "config_response")
-            workflow.add_edge("config_response", END)
-
         # Documentation writer edges
-        if ENABLE_DOC_WRITER:
-            from config import ENABLE_CONTENT_TYPE_CLASSIFICATION
-
-            # Content type classifier routes to appropriate generator (or END if clarification needed)
-            if ENABLE_CONTENT_TYPE_CLASSIFICATION:
-                workflow.add_conditional_edges(
-                    "content_type_classifier",
-                    self._route_after_content_type_classifier,
-                    {
-                        "social": "social_content_generator",
-                        "blog": "blog_content_generator",
-                        "article": "article_content_generator",
-                        "tutorial": "tutorial_generator",
-                        "comprehensive": "doc_planner",
-                        END: END,  # When clarification is needed
-                    }
-                )
-
-                # Format clarification resolver routes to appropriate generator
-                workflow.add_conditional_edges(
-                    "format_clarification_resolver",
-                    self._route_by_content_type,
-                    {
-                        "social": "social_content_generator",
-                        "blog": "blog_content_generator",
-                        "article": "article_content_generator",
-                        "tutorial": "tutorial_generator",
-                        "comprehensive": "doc_planner",
-                    }
-                )
-
-                # Topic resolver routes to appropriate generator
-                workflow.add_conditional_edges(
-                    "topic_clarification_resolver",
-                    self._route_by_content_type,
-                    {
-                        "social": "social_content_generator",
-                        "blog": "blog_content_generator",
-                        "article": "article_content_generator",
-                        "tutorial": "tutorial_generator",
-                        "comprehensive": "doc_planner",
-                    }
-                )
-
-                # Lightweight generators → END
-                workflow.add_edge("social_content_generator", END)
-                workflow.add_edge("blog_content_generator", END)
-                workflow.add_edge("article_content_generator", END)
-                workflow.add_edge("tutorial_generator", END)
-
-            # Comprehensive docs → existing pipeline
-            workflow.add_edge("doc_planner", "doc_gatherer")
-            workflow.add_edge("doc_gatherer", "doc_synthesizer")
-            workflow.add_edge("doc_synthesizer", END)
-
         # Agent is the final step for RAG pipeline
         workflow.add_edge("agent", END)
 
@@ -1968,10 +1851,6 @@ Return ONLY the rewritten query, nothing else."""
 
         # Log graph structure
         modes = ["RAG"]
-        if ENABLE_CONFIG_BUILDER:
-            modes.append("Config Builder")
-        if ENABLE_DOC_WRITER:
-            modes.append("Doc Writer")
         logger.info(f"Agent graph created with modes: {', '.join(modes)}")
 
     def generate_thread_id(self):

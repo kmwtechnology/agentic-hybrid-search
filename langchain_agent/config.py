@@ -119,9 +119,6 @@ __all__ = [
     "CHECKPOINT_SELECTIVE_SERIALIZATION",
     "CHECKPOINT_KEEP_VERSIONS",
     "CHECKPOINT_COMPACTION_DAYS",
-    # Multi-Capability Agent
-    "ENABLE_CONFIG_BUILDER",
-    "ENABLE_DOC_WRITER",
     # Content Type Classification
     "ENABLE_CONTENT_TYPE_CLASSIFICATION",
     "CONTENT_TYPE_CLASSIFIER_MODEL",
@@ -469,16 +466,10 @@ CHECKPOINT_KEEP_VERSIONS = 3
 CHECKPOINT_COMPACTION_DAYS = 7
 
 # ============================================================================
-# MULTI-CAPABILITY AGENT CONFIGURATION
+# CONTENT TYPE CLASSIFICATION CONFIGURATION
 # ============================================================================
 
-# Enable Config Builder mode (generates Lucille HOCON pipeline configs)
-ENABLE_CONFIG_BUILDER = os.getenv("ENABLE_CONFIG_BUILDER", "true").lower() == "true"
-
-# Enable Documentation Writer mode (generates multi-section documentation)
-ENABLE_DOC_WRITER = os.getenv("ENABLE_DOC_WRITER", "true").lower() == "true"
-
-# Enable Content Type Classification (sub-routing within doc_writer)
+# Enable Content Type Classification (for product content generation)
 # When enabled, documentation_request intent routes to classifier first
 # When disabled, documentation_request routes directly to doc_planner
 ENABLE_CONTENT_TYPE_CLASSIFICATION = os.getenv("ENABLE_CONTENT_TYPE_CLASSIFICATION", "true").lower() == "true"
