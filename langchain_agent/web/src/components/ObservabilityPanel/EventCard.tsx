@@ -61,6 +61,11 @@ const eventTypeConfig: Record<string, { label: string; color: string; bgColor: s
     color: 'text-amber-400',
     bgColor: 'bg-amber-500/5 border-amber-500/20',
   },
+  opensearch_query: {
+    label: 'OpenSearch Query',
+    color: 'text-yellow-400',
+    bgColor: 'bg-yellow-500/5 border-yellow-500/20',
+  },
   llm_reasoning_start: {
     label: 'LLM Reasoning',
     color: 'text-cyan-400',
@@ -264,6 +269,28 @@ function EventDetails({ event }: { event: AgentEvent }) {
                   <li key={i}>{reason}</li>
                 ))}
               </ul>
+            </div>
+          )}
+        </div>
+      )
+
+    case 'opensearch_query':
+      return (
+        <div className="space-y-2 text-xs text-gray-300">
+          <div><span className="text-gray-500">Intent:</span> {(event as any).intent}</div>
+          <div><span className="text-gray-500">Alpha:</span> {((event as any).alpha * 100).toFixed(0)}%</div>
+          <div className="space-y-1">
+            <div className="text-gray-500">Query:</div>
+            <div className="bg-black/30 p-2 rounded text-gray-300 break-words">
+              {(event as any).query}
+            </div>
+          </div>
+          {(event as any).filter_summary && (
+            <div className="space-y-1">
+              <div className="text-gray-500">Applied Filters:</div>
+              <div className="bg-black/30 p-2 rounded text-yellow-300 font-mono">
+                {(event as any).filter_summary}
+              </div>
             </div>
           )}
         </div>

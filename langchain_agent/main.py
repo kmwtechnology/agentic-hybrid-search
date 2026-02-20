@@ -63,7 +63,7 @@ try:
         SearchProgressEvent, RerankerProgressEvent,
         LinkVerificationEvent, DocumentReplacementEvent,
         LLMResponseStartEvent, LLMResponseChunkEvent,
-        QueryExpansionEvent
+        QueryExpansionEvent, OpenSearchQueryEvent
     )
     _EVENTS_AVAILABLE = True
 except ImportError:
@@ -78,6 +78,7 @@ except ImportError:
     LLMResponseStartEvent = None
     LLMResponseChunkEvent = None
     QueryExpansionEvent = None
+    OpenSearchQueryEvent = None
     _EVENTS_AVAILABLE = False
 
 # ============================================================================
@@ -979,6 +980,32 @@ Return ONLY a JSON object with keys "brand" and "color" (empty string if not fou
             logger.debug(f"Attribute extraction failed: {e}")
             return []
 
+    def _format_filter_summary(self, filters: Optional[List[Dict[str, Any]]]) -> Optional[str]:
+        """
+        Format filter objects into human-readable summary.
+
+        Example:
+            [{"match": {"product_brand": {"query": "Sony"}}}]
+            → "brand: Sony"
+        """
+        if not filters:
+            return None
+
+        try:
+            parts = []
+            for f in filters:
+                if "match" in f:
+                    match_obj = f["match"]
+                    if "product_brand" in match_obj:
+                        query = match_obj["product_brand"].get("query", "")
+                        parts.append(f"brand: {query}")
+                    elif "product_color" in match_obj:
+                        query = match_obj["product_color"].get("query", "")
+                        parts.append(f"color: {query}")
+            return ", ".join(parts) if parts else None
+        except Exception:
+            return None
+
     def _classify_intent(self, user_input: str, messages: Sequence[BaseMessage]) -> tuple[str, str, float, list]:
         """
         Classify user intent using LLM.
@@ -1344,6 +1371,20 @@ Respond with JSON only. No other text."""
             attribute_filters = self._extract_attributes(query)
             if attribute_filters:
                 logger.info(f"Retriever: applying {len(attribute_filters)} attribute filter(s)")
+
+        # Emit OpenSearch query event with filters and modifications
+        if OpenSearchQueryEvent:
+            try:
+                filter_summary = self._format_filter_summary(attribute_filters)
+                self._emit_event_from_sync(OpenSearchQueryEvent(
+                    query=query,
+                    alpha=alpha,
+                    filters=attribute_filters,
+                    filter_summary=filter_summary,
+                    intent=intent
+                ))
+            except Exception as e:
+                logger.debug(f"Could not emit OpenSearch query event: {e}")
 
         # Emit embedding progress
         if SearchProgressEvent:

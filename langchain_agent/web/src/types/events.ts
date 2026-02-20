@@ -71,6 +71,16 @@ export interface QueryExpansionEvent extends BaseEvent {
   expansion_reason: string
 }
 
+export interface OpenSearchQueryEvent extends BaseEvent {
+  type: 'opensearch_query'
+  node: 'retriever'
+  query: string
+  alpha: number  // 0.0=lexical, 1.0=semantic
+  filters?: Record<string, unknown>[]  // Applied attribute filters
+  filter_summary?: string  // Human-readable summary (e.g., "brand: Sony, color: blue")
+  intent: string  // intent that triggered the search
+}
+
 export interface QualityGateEvent extends BaseEvent {
   type: 'quality_gate'
   node: 'quality_gate'
@@ -424,6 +434,7 @@ export type AgentEvent =
   | QueryEvaluationEvent
   | IntentClassificationEvent
   | QueryExpansionEvent
+  | OpenSearchQueryEvent
   | QualityGateEvent
   | SummaryEvent
   | HybridSearchStartEvent

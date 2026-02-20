@@ -147,6 +147,18 @@ class QueryExpansionEvent(BaseEvent):
     expansion_reason: str
 
 
+class OpenSearchQueryEvent(BaseEvent):
+    """Emitted when OpenSearch query is prepared with filters/modifications."""
+
+    type: Literal["opensearch_query"] = "opensearch_query"
+    node: Literal["retriever"] = "retriever"
+    query: str
+    alpha: AlphaWeight  # 0.0=lexical, 1.0=semantic
+    filters: Optional[List[Dict[str, Any]]] = None  # Applied attribute filters
+    filter_summary: Optional[str] = None  # Human-readable summary (e.g., "brand: Sony, color: blue")
+    intent: str  # intent that triggered the search
+
+
 class QualityGateEvent(BaseEvent):
     """Emitted when quality gate evaluates reranker scores and decides whether to retry."""
 
@@ -687,6 +699,7 @@ AgentEvent = (
     | DocumentGradingSummaryEvent
     | QueryTransformationEvent
     | QueryExpansionEvent
+    | OpenSearchQueryEvent
     | QualityGateEvent
     | LLMReasoningStartEvent
     | LLMReasoningChunkEvent
