@@ -845,108 +845,42 @@ GENERAL INSTRUCTIONS:
 
     def _expand_vague_query(self, query: str, messages: Sequence[BaseMessage]) -> str:
         """
-        Expand vague follow-up queries using LLM and conversation context.
+        Expand follow-up queries using LLM and conversation context.
 
-        Uses the lightweight alpha_estimator_llm to intelligently determine if
-        a query needs expansion and what the expanded query should be.
+        Lets the LLM intelligently decide if a query needs expansion and
+        what the expanded query should be based on conversation context.
 
         Args:
             query: The user's query
             messages: Conversation history
 
         Returns:
-            Expanded query with topic context, or original query if not needed
+            Expanded query with topic context, or original query if expansion not needed
         """
         # Build conversation context
         context = self._build_recent_context(messages, limit=4)
         if not context:
             return query
 
-        # Check if query already contains a specific topic - skip LLM expansion
-        # "What about Sony WH-1000XM5?" already has a topic, don't expand
-        # But "Which is Better?" should NOT count as having a topic
-        query_lower = query.lower()
-        query_words = query.split()
-        # Words users capitalize that are NOT specific product/brand topics
-        _NON_TOPIC_CAPS = {
-            "better", "cheaper", "worse", "more", "less", "those", "these",
-            "them", "one", "two", "three", "which", "what", "how", "compare",
-            "vs", "versus", "first", "second", "both", "either", "that",
-            "this", "any", "some", "all", "best", "most", "does", "can",
-        }
-        has_specific_topic = any(
-            word[0].isupper() and word.lower() not in _NON_TOPIC_CAPS
-            for word in query_words[1:]  # skip first word (sentence-start capitalization)
-            if len(word) > 2
-        )
-
-        # Detect vague follow-up queries that need context expansion
-        # These are queries that reference the previous topic but lack specific context
-        vague_patterns = [
-            # Continuation requests
-            "tell me more", "go on", "continue", "what else", "elaborate",
-            "expand on that", "more about that", "more info", "keep going",
-            # Action requests without context (e.g., "Provide an example" after discussing Connectors)
-            "provide", "show me", "give me", "make me an", "create a", "write a",
-            "build a", "generate an", "design a", "implement a", "show an example",
-            # Context modifiers (e.g., "For a wedding", "At the beach", "In winter")
-            "for a", "for the", "in a", "in the", "at a", "at the", "during a", "during the",
-            "on a", "on the", "with a", "with the", "under a", "under the"
-        ]
-        is_vague = any(query_lower.startswith(p) or query_lower == p for p in vague_patterns)
-
-        # Also check if query is a pure action request without a clear topic
-        # (e.g., "Provide a starter template" - no "template for what?")
-        action_verbs = ["provide", "show", "give", "make", "create", "write", "build", "generate", "design", "implement"]
-        starts_with_action = any(query_lower.startswith(v) for v in action_verbs)
-
-        # If it's an action request without a specific object/topic, it's vague
-        if starts_with_action and not has_specific_topic:
-            is_vague = True
-
-        # Pronoun references to prior products
-        pronoun_patterns = ["it ", "it?", " it.", "them ", "them?", "those ", "those?",
-                            "these ", "these?", "does it", "is it", "can it", "will it"]
-        has_pronoun_ref = any(p in f" {query_lower} " or query_lower.endswith(p.rstrip()) for p in pronoun_patterns)
-
-        # Comparative/contrast queries
-        comparative_patterns = ["which is", "which one", "which are", "compare",
-                                " vs ", "versus", "difference between",
-                                "cheaper", "better", "worse", "more expensive"]
-        has_comparative = any(p in query_lower for p in comparative_patterns)
-
-        # Short attribute questions (<=6 words, starts with question word)
-        attribute_q = ["how much", "what color", "what brand", "what size",
-                       "how big", "how heavy", "is it", "does it come", "are they"]
-        is_attr_question = len(query_words) <= 6 and any(query_lower.startswith(p) for p in attribute_q)
-
-        is_vague = is_vague or (has_pronoun_ref and not has_specific_topic) or has_comparative or is_attr_question
-
-        if not is_vague:
-            # Query has specific content, don't risk LLM hallucination
-            return query
-
-        # Use LLM only for truly vague queries
-        prompt = f"""Rewrite a follow-up message to be self-contained by resolving references from conversation context.
+        # Let LLM decide if expansion is needed based on context
+        prompt = f"""Given the conversation context and a follow-up message, determine if the message needs expansion to be self-contained.
 
 USER MESSAGE: "{query}"
 
 CONVERSATION CONTEXT:
 {context}
 
+TASK:
+If the message references previous context (pronouns, comparisons, vague mentions), rewrite it to be self-contained.
+Otherwise, return it unchanged.
+
 RULES:
-- Replace pronouns ("it", "them", "those") with the actual product name/type from context.
-- For comparisons ("Which is cheaper?"), name the products being compared.
-- For attribute questions without a subject ("How much?"), add the product being discussed.
-- If the message is already self-contained, return it unchanged.
-- Return ONLY the rewritten query text, nothing else.
+- Replace pronouns ("it", "them", "those") with actual names from context
+- Expand vague references ("For a wedding", "In winter") with previous topic context
+- For comparisons ("Which is cheaper?"), include what's being compared
+- If already self-contained, return unchanged
 
-EXAMPLES:
-- Context discusses Sony headphones → "Does it come in white?" → "Does the Sony WH-1000XM5 come in white?"
-- Context shows headphone results → "Which is cheaper?" → "Which noise-cancelling headphone is cheaper?"
-- Context about running shoes → "How much?" → "How much do the running shoes cost?"
-
-OUTPUT:"""
+Return ONLY the query text, nothing else."""
 
         try:
             response = self.alpha_estimator_llm.invoke(prompt)
@@ -967,7 +901,7 @@ OUTPUT:"""
                         self._emit_event_from_sync(QueryExpansionEvent(
                             original_query=query,
                             expanded_query=expanded,
-                            expansion_reason=f"Vague follow-up expanded using conversation context"
+                            expansion_reason="Follow-up expanded with conversation context"
                         ))
                     except Exception as emit_error:
                         logger.debug(f"Could not emit query expansion event: {emit_error}")
