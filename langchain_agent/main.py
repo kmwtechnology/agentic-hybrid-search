@@ -888,7 +888,10 @@ GENERAL INSTRUCTIONS:
             "expand on that", "more about that", "more info", "keep going",
             # Action requests without context (e.g., "Provide an example" after discussing Connectors)
             "provide", "show me", "give me", "make me an", "create a", "write a",
-            "build a", "generate an", "design a", "implement a", "show an example"
+            "build a", "generate an", "design a", "implement a", "show an example",
+            # Context modifiers (e.g., "For a wedding", "At the beach", "In winter")
+            "for a", "for the", "in a", "in the", "at a", "at the", "during a", "during the",
+            "on a", "on the", "with a", "with the", "under a", "under the"
         ]
         is_vague = any(query_lower.startswith(p) or query_lower == p for p in vague_patterns)
 
