@@ -1376,15 +1376,17 @@ Respond with JSON only. No other text."""
         if OpenSearchQueryEvent:
             try:
                 filter_summary = self._format_filter_summary(attribute_filters)
-                self._emit_event_from_sync(OpenSearchQueryEvent(
+                event = OpenSearchQueryEvent(
                     query=query,
                     alpha=alpha,
                     filters=attribute_filters,
                     filter_summary=filter_summary,
                     intent=intent
-                ))
+                )
+                logger.info(f"Retriever: emitting OpenSearch query event - intent={intent}, filters={bool(attribute_filters)}, filter_summary={filter_summary}")
+                self._emit_event_from_sync(event)
             except Exception as e:
-                logger.debug(f"Could not emit OpenSearch query event: {e}")
+                logger.error(f"Could not emit OpenSearch query event: {e}", exc_info=True)
 
         # Emit embedding progress
         if SearchProgressEvent:

@@ -4,12 +4,19 @@
 
 import { useState } from 'react'
 import { useObservabilityStore } from '../../../stores/observabilityStore'
-import { FileText, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Loader2, ExternalLink } from 'lucide-react'
+import { FileText, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Loader2, ExternalLink, Filter } from 'lucide-react'
 import clsx from 'clsx'
+import type { AgentEvent, OpenSearchQueryEvent } from '../../../types/events'
 
 export function SearchDetails() {
-  const { searchCandidates, rerankedDocuments, searchStatus, rerankerStatus } = useObservabilityStore()
+  const { searchCandidates, rerankedDocuments, searchStatus, rerankerStatus, steps } = useObservabilityStore()
   const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set())
+
+  // Get OpenSearch query event from retriever step
+  const retrieverStep = steps.find(s => s.node === 'retriever')
+  const opensearchQueryEvent = retrieverStep?.events.find(
+    (e): e is OpenSearchQueryEvent => e.type === 'opensearch_query'
+  )
 
   // Toggle document expansion
   const toggleDocExpansion = (index: number) => {
@@ -39,6 +46,39 @@ export function SearchDetails() {
 
   return (
     <div className="space-y-4 min-w-0 w-full">
+      {/* OpenSearch Query Details - Show filters and query modifications */}
+      {opensearchQueryEvent && (
+        <div className="rounded-lg bg-yellow-500/5 border border-yellow-500/20 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+            <span className="text-xs font-semibold text-yellow-300">OpenSearch Query</span>
+          </div>
+
+          <div className="space-y-2 text-xs text-gray-300">
+            <div>
+              <span className="text-gray-500">Intent:</span>{' '}
+              <span className="text-yellow-300">{opensearchQueryEvent.intent}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Alpha:</span>{' '}
+              <span className="text-yellow-300">{(opensearchQueryEvent.alpha * 100).toFixed(0)}%</span>
+            </div>
+            {opensearchQueryEvent.filter_summary && (
+              <div>
+                <span className="text-gray-500">Filters Applied:</span>{' '}
+                <span className="text-yellow-300 font-mono">{opensearchQueryEvent.filter_summary}</span>
+              </div>
+            )}
+            <div className="pt-1">
+              <span className="text-gray-500">Query:</span>
+              <div className="mt-1 p-2 rounded bg-gray-800/50 text-gray-300 break-words text-xs">
+                {opensearchQueryEvent.query}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status banners for interim messages */}
       {searchStatus === 'running' && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-sm">
