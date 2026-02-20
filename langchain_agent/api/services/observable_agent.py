@@ -60,6 +60,7 @@ from api.schemas.events import (
     MetricsEvent,
     QueryExpansionEvent,
     QualityGateEvent,
+    OpenSearchQueryEvent,
 )
 
 
