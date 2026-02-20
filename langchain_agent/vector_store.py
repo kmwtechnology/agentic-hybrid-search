@@ -343,13 +343,8 @@ class OpenSearchVectorStore:
         filters: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Native OpenSearch hybrid search using search pipeline."""
-        # Build filter clause combining collection_id and attribute filters
-        knn_filters = {"term": {"collection_id": self.collection_id}}
-        text_filters = [{"term": {"collection_id": self.collection_id}}]
-
-        if filters:
-            knn_filters = {"and": [knn_filters, filters]}
-            text_filters.append(filters)
+        # TODO: Re-enable attribute filtering after fixing OpenSearch filter syntax
+        # For now, ignore filters parameter and use simple collection_id filter
 
         body = {
             "size": k,
@@ -362,7 +357,9 @@ class OpenSearchVectorStore:
                                 "embedding": {
                                     "vector": query_embedding,
                                     "k": fetch_k,
-                                    "filter": knn_filters,
+                                    "filter": {
+                                        "term": {"collection_id": self.collection_id}
+                                    },
                                 }
                             }
                         },
@@ -377,7 +374,9 @@ class OpenSearchVectorStore:
                                         }
                                     }
                                 ],
-                                "filter": text_filters,
+                                "filter": [
+                                    {"term": {"collection_id": self.collection_id}}
+                                ],
                             }
                         },
                     ]
@@ -400,12 +399,8 @@ class OpenSearchVectorStore:
         filters: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Client-side RRF fallback for older OpenSearch versions."""
+        # TODO: Re-enable attribute filtering after fixing OpenSearch filter syntax
         RRF_K = 60
-
-        # Build filter list
-        filter_list = [{"term": {"collection_id": self.collection_id}}]
-        if filters:
-            filter_list.append(filters)
 
         # Vector search
         vector_body = {
@@ -414,7 +409,7 @@ class OpenSearchVectorStore:
             "query": {
                 "bool": {
                     "must": [{"knn": {"embedding": {"vector": query_embedding, "k": fetch_k}}}],
-                    "filter": filter_list,
+                    "filter": [{"term": {"collection_id": self.collection_id}}],
                 }
             },
         }
@@ -427,7 +422,7 @@ class OpenSearchVectorStore:
             "query": {
                 "bool": {
                     "must": [{"match": {"chunk_text": {"query": query}}}],
-                    "filter": filter_list,
+                    "filter": [{"term": {"collection_id": self.collection_id}}],
                 }
             },
         }

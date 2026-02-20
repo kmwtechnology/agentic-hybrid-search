@@ -1348,11 +1348,12 @@ Respond with JSON only. No other text."""
         logger.info(f"Retriever: query='{query[:50]}...', alpha={alpha:.2f}")
 
         # Extract attributes for attribute_filter intent
+        # TODO: Re-enable after fixing OpenSearch filter syntax for compound filters
         filters = None
-        if intent == "attribute_filter":
-            filters = self._extract_attributes(query)
-            if filters:
-                logger.info(f"Retriever: applying attribute filters: {filters}")
+        # if intent == "attribute_filter":
+        #     filters = self._extract_attributes(query)
+        #     if filters:
+        #         logger.info(f"Retriever: applying attribute filters: {filters}")
 
         # Emit embedding progress
         if SearchProgressEvent:
