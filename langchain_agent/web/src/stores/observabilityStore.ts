@@ -182,17 +182,31 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
 
     }
 
-    // Add event to current step if there is one
-    if (state.currentNode && state.steps.length > 0) {
+    // Add event to its specified node's step, or current step if no node specified
+    if (state.steps.length > 0) {
       set((s) => {
         const steps = [...s.steps]
-        const currentStepIndex = steps.findIndex(
-          (step) => step.node === s.currentNode && step.status === 'running'
-        )
-        if (currentStepIndex >= 0) {
-          steps[currentStepIndex] = {
-            ...steps[currentStepIndex],
-            events: [...steps[currentStepIndex].events, event],
+
+        // Determine which step to add the event to
+        // First check if the event has a node attribute and a running step for that node exists
+        let targetStepIndex = -1
+        if (event.node) {
+          targetStepIndex = steps.findIndex(
+            (step) => step.node === event.node && step.status === 'running'
+          )
+        }
+
+        // If no running step for the event's node, use the current node
+        if (targetStepIndex < 0 && s.currentNode) {
+          targetStepIndex = steps.findIndex(
+            (step) => step.node === s.currentNode && step.status === 'running'
+          )
+        }
+
+        if (targetStepIndex >= 0) {
+          steps[targetStepIndex] = {
+            ...steps[targetStepIndex],
+            events: [...steps[targetStepIndex].events, event],
           }
         }
         return { steps }
