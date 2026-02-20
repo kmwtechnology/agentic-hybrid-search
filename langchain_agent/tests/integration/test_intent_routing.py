@@ -2,9 +2,8 @@
 """
 Comprehensive intent and content type classification test suite.
 
-Tests all 5 intents with multiple query variations:
+Tests all intents with multiple query variations:
 - question (14 tests): Conversational Q&A
-- product_filter (10 tests): Product filtering and faceted search
 - documentation_request (15 tests): Publication content with 5 content types:
   * social_post (3 tests): LinkedIn/Twitter posts (100-300 words)
   * blog_post (3 tests): Narrative articles (1000-2000 words)
@@ -231,18 +230,6 @@ async def run_query(query: str, expected_intent: str, timeout: int = 180,
                     result.event_details["alpha_triggered"] = data.get("triggered")
                     result.event_details["alpha_max_score"] = data.get("max_score")
 
-                elif etype == "config_builder_start":
-                    result.event_details["config_request"] = data.get("user_request", "")[:100]
-
-                elif etype == "component_spec_retrieval":
-                    result.event_details["components_found"] = data.get("components_found", [])
-                    result.event_details["components_not_found"] = data.get("components_not_found", [])
-
-                elif etype == "config_generated":
-                    result.event_details["config_component_count"] = data.get("component_count")
-                    result.event_details["config_preview"] = data.get("config_preview", "")[:300]
-                    result.event_details["validation_notes"] = data.get("validation_notes", [])
-
                 elif etype == "doc_outline":
                     result.event_details["doc_sections"] = data.get("sections", [])
                     result.event_details["doc_total_components"] = data.get("total_components")
@@ -377,33 +364,6 @@ async def main():
         ("How does hybrid search work for products?", "question"),  # Asking for explanation, not docs
         ("What does the product rating mean?", "question"),
         ("Can you explain product relevance scoring?", "question"),
-
-        # ==================== PRODUCT_FILTER INTENT ====================
-        # Product filtering and faceted search
-
-        # Explicit product filtering
-        ("Show me Sony headphones under $50", "product_filter"),
-        ("Filter products by brand Nike", "product_filter"),
-        ("Find me wireless earbuds between $30 and $100", "product_filter"),
-        ("I need running shoes in size 10", "product_filter"),
-        ("Show me Sony headphones with noise canceling under $200", "product_filter"),
-
-        # Filter generation variants
-        ("Filter products with 4+ star ratings", "product_filter"),
-        ("Show me Bose products sorted by price", "product_filter"),
-        ("Find Samsung Galaxy Buds in black color", "product_filter"),
-        ("List all waterproof earbuds under $75", "product_filter"),
-        ("Filter headphones by brand JBL and type over-ear", "product_filter"),
-
-        # More filter requests
-        ("Show me products from Apple in the electronics category", "product_filter"),
-        ("Filter by price range $50 to $150", "product_filter"),
-        ("I want to see only Sennheiser headphones", "product_filter"),
-        ("Give me a list of noise-canceling headphones under $100", "product_filter"),
-
-        # Edge cases - imperative requests
-        ("Headphones under $30 please", "product_filter"),
-        ("Need wireless earbuds with long battery life", "product_filter"),
 
         # ==================== DOCUMENTATION_REQUEST INTENT ====================
         # Publication content - 5 content types with different lengths and depths

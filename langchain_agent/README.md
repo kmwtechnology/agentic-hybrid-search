@@ -1,7 +1,7 @@
 # Agentic Hybrid Search - E-Commerce Product Search Agent
 
-A production-grade LangGraph agent with three specialized capabilities:
-**RAG Q&A**, **Product Filter Builder**, and **Product Comparison Writer**. All modes share
+A production-grade LangGraph agent with two specialized capabilities:
+**RAG Q&A** and **Product Comparison Writer**. Both modes share
 the same data layer, LangGraph graph, and frontend. Uses Google Gemini AI
 for LLM inference and embeddings, OpenSearch for hybrid vector + BM25 search,
 PostgreSQL for checkpoints, and sophisticated retrieval with hybrid search and LLM-based reranking.
@@ -9,7 +9,6 @@ PostgreSQL for checkpoints, and sophisticated retrieval with hybrid search and L
 **Capabilities**:
 
 - **RAG Q&A**: Hybrid search + reranking + self-improving retrieval for e-commerce product data (Amazon Shopping Queries Dataset / ESCI)
-- **Product Filter Builder**: Generate structured product filters and faceted search queries from natural language requests
 - **Product Comparison Writer**: 5 content types with intelligent classification and optimized retrieval
   - **Social Posts** (100-300 words, 1 pass, ~6s) - Engaging LinkedIn/Twitter content about products
   - **Blog Posts** (1000-2000 words, 2 passes, ~20s) - Product roundups and buying guides
@@ -141,11 +140,6 @@ curl -H "X-API-Key: $(grep API_KEY .env | cut -d= -f2)" \
 - "Compare Sony and Bose over-ear headphones"
 - "Find waterproof fitness trackers with heart rate monitoring"
 
-**Product Filter Builder:**
-- "Filter electronics by brand Samsung with price under $200"
-- "Show me running shoes size 10 in blue, sorted by rating"
-- "Find laptops with 16GB RAM and SSD under $1000"
-
 **Product Comparison Writer:**
 - "Write a LinkedIn post about the top wireless earbuds of 2025" (social post)
 - "Create a buying guide for mechanical keyboards" (blog post)
@@ -198,7 +192,6 @@ ENABLE_RESPONSE_GRADING = True
 REFLECTION_MAX_ITERATIONS = 2
 
 # Multi-Capability Agent
-ENABLE_CONFIG_BUILDER = True   # Product filter builder pipeline
 ENABLE_DOC_WRITER = True       # Product comparison writer pipeline
 ```
 
@@ -210,16 +203,14 @@ The agent automatically routes requests based on user intent. Feature flags cont
 
 | Flag | Default | Capability | Description |
 |------|---------|-----------|-------------|
-| `ENABLE_CONFIG_BUILDER` | `True` | Product Filter Builder | Generates structured product filters and faceted search queries from natural language requests |
 | `ENABLE_DOC_WRITER` | `True` | Product Comparison Writer | Creates 5 content types (social/blog/article/tutorial/comprehensive) with intelligent classification |
 | `ENABLE_CONTENT_TYPE_CLASSIFICATION` | `True` | Content Type Sub-Classification | Enables LLM-based routing between the 5 product comparison content types |
 
 **Intent Routing:**
 
-When both flags are enabled, the intent classifier automatically routes requests:
+When the flag is enabled, the intent classifier automatically routes requests:
 
 - **Questions** ("Find wireless headphones", "What are the top-rated laptops?") → RAG Q&A pipeline (DEFAULT)
-- **Config Requests** ("Filter products by brand and price range") → Product Filter Builder pipeline
 - **Documentation Requests** ("Write a buying guide for X", "Create a comparison", "Write a review of X") → Product Comparison Writer pipeline → Content Type Classifier → Appropriate Generator (social/blog/article/tutorial/comprehensive)
 - **Summaries** ("Summarize our conversation") → Summary generator
 
@@ -227,23 +218,22 @@ When both flags are enabled, the intent classifier automatically routes requests
 - **Conversational Q&A** (questions expecting direct answers) → RAG Q&A pipeline
 - **Publication content** (tutorials, buying guides, comparisons, reviews) → Product Comparison Writer pipeline
 
-**All 5 Intents:**
+**Intents:**
 
 | Intent | Pipeline | Examples | Trigger Keywords |
 |--------|----------|----------|------------------|
 | `question` | RAG Q&A | "Find wireless headphones", "What are the best laptops?" | Questions expecting direct answers |
-| `config_request` | Product Filter Builder | "Filter by brand Samsung under $200" | "filter", "facet", "sort by", "price range" |
 | `documentation_request` | Product Comparison Writer | "Write a buying guide for X", "Compare Y products" | "write", "create", "tutorial", "guide", "article", "compare" |
 | `summary` | Summary | "Summarize our conversation" | "summarize", "recap", "summary" |
 | `follow_up` | RAG Q&A | "OK", "That makes sense", "Got it" | Short acknowledgments (<10 words) |
 
 **When to Disable:**
 
-- **Memory-constrained environments**: Disable both to reduce memory footprint
-- **RAG-only deployments**: Set both to `False` for pure question-answering mode
-- **Debugging**: Disable one capability at a time to isolate issues
+- **Memory-constrained environments**: Disable to reduce memory footprint
+- **RAG-only deployments**: Set to `False` for pure question-answering mode
+- **Debugging**: Disable to isolate issues
 
-When a feature is disabled, requests that would use it are automatically remapped to the RAG Q&A pipeline.
+When the feature is disabled, requests that would use it are automatically remapped to the RAG Q&A pipeline.
 
 ---
 
@@ -417,7 +407,6 @@ The agent uses intent-based routing to direct queries to one of three pipelines:
 START → Intent Classifier
   ├── [question]                 → Query Rewriter → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
   ├── [summary]                  → Summary → Agent → END
-  ├── [config_request]           → Filter Resolver → Filter Generator → Filter Response → END
   ├── [documentation_request]    → Doc Planner → Doc Gatherer → Doc Synthesizer → END
   └── [follow_up]                → Query Rewriter → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
 ```
@@ -430,22 +419,12 @@ Query → Intent Classifier → Query Rewriter → Query Evaluator → Summary
 ```
 
 **Features**:
-- **Intent Detection**: 5 intents (question, config_request, documentation_request, summary, follow_up) with confidence scoring
-- **Smart Routing**: Summary/follow_up skip retrieval or use minimal context; config/doc intents route to specialized pipelines
+- **Intent Detection**: 4 intents (question, documentation_request, summary, follow_up) with confidence scoring
+- **Smart Routing**: Summary/follow_up skip retrieval or use minimal context; doc intent routes to specialized pipeline
 - **Query Rewriting**: Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and short attribute questions ("how much?") using conversation context via LLM. Skips expansion when query contains a specific brand/product topic.
 - **Alpha Refinement**: Bidirectional - tries opposite search strategy when max score < 0.5
 - **Product Citations**: Generates Amazon product URLs from ASIN metadata (`https://www.amazon.com/dp/{ASIN}`) for ESCI products. Suppresses citations when max relevance < 10%.
 - **Honest Responses**: Returns "no info found" when retrieval fails (prevents hallucination)
-
-#### Product Filter Builder Pipeline
-
-```text
-Filter Request → Filter Resolver → Filter Generator → Filter Response → END
-```
-
-- **Filter Resolver**: Parses natural language request into product attributes, categories, and constraints
-- **Filter Generator**: Generates structured faceted search queries using LLM with product schema context
-- **Filter Response**: Formats filters in markdown with available facets and result preview
 
 #### Product Comparison Writer Pipeline
 
@@ -509,15 +488,12 @@ The UI provides real-time observability via WebSocket events:
 
 | Event | Description |
 |-------|-------------|
-| `intent_classification` | Intent with confidence score (5 intents: question, config_request, documentation_request, summary, follow_up) |
+| `intent_classification` | Intent with confidence score (4 intents: question, documentation_request, summary, follow_up) |
 | `query_expansion` | Original and rewritten query for follow-ups (resolves pronouns, comparatives, attribute questions) |
 | `query_evaluation` | Alpha value and query analysis reasoning |
 | `hybrid_search_start/result` | Search candidates with scores |
 | `reranker_start/result` | Reranked documents with relevance scores |
 | `alpha_refinement` | Whether alpha was adjusted due to low relevance |
-| `config_builder_start` | Product filter builder user request |
-| `component_spec_retrieval` | Product attributes requested/found/not found |
-| `config_generated` | Filter preview with available facets |
 | `content_type_classification` | Content type detected (social_post, blog_post, technical_article, tutorial, comprehensive_docs) with confidence, target length, tone, retrieval depth, temperature |
 | `social_post_progress` / `blog_post_progress` / `article_progress` / `tutorial_progress` | Progress events per content type (retrieval, outline, generation stages) |
 | `llm_response_start` | LLM streaming started (creates placeholder message) |
@@ -671,10 +647,7 @@ langchain_agent/
 ├── agent_state.py         # LangGraph state schema (TypedDict)
 ├── vector_store.py        # OpenSearch hybrid search + metadata queries
 ├── reranker.py            # Gemini LLM-based reranker
-├── config_builder.py      # Product filter builder pipeline (faceted search generation)
 ├── content_generators.py  # Product comparison writer pipeline (5 content types)
-├── component_specs.py     # Structured product attribute extraction
-├── catalog_generator.py   # Auto-generated product catalogs
 ├── exceptions.py          # Custom exception hierarchy
 ├── retry_utils.py         # Retry decorators (tenacity)
 ├── link_verifier.py       # URL validation with TTL cache (httpx)

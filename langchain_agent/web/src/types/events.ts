@@ -315,39 +315,6 @@ export interface DocumentReplacementEvent extends BaseEvent {
   documents_after_replacement: number
 }
 
-// Config builder events
-export interface ConfigBuilderStartEvent extends BaseEvent {
-  type: 'config_builder_start'
-  node: 'config_resolver'
-  user_request: string
-}
-
-export interface ResolvedComponentDetail {
-  name: string
-  component_type: string
-  resolved: boolean
-  class_name?: string
-  description?: string
-}
-
-export interface ComponentSpecRetrievalEvent extends BaseEvent {
-  type: 'component_spec_retrieval'
-  node: 'config_resolver'
-  pipeline_description?: string
-  components_requested: string[]
-  components_found: string[]
-  components_not_found: string[]
-  component_details?: ResolvedComponentDetail[]
-}
-
-export interface ConfigGeneratedEvent extends BaseEvent {
-  type: 'config_generated'
-  node: 'config_generator'
-  config_preview: string
-  component_count: number
-  validation_notes: string[]
-}
-
 // Documentation writer events
 export interface DocOutlineEvent extends BaseEvent {
   type: 'doc_outline'

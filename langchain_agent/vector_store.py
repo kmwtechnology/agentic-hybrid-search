@@ -481,45 +481,6 @@ class OpenSearchVectorStore:
         }
         return Document(page_content=src.get("chunk_text", ""), metadata=metadata)
 
-    def get_facets(
-        self,
-        facet_fields: Optional[List[str]] = None,
-        size: int = 50,
-    ) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        Get aggregated facet values for the current collection.
-
-        Args:
-            facet_fields: Fields to aggregate (default: product_brand, product_color)
-            size: Max number of buckets per facet
-
-        Returns:
-            Dict mapping field names to lists of {value, count} dicts
-        """
-        if facet_fields is None:
-            facet_fields = ["product_brand", "product_color"]
-
-        agg_body: Dict[str, Any] = {
-            "size": 0,
-            "query": {
-                "bool": {
-                    "filter": [{"term": {"collection_id": self.collection_id}}]
-                }
-            },
-            "aggs": {},
-        }
-        for field in facet_fields:
-            keyword_field = f"{field}.keyword" if not field.endswith(".keyword") else field
-            agg_body["aggs"][field] = {"terms": {"field": keyword_field, "size": size}}
-
-        response = self.client.search(index=self.index_name, body=agg_body)
-        facets = {}
-        for field in facet_fields:
-            buckets = response.get("aggregations", {}).get(field, {}).get("buckets", [])
-            facets[field] = [{"value": b["key"], "count": b["doc_count"]} for b in buckets]
-        return facets
-
-
 class OpenSearchRetriever:
     """Retriever interface for OpenSearch vector store."""
 

@@ -528,46 +528,6 @@ class DocumentReplacementEvent(BaseEvent):
 # CONFIG BUILDER EVENTS
 # ============================================================================
 
-
-class ConfigBuilderStartEvent(BaseEvent):
-    """Emitted when config builder starts processing a request."""
-
-    type: Literal["config_builder_start"] = "config_builder_start"
-    node: Literal["config_resolver"] = "config_resolver"
-    user_request: str
-
-
-class ResolvedComponent(BaseModel):
-    """Detail for a single resolved component."""
-    name: str
-    component_type: str  # connector, stage, indexer
-    resolved: bool  # True = exact spec found, False = search fallback
-    class_name: Optional[str] = None  # Full Java class name if resolved
-    description: Optional[str] = None  # Component description if resolved
-
-
-class ComponentSpecRetrievalEvent(BaseEvent):
-    """Emitted when component specs are resolved for config building."""
-
-    type: Literal["component_spec_retrieval"] = "component_spec_retrieval"
-    node: Literal["config_resolver"] = "config_resolver"
-    pipeline_description: str = ""
-    components_requested: List[str]
-    components_found: List[str]
-    components_not_found: List[str] = []
-    component_details: List[ResolvedComponent] = []
-
-
-class ConfigGeneratedEvent(BaseEvent):
-    """Emitted when a config has been generated."""
-
-    type: Literal["config_generated"] = "config_generated"
-    node: Literal["config_generator"] = "config_generator"
-    config_preview: str
-    component_count: int
-    validation_notes: List[str] = []
-
-
 # ============================================================================
 # DOCUMENTATION WRITER EVENTS
 # ============================================================================

@@ -116,12 +116,6 @@ class TestContentGenerationIntegration:
 
     @pytest.mark.asyncio
     @pytest.mark.integration
-    async def test_config_builder_pipeline(self):
-        """Config builder should request clarification and generate config."""
-        pytest.skip("Requires full LangGraph setup")
-
-    @pytest.mark.asyncio
-    @pytest.mark.integration
     async def test_doc_writer_social_post(self):
         """Documentation writer should generate social post."""
         pytest.skip("Requires full LangGraph setup")

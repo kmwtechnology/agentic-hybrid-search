@@ -338,8 +338,8 @@ class EcommerceSearchAgent:
         """
         Classify the latest user message to determine intent.
 
-        Intents: question, config_request, documentation_request, summary, follow_up, clarify
-        - config_request and documentation_request only included if features are enabled
+        Intents: question, documentation_request, summary, follow_up, clarify
+        - documentation_request only included if feature is enabled
         - If confidence is low, returns "clarify" intent with questions for the user
         - question is the DEFAULT intent (includes action requests like "Write a tutorial")
         """
@@ -954,15 +954,12 @@ CRITICAL - CHECK THESE KEYWORDS FIRST (in order):
 1. Is message vague expansion/continuation ("add more", "tell me more", "show more", "expand", "elaborate", "more detail", "more about", "more on")? → follow_up (ALWAYS)
 2. Is message a short acknowledgment (<5 words: "ok", "got it", "thanks", "understood", "i see", "interesting", "perfect")? → follow_up (ALWAYS)
 3. Does message contain "summarize", "recap", "summary"? → summary (ALWAYS)
-4. Does message contain "pipeline"? → config_request (ALWAYS)
-5. Does message contain "config" or "HOCON"? → config_request (ALWAYS)
-6. Does message contain "write", "create", "document", "draft", "tutorial", "guide", "article", "blog" as ACTION VERBS? → documentation_request (ALWAYS)
-7. None of above? → question (DEFAULT)
+4. Does message contain "write", "create", "document", "draft", "tutorial", "guide", "article", "blog" as ACTION VERBS? → documentation_request (ALWAYS)
+5. None of above? → question (DEFAULT)
 
 SPECIAL CASE: "Document X" or "Write X" or "Create X" is ALWAYS documentation_request, even if short.
 
 IMPORTANT:
-- "Build me a X to Y pipeline" is ALWAYS config_request because it contains "pipeline"
 - "Write a tutorial/guide/article" is documentation_request (publication-ready content)
 - "How do I X?" or "What is X?" is question (conversational Q&A)
 
