@@ -703,9 +703,6 @@ AgentEvent = (
     | MetricsEvent
     | LinkVerificationEvent
     | DocumentReplacementEvent
-    | ConfigBuilderStartEvent
-    | ComponentSpecRetrievalEvent
-    | ConfigGeneratedEvent
     | DocOutlineEvent
     | ContentTypeClassificationEvent
     | SocialPostProgressEvent
