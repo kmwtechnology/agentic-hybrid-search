@@ -336,12 +336,15 @@ class EcommerceSearchAgent:
 
     def intent_classifier_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        Classify the latest user message to determine intent.
+        Classify the latest user message to determine intent for e-commerce product search.
 
-        Intents: question, documentation_request, summary, follow_up, clarify
-        - documentation_request only included if feature is enabled
-        - If confidence is low, returns "clarify" intent with questions for the user
-        - question is the DEFAULT intent (includes action requests like "Write a tutorial")
+        Intents: search, comparison, attribute_filter, follow_up, summary, clarify
+        - search: General product discovery queries (DEFAULT)
+        - comparison: Comparing two or more products ("Compare X vs Y")
+        - attribute_filter: Requests with specific attributes ("Show me X in [color] under [price]")
+        - follow_up: Vague expansions needing context ("Tell me more", "Any alternatives?")
+        - summary: Conversation recap ("Summarize what we discussed")
+        - clarify: Low-confidence queries requiring disambiguation
         """
         messages = state["messages"]
         user_query = ""
@@ -366,12 +369,17 @@ class EcommerceSearchAgent:
         """
         Evaluate the query type and determine optimal alpha for hybrid search.
 
-        Lambda interpretation (0.0=lexical, 1.0=semantic):
-        - 0.0-0.2: Pure lexical (dates, model numbers, part numbers, exact identifiers)
-        - 0.2-0.4: Lexical-heavy (specific versions, brands, frameworks)
-        - 0.4-0.6: Balanced (mixed queries with concepts and specific terms)
-        - 0.6-0.8: Semantic-heavy (framework guides, optimization techniques)
-        - 0.8-1.0: Pure semantic (conceptual questions, "what is", "explain")
+        Intent-aware guidance:
+        - "comparison": Balanced to semantic-heavy (0.4-0.7) to highlight differences
+        - "attribute_filter": Lexical-heavy (0.15-0.4) to match specific attributes
+        - "search", "follow_up": Dynamic based on query semantics (0.0-1.0)
+
+        Alpha interpretation (0.0=lexical/BM25, 1.0=semantic/vector):
+        - 0.0-0.2: Pure lexical (exact model numbers, ASINs, brand+model)
+        - 0.2-0.4: Lexical-heavy (specific features, color/size, attributes)
+        - 0.4-0.6: Balanced (feature comparisons, activity-based queries)
+        - 0.6-0.8: Semantic-heavy (conceptual needs, occasion-based)
+        - 0.8-1.0: Pure semantic (gift ideas, mood/style, exploration)
         """
         start_time = time.time()
         messages = state["messages"]
@@ -391,11 +399,20 @@ class EcommerceSearchAgent:
                 "query_analysis": "No query detected",
             }
 
-        print(f"\n[Query Evaluator] Starting evaluation for query: '{last_user_msg[:80]}...'")
+        intent = state.get("intent", "search")
+        print(f"\n[Query Evaluator] Starting evaluation for query: '{last_user_msg[:80]}...' (intent: {intent})")
 
         # LLM-based query evaluation - determine optimal alpha for hybrid search
-        # Alpha controls lexical/semantic balance; query is used as-is
-        evaluation_prompt = f"""Determine the optimal alpha for hybrid search on this query.
+        # Alpha controls lexical/semantic balance; intent provides additional guidance
+        intent_guidance = ""
+        if intent == "comparison":
+            intent_guidance = "\nNOTE: This is a COMPARISON query comparing products. Use alpha 0.4-0.7 (balanced to semantic) to highlight feature differences and tradeoffs."
+        elif intent == "attribute_filter":
+            intent_guidance = "\nNOTE: This is an ATTRIBUTE_FILTER query with specific product attributes (color, size, price, features). Use alpha 0.15-0.35 (lexical-heavy) to match exact attributes."
+        elif intent == "follow_up":
+            intent_guidance = "\nNOTE: This is a FOLLOW_UP query continuing a previous search. Analyze query semantics normally and adjust alpha to refine previous results."
+
+        evaluation_prompt = f"""Determine the optimal alpha for hybrid search on this query.{intent_guidance}
 
 === YOUR TASK ===
 Query to analyze: "{last_user_msg}"
@@ -942,26 +959,27 @@ OUTPUT:"""
     def _build_intent_prompt(self, user_input: str, messages: Sequence[BaseMessage]) -> str:
         history_block = self._build_recent_context(messages, limit=6)
 
-        # Available intents for product search
-        available_intents = ["question", "summary", "follow_up"]
+        # Available intents for e-commerce product search
+        available_intents = ["search", "comparison", "attribute_filter", "follow_up", "summary"]
 
         intents_str = "|".join(available_intents)
-        example_intent = "question"
+        example_intent = "search"
 
-        prompt = f"""Classify user intent. Return ONLY valid JSON.
+        prompt = f"""Classify user intent for e-commerce product search. Return ONLY valid JSON.
 
 CRITICAL - CHECK THESE KEYWORDS FIRST (in order):
-1. Is message vague expansion/continuation ("add more", "tell me more", "show more", "expand", "elaborate", "more detail", "more about", "more on")? → follow_up (ALWAYS)
-2. Is message a short acknowledgment (<5 words: "ok", "got it", "thanks", "understood", "i see", "interesting", "perfect")? → follow_up (ALWAYS)
-3. Does message contain "summarize", "recap", "summary"? → summary (ALWAYS)
-4. Does message contain "write", "create", "document", "draft", "tutorial", "guide", "article", "blog" as ACTION VERBS? → documentation_request (ALWAYS)
-5. None of above? → question (DEFAULT)
+1. Is message a short acknowledgment (<5 words: "ok", "got it", "thanks", "understood", "yes", "no", "perfect")? → follow_up (ALWAYS)
+2. Does message contain "summarize", "recap", "summary", "what have we covered"? → summary (ALWAYS)
+3. Does message compare two or more products? ("Compare X vs Y", "Which is better: X or Y?", "How does X compare to Y?") → comparison (ALWAYS)
+4. Does message request products with specific attributes? ("Show me X in [color/size/brand]", "Find X with [attribute]", "X under/over [price]") → attribute_filter (ALWAYS)
+5. Is message vague expansion? ("more", "show", "tell me", "alternatives", "cheaper", "similar", "other options") → follow_up (ALWAYS)
+6. Everything else (general product searches) → search (DEFAULT)
 
-SPECIAL CASE: "Document X" or "Write X" or "Create X" is ALWAYS documentation_request, even if short.
-
-IMPORTANT:
-- "Write a tutorial/guide/article" is documentation_request (publication-ready content)
-- "How do I X?" or "What is X?" is question (conversational Q&A)
+IMPORTANT FOR E-COMMERCE:
+- "Find wireless headphones" → search (general discovery)
+- "Compare Sony vs Bose headphones" → comparison (product comparison)
+- "Show me headphones in blue under $100" → attribute_filter (specific attributes)
+- "Tell me more about those" → follow_up (vague expansion)
 
 AVAILABLE INTENTS: {intents_str}
 
@@ -974,42 +992,39 @@ OUTPUT FORMAT:
 }}
 
 CLASSIFICATION RULES:
-1. QUESTION: User is requesting information or asking for explanation (conversational Q&A)
-   - Includes: "How about X?", "What about X?", "Tell me about X?", "What is X?"
-   - Any message that could be rephrased as a question
-   - Examples: "How do I use X?", "What are the benefits?", "Explain how X works"
-   - Key: Conversational questions expecting direct answers, NOT multi-section publications
-   - This is the DEFAULT intent for most queries"""
 
-        # Only product search intents - simplified rules
-        prompt += """
+1. SEARCH: General product discovery and information queries
+   - User is looking for products without specific filtering or comparison
+   - Examples: "Find wireless headphones", "What are the best gaming laptops?", "Show me running shoes"
+   - Key: Open-ended product search - the DEFAULT intent for most queries
 
-2. SUMMARY: User explicitly requests a recap/summary of the conversation
-   - Requires keywords: "summarize", "recap", "summary", "what have we covered"
-   - Must be about the CONVERSATION itself, not about a topic
-   - Examples: "Summarize what we discussed", "Recap the conversation"
+2. COMPARISON: User wants to compare two or more products
+   - Keywords: "compare", "vs", "versus", "which is better", "how does X compare to Y", "difference between"
+   - Examples: "Compare Sony WH-1000XM5 vs Bose QuietComfort 45", "Which is better: Apple Watch or Garmin?"
+   - Key: User wants to understand differences/tradeoffs between products
 
-{rule_num + 1}. FOLLOW_UP: Vague continuation/expansion requests that need conversation context
-   - HIGHEST PRIORITY PATTERN: Action verbs without explicit subjects
-   - Vague expansion requests: "add more detail", "tell me more", "show more", "expand on that", "give me examples", "provide more information"
-   - Vague references: "more about that", "more on this", "expand it", "elaborate", "go deeper"
-   - Short acknowledgments: "ok", "got it", "thanks", "understood", "i see", "interesting", "perfect", "great"
-   - Key indicators:
-     * Action verb (add, show, tell, expand, give, provide) WITHOUT specific subject
-     * Vague pronouns (that, this, it, more) requiring context
-     * Request only makes sense with conversation history
-   - Examples:
-     * "Add more detail" (detail about WHAT? Needs context!)
-     * "Tell me more" (more about WHAT?)
-     * "Expand on that" (on WHAT?)
-     * "Show me examples" (examples of WHAT?)
-     * "Give me more information" (information about WHAT?)
-     * "OK", "Got it", "Thanks"
+3. ATTRIBUTE_FILTER: User requests products with specific attributes/filters
+   - Keywords: colors, sizes, brands, prices, features, ranges
+   - Examples: "Show me headphones in blue under $100", "Find wireless earbuds with 30+ hour battery", "Running shoes in size 10"
+   - Key: User has specific attribute requirements (color/size/brand/price/feature)
+   - Pattern: "[Product] with/in [attribute] [value]" or "[Product] under/over [price]"
+
+4. FOLLOW_UP: Vague continuation/expansion requests that need conversation context
+   - Vague expansion: "show me more", "tell me more", "other options", "alternatives", "something cheaper"
+   - Short acknowledgments: "ok", "got it", "thanks", "yes", "no"
+   - Key: Request only makes sense with conversation history
+   - Examples: "Any cheaper alternatives?", "Tell me more about that one", "What else do you have?"
+
+5. SUMMARY: User explicitly requests a recap of the conversation
+   - Keywords: "summarize", "recap", "summary", "what have we covered"
+   - Examples: "Summarize what we discussed", "What products did we look at?"
 
 PRIORITY ORDER - Check in this exact order:
 1. SUMMARY if "summarize", "recap", or "summary" present
-2. FOLLOW_UP if very short acknowledgment (<5 words: "ok", "got it", "thanks", "understood", "i see", "interesting")
-3. QUESTION for everything else (DEFAULT) - the standard intent for product search queries
+2. FOLLOW_UP if very short acknowledgment or vague expansion keyword
+3. COMPARISON if "compare", "vs", "which is better", "how does X compare"
+4. ATTRIBUTE_FILTER if specific attribute/filter keywords (color, size, price, features)
+5. SEARCH for everything else (DEFAULT)
 
 CONFIDENCE GUIDELINES:
 - 0.9-1.0: Very clear intent, unambiguous message
@@ -1507,22 +1522,25 @@ Respond with JSON only. No other text."""
         }
 
     def _route_after_intent(self, state: CustomAgentState) -> str:
-        """Route based on detected intent.
+        """Route based on detected intent for e-commerce product search.
 
         Returns the route key from intent_routes mapping, not the node name.
         Intent routes mapping:
         - "clarify" → agent node (direct clarification response)
         - "summary" → summary node (skip retrieval)
-        - "other" → query_evaluator node (normal Q&A pipeline for all product questions)
+        - "search", "comparison", "attribute_filter", "follow_up" → query_evaluator node (standard Q&A pipeline)
         """
-        intent = state.get("intent", "question")
+        intent = state.get("intent", "search")
 
         # Route based on intent
         if intent == "clarify":
             return "clarify"  # Maps to "agent" node
         if intent == "summary":
             return "summary"  # Maps to "summary" node
-        return "other"  # Default: maps to "query_evaluator" node for product search
+
+        # All product search intents go through standard pipeline
+        # (search, comparison, attribute_filter, follow_up)
+        return "other"  # Maps to "query_evaluator" node
 
     def _route_after_query_evaluator(self, state: CustomAgentState) -> str:
         """Route after query evaluator to retriever.
