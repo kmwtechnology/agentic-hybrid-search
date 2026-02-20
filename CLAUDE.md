@@ -113,7 +113,8 @@ Intent Classifier → Query Rewriter → Query Evaluator → Retriever → Reran
 - **Reranker**: Dedicated node that scores/reorders documents via LLM. Sets `reranker_max_score` in state.
 - **Quality gate**: If `reranker_max_score < 0.5` and not yet retried, adjusts alpha ±0.3 and retries retriever→reranker. Otherwise continues to agent.
 - **Product citations**: Agent node generates source citations from retrieved documents. For ESCI products (which have no `url` metadata), citations use Amazon canonical URLs derived from the product ASIN (`https://www.amazon.com/dp/{product_id}`). Citations are deduplicated by URL and filtered by minimum reranker relevance score (0.10).
-- **Streaming**: WebSocket emits typed Pydantic events (`SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `LLMResponseChunkEvent`, etc.) rendered in the React ObservabilityPanel.
+- **Streaming**: WebSocket emits typed Pydantic events (`SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent`, `LLMResponseChunkEvent`, etc.) rendered in the React ObservabilityPanel.
+- **Attribute filtering**: For `attribute_filter` intent, `_extract_attributes()` extracts product attributes (brand, color) from queries using LLM. Filters are applied to OpenSearch as array syntax (implicitly AND'd). `OpenSearchQueryEvent` displays extracted filters in Observability Panel (e.g., "brand: Sony, color: blue").
 
 ### Tech Stack
 
@@ -133,7 +134,7 @@ Intent Classifier → Query Rewriter → Query Evaluator → Retriever → Reran
 
 - **Bare imports & PYTHONPATH**: All Python modules use bare imports (`from config import ...`, `from exceptions import ...`). This requires `PYTHONPATH=.` when running Python scripts from `langchain_agent/`. Set it explicitly: `PYTHONPATH=. python script.py` or `export PYTHONPATH=. && python script.py`. This includes: `pytest`, `ingest_esci_products.py`, `main.py`, and any custom scripts. Omitting it causes `ModuleNotFoundError`.
 - **State access**: `CustomAgentState` uses `total=False` with ~15 fields. Only `messages` is guaranteed. Always use `state.get("field", default)`, never `state["field"]` for optional fields. Key state fields: `messages`, `intent`, `alpha`, `retrieved_documents`, `reranker_max_score`, `quality_gate_retried`, `user_query`.
-- **Observable events**: Pipeline emits Pydantic-typed events over WebSocket for real-time UI visualization. Event schemas in `api/schemas/events.py` must stay in sync with frontend types in `web/src/types/events.ts`.
+- **Observable events**: Pipeline emits Pydantic-typed events over WebSocket for real-time UI visualization. Event schemas in `api/schemas/events.py` must stay in sync with frontend types in `web/src/types/events.ts`. Events are assigned to their specified `node` step (e.g., `OpenSearchQueryEvent` with `node="retriever"` always goes to the retriever step, even if emitted after another node starts). Frontend `SearchDetails` component displays `OpenSearchQueryEvent` with query, alpha, intent, and applied filters in Knowledge Search stage.
 - **Hybrid search**: Vector + full-text results fused via Reciprocal Rank Fusion (k=60). The `alpha` parameter controls weighting (0.0 = pure lexical, 1.0 = pure semantic).
 - **Product deduplication**: `OpenSearchRetriever.collapse_by_document()` removes duplicate product chunks from results. Applied automatically for `esci_products` collection.
 - **No chunking for products**: ESCI products are indexed as whole units (not chunked). Controlled by `CHUNKING_STRATEGY` in config.py. Products are short (50-500 words) and don't benefit from 1000-char chunking.
