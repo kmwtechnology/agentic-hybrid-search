@@ -1,305 +1,113 @@
 """
-Pytest configuration and fixtures for Agentic Hybrid Search tests.
-
-Provides mock fixtures for external dependencies:
-- Google Gemini API (LLM and embeddings)
-- OpenSearch vector store
-- PostgreSQL database
-- Configuration defaults
+Pytest configuration and fixtures for e-commerce pipeline tests.
+Provides reusable fixtures for all test levels (unit, integration, E2E).
 """
 
+import os
+import sys
 import pytest
-from unittest.mock import Mock, MagicMock, AsyncMock, patch
-from datetime import datetime
-from typing import List, Tuple
+from unittest.mock import Mock, MagicMock
+from pathlib import Path
 
-from langchain_core.documents import Document
+# Add langchain_agent to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-
-# ============================================================================
-# CONFIGURATION FIXTURES
-# ============================================================================
-
-
-@pytest.fixture
-def test_config():
-    """Fixture providing test configuration overrides."""
-    return {
-        "RETRIEVER_K": 5,
-        "RETRIEVER_FETCH_K": 20,
-        "RETRIEVER_ALPHA": 0.5,
-        "RERANKER_BATCH_SIZE": 10,
-        "RERANKER_TOP_K": 3,
-        "OPENSEARCH_INDEX_NAME": "test_docs",
-        "VECTOR_COLLECTION_NAME": "test_collection",
-    }
-
-
-# ============================================================================
-# DOCUMENT FIXTURES
-# ============================================================================
+# Set test environment
+os.environ.setdefault("ENABLE_RERANKING", "true")
+os.environ.setdefault("ENABLE_QUALITY_GATE", "true")
+os.environ.setdefault("QUALITY_GATE_THRESHOLD", "0.50")
 
 
 @pytest.fixture
-def sample_documents() -> List[Document]:
-    """Fixture providing sample product documents for testing."""
+def mock_llm():
+    """Mock LLM for fast unit tests (no API calls)."""
+    llm = MagicMock()
+    llm.invoke = MagicMock(return_value=MagicMock(content="Mock response"))
+    llm.with_structured_output = MagicMock(return_value=llm)
+    return llm
+
+
+@pytest.fixture
+def mock_embeddings():
+    """Mock embeddings for fast unit tests."""
+    embeddings = MagicMock()
+    embeddings.embed_query = MagicMock(return_value=[0.1] * 768)
+    embeddings.embed_documents = MagicMock(return_value=[[0.1] * 768] * 10)
+    return embeddings
+
+
+@pytest.fixture
+def sample_documents():
+    """Sample retrieved documents for testing."""
+    from langchain_core.documents import Document
+
     return [
         Document(
-            page_content="Wireless Bluetooth headphones with 30-hour battery life and noise cancellation.",
+            page_content="Sony WH-1000XM5 wireless headphones with noise canceling",
             metadata={
-                "source": "esci/shopping_queries_dataset",
-                "product_id": "B001234",
-                "product_brand": "AudioTech",
-                "product_color": "black",
+                "title": "Sony WH-1000XM5",
+                "source": "product_1",
                 "doc_type": "product",
-            },
-        ),
-        Document(
-            page_content="USB-C charging cable compatible with all modern devices. Durable nylon braiding.",
-            metadata={
-                "source": "esci/shopping_queries_dataset",
-                "product_id": "B005678",
-                "product_brand": "CablePro",
-                "product_color": "white",
-                "doc_type": "product",
-            },
-        ),
-        Document(
-            page_content="Blue lightweight backpack with multiple compartments and ergonomic design.",
-            metadata={
-                "source": "esci/shopping_queries_dataset",
-                "product_id": "B009012",
-                "product_brand": "TravelGear",
-                "product_color": "blue",
-                "doc_type": "product",
-            },
-        ),
-        Document(
-            page_content="Stainless steel water bottle keeps drinks cold for 24 hours.",
-            metadata={
-                "source": "esci/shopping_queries_dataset",
-                "product_id": "B003456",
-                "product_brand": "HydroKeep",
-                "product_color": "silver",
-                "doc_type": "product",
-            },
-        ),
-        Document(
-            page_content="Mechanical keyboard with RGB backlighting and tactile switches for gaming.",
-            metadata={
-                "source": "esci/shopping_queries_dataset",
-                "product_id": "B007890",
-                "product_brand": "GamingPro",
-                "product_color": "black",
-                "doc_type": "product",
-            },
-        ),
-    ]
-
-
-@pytest.fixture
-def scored_documents(sample_documents: List[Document]) -> List[Tuple[Document, float]]:
-    """Fixture providing documents with relevance scores."""
-    scores = [0.95, 0.87, 0.76, 0.65, 0.42]
-    return list(zip(sample_documents, scores))
-
-
-# ============================================================================
-# MOCK GOOGLE GEMINI API
-# ============================================================================
-
-
-@pytest.fixture
-def mock_gemini_llm():
-    """Mock for ChatGoogleGenerativeAI (LLM)."""
-    mock_llm = MagicMock()
-    mock_llm.invoke = MagicMock()
-    mock_llm.stream = MagicMock()
-    mock_llm.with_structured_output = MagicMock(return_value=mock_llm)
-    return mock_llm
-
-
-@pytest.fixture
-def mock_gemini_embeddings():
-    """Mock for GoogleGenerativeAIEmbeddings."""
-    mock_embeddings = MagicMock()
-    # Return consistent embedding vectors for deterministic testing
-    mock_embeddings.embed_query = MagicMock(
-        return_value=[0.1] * 768  # 768-dimensional embedding
-    )
-    mock_embeddings.embed_documents = MagicMock(
-        return_value=[[0.1 + i * 0.01] * 768 for i in range(5)]
-    )
-    return mock_embeddings
-
-
-# ============================================================================
-# MOCK OPENSEARCH
-# ============================================================================
-
-
-@pytest.fixture
-def mock_opensearch_client():
-    """Mock for OpenSearch client."""
-    mock_client = MagicMock()
-
-    # Mock search method
-    mock_client.search = MagicMock(
-        return_value={
-            "hits": {
-                "hits": [
-                    {
-                        "_id": "doc1",
-                        "_score": 0.95,
-                        "_source": {
-                            "content": "Sample content 1",
-                            "url": "https://example.com/1",
-                            "doc_type": "api",
-                        },
-                    },
-                    {
-                        "_id": "doc2",
-                        "_score": 0.87,
-                        "_source": {
-                            "content": "Sample content 2",
-                            "url": "https://example.com/2",
-                            "doc_type": "guide",
-                        },
-                    },
-                ]
+                "product_id": "B09YLRKTRL",
+                "product_brand": "Sony",
+                "price": 399.99,
             }
-        }
-    )
-
-    # Mock count method
-    mock_client.count = MagicMock(return_value={"count": 1000})
-
-    # Mock indices.exists
-    mock_client.indices = MagicMock()
-    mock_client.indices.exists = MagicMock(return_value=True)
-
-    return mock_client
-
-
-# ============================================================================
-# MOCK POSTGRESQL
-# ============================================================================
-
-
-@pytest.fixture
-def mock_postgres_connection():
-    """Mock for PostgreSQL connection."""
-    mock_conn = AsyncMock()
-    mock_cursor = AsyncMock()
-
-    # Mock cursor operations
-    mock_cursor.execute = AsyncMock()
-    mock_cursor.fetchone = AsyncMock(return_value=None)
-    mock_cursor.fetchall = AsyncMock(return_value=[])
-
-    mock_conn.cursor = MagicMock()
-    mock_conn.cursor.return_value.__aenter__ = AsyncMock(return_value=mock_cursor)
-    mock_conn.cursor.return_value.__aexit__ = AsyncMock()
-
-    return mock_conn
-
-
-# ============================================================================
-# PYDANTIC EVENT FIXTURES
-# ============================================================================
-
-
-@pytest.fixture
-def sample_query_evaluation_event():
-    """Fixture providing a valid QueryEvaluationEvent."""
-    from api.schemas.events import QueryEvaluationEvent
-
-    return QueryEvaluationEvent(
-        type="query_evaluation",
-        query="Find me wireless headphones with long battery life",
-        alpha=0.6,
-        query_analysis="Semantic product search query",
-        search_strategy="balanced",
-    )
-
-
-@pytest.fixture
-def sample_reranker_scores():
-    """Fixture providing valid RerankerScores."""
-    from reranker import RerankerScores, RerankerScore
-
-    return RerankerScores(
-        scores=[
-            RerankerScore(index=0, score=0.95),
-            RerankerScore(index=1, score=0.87),
-            RerankerScore(index=2, score=0.72),
-            RerankerScore(index=3, score=0.61),
-            RerankerScore(index=4, score=0.48),
-        ]
-    )
-
-
-# ============================================================================
-# PARAMETER COMBINATIONS FOR EDGE CASE TESTING
-# ============================================================================
-
-
-@pytest.fixture(
-    params=[
-        (0.0, "lexical-heavy"),  # Pure lexical
-        (0.15, "lexical-heavy"),  # Lexical-leaning
-        (0.5, "balanced"),  # Perfectly balanced
-        (0.85, "semantic-heavy"),  # Semantic-leaning
-        (1.0, "semantic-heavy"),  # Pure semantic
+        ),
+        Document(
+            page_content="Bose QuietComfort 45 premium noise-canceling headphones",
+            metadata={
+                "title": "Bose QuietComfort 45",
+                "source": "product_2",
+                "doc_type": "product",
+                "product_id": "B097BQ5LYH",
+                "product_brand": "Bose",
+                "price": 379.00,
+            }
+        ),
     ]
-)
-def alpha_and_strategy_pairs(request):
-    """Fixture providing (alpha, strategy) pairs for validation testing."""
-    return request.param
 
 
-@pytest.fixture(
-    params=[
-        -0.1,  # Below lower bound
-        -0.5,  # Well below lower bound
-        1.1,  # Above upper bound
-        2.0,  # Well above upper bound
-        float("inf"),  # Infinity
-        float("-inf"),  # Negative infinity
-        float("nan"),  # NaN
+@pytest.fixture
+def intent_test_cases():
+    """Test cases for intent classifier."""
+    return [
+        ("Find wireless headphones under $100", "search", "General product search"),
+        ("Compare Sony WH-1000XM5 vs Bose QuietComfort 45", "comparison", "Product comparison"),
+        ("Show me blue wireless headphones under $200", "attribute_filter", "Filtered search"),
+        ("Any cheaper alternatives?", "follow_up", "Vague expansion"),
+        ("Summarize our conversation", "summary", "Conversation recap"),
     ]
-)
-def invalid_score_values(request):
-    """Fixture providing invalid score values for testing bounds."""
-    return request.param
-
-
-# ============================================================================
-# CONTEXT MANAGERS FOR PATCHING
-# ============================================================================
 
 
 @pytest.fixture
-def mock_google_gemini_imports(monkeypatch):
-    """Patch Google Gemini imports."""
-    mock_llm_class = MagicMock()
-    mock_embeddings_class = MagicMock()
-
-    monkeypatch.setattr(
-        "langchain_google_genai.ChatGoogleGenerativeAI",
-        mock_llm_class,
-    )
-    monkeypatch.setattr(
-        "langchain_google_genai.GoogleGenerativeAIEmbeddings",
-        mock_embeddings_class,
-    )
-
-    return mock_llm_class, mock_embeddings_class
+def alpha_test_cases():
+    """Test cases for query evaluator alpha selection."""
+    return [
+        ("Sony WH-1000XM5", 0.05, 0.15, "exact model number"),
+        ("blue running shoes size 10", 0.15, 0.35, "specific attributes"),
+        ("best headphones for running", 0.40, 0.60, "balanced activity-based"),
+        ("comfortable office chair", 0.60, 0.75, "conceptual need"),
+        ("gift ideas for music lovers", 0.75, 1.0, "semantic exploration"),
+    ]
 
 
 @pytest.fixture
-def mock_opensearch_imports(monkeypatch):
-    """Patch OpenSearch imports."""
-    mock_client_class = MagicMock()
-    monkeypatch.setattr("opensearchpy.OpenSearch", mock_client_class)
-    return mock_client_class
+def quality_gate_test_cases():
+    """Test cases for quality gate decisions."""
+    return [
+        (0.67, "comparison", "pass", 0.55),
+        (0.52, "search", "pass", 0.50),
+        (0.32, "search", "retry", 0.50),
+        (0.42, "comparison", "retry", 0.55),
+    ]
+
+
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line("markers", "unit: mark test as a unit test")
+    config.addinivalue_line("markers", "integration: mark test as an integration test")
+    config.addinivalue_line("markers", "e2e: mark test as an end-to-end test")
+    config.addinivalue_line("markers", "intent: mark test as intent classifier test")
+    config.addinivalue_line("markers", "evaluator: mark test as query evaluator test")
+    config.addinivalue_line("markers", "quality_gate: mark test as quality gate test")
+    config.addinivalue_line("markers", "slow: mark test as slow")
