@@ -911,23 +911,23 @@ Return ONLY the query text, nothing else."""
             logger.warning(f"Query expansion failed: {e}, using original query")
             return query
 
-    def _extract_attributes(self, query: str) -> dict:
+    def _extract_attributes(self, query: str) -> list:
         """
         Extract product attributes from attribute_filter queries.
 
-        Returns a dict with OpenSearch filter clauses for:
-        - product_brand: Brand names ("blue", "Sony", etc.)
+        Returns a list of OpenSearch filter clauses for:
+        - product_brand: Brand names ("Sony", "Apple", "Nike", etc.)
         - product_color: Colors ("blue", "red", "black", etc.)
 
         Args:
             query: The user's attribute filter query
 
         Returns:
-            Dict with "terms" key containing list of attribute filter clauses,
-            or empty dict if no attributes found
+            List of OpenSearch filter objects (to be combined with AND in filter context),
+            or empty list if no attributes found
         """
         if not query or len(query) < 5:
-            return {}
+            return []
 
         prompt = f"""Extract product attributes from a shopping query. Return ONLY a JSON object.
 
@@ -949,18 +949,17 @@ Return ONLY a JSON object with keys "brand" and "color" (empty string if not fou
             import re
             json_match = re.search(r'\{.*?\}', text, re.DOTALL)
             if not json_match:
-                return {}
+                return []
 
             attributes = json.loads(json_match.group())
             filters = []
 
-            # Build OpenSearch filter clauses
+            # Build OpenSearch filter clauses (as separate filter objects - they're implicitly AND'd)
             if attributes.get("brand"):
                 filters.append({
                     "match": {
                         "product_brand": {
-                            "query": attributes["brand"],
-                            "operator": "or"
+                            "query": attributes["brand"]
                         }
                     }
                 })
@@ -969,24 +968,16 @@ Return ONLY a JSON object with keys "brand" and "color" (empty string if not fou
                 filters.append({
                     "match": {
                         "product_color": {
-                            "query": attributes["color"],
-                            "operator": "or"
+                            "query": attributes["color"]
                         }
                     }
                 })
 
-            if not filters:
-                return {}
-
-            # Combine multiple filters with AND
-            if len(filters) == 1:
-                return filters[0]
-            else:
-                return {"and": filters}
+            return filters
 
         except Exception as e:
             logger.debug(f"Attribute extraction failed: {e}")
-            return {}
+            return []
 
     def _classify_intent(self, user_input: str, messages: Sequence[BaseMessage]) -> tuple[str, str, float, list]:
         """
@@ -1348,12 +1339,11 @@ Respond with JSON only. No other text."""
         logger.info(f"Retriever: query='{query[:50]}...', alpha={alpha:.2f}")
 
         # Extract attributes for attribute_filter intent
-        # TODO: Re-enable after fixing OpenSearch filter syntax for compound filters
-        filters = None
-        # if intent == "attribute_filter":
-        #     filters = self._extract_attributes(query)
-        #     if filters:
-        #         logger.info(f"Retriever: applying attribute filters: {filters}")
+        attribute_filters = None
+        if intent == "attribute_filter":
+            attribute_filters = self._extract_attributes(query)
+            if attribute_filters:
+                logger.info(f"Retriever: applying {len(attribute_filters)} attribute filter(s)")
 
         # Emit embedding progress
         if SearchProgressEvent:
@@ -1372,7 +1362,7 @@ Respond with JSON only. No other text."""
                 "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
                 "fetch_k": RETRIEVER_FETCH_K,
                 "alpha": alpha,
-                "filters": filters
+                "filters": attribute_filters
             }
         )
 

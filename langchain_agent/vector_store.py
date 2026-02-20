@@ -286,7 +286,7 @@ class OpenSearchVectorStore:
         k: int = 4,
         fetch_k: int = 20,
         alpha: float = 0.5,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Document]:
         """
         Hybrid search combining vector similarity and full-text search.
@@ -299,7 +299,8 @@ class OpenSearchVectorStore:
             k: Number of final results to return
             fetch_k: Number of candidates to fetch from each method
             alpha: Weight for vector vs text (0.0=pure BM25, 1.0=pure vector)
-            filters: Optional OpenSearch filter clause for attribute filtering
+            filters: Optional list of OpenSearch filter clauses for attribute filtering
+                     (filters in a list are implicitly AND'd)
 
         Returns:
             List of Document objects ranked by combined score
@@ -340,11 +341,17 @@ class OpenSearchVectorStore:
         k: int,
         fetch_k: int,
         alpha: float,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Document]:
-        """Native OpenSearch hybrid search using search pipeline."""
-        # TODO: Re-enable attribute filtering after fixing OpenSearch filter syntax
-        # For now, ignore filters parameter and use simple collection_id filter
+        """Native OpenSearch hybrid search using search pipeline with optional attribute filters."""
+        # Build filter lists - combine collection_id with attribute filters
+        # Filters in an array are implicitly AND'd together
+        knn_filter_list = [{"term": {"collection_id": self.collection_id}}]
+        text_filter_list = [{"term": {"collection_id": self.collection_id}}]
+
+        if filters:
+            knn_filter_list.extend(filters)
+            text_filter_list.extend(filters)
 
         body = {
             "size": k,
@@ -358,8 +365,10 @@ class OpenSearchVectorStore:
                                     "vector": query_embedding,
                                     "k": fetch_k,
                                     "filter": {
-                                        "term": {"collection_id": self.collection_id}
-                                    },
+                                        "bool": {
+                                            "must": knn_filter_list
+                                        }
+                                    } if len(knn_filter_list) > 1 else knn_filter_list[0],
                                 }
                             }
                         },
@@ -374,9 +383,7 @@ class OpenSearchVectorStore:
                                         }
                                     }
                                 ],
-                                "filter": [
-                                    {"term": {"collection_id": self.collection_id}}
-                                ],
+                                "filter": text_filter_list,
                             }
                         },
                     ]
@@ -396,11 +403,15 @@ class OpenSearchVectorStore:
         k: int,
         fetch_k: int,
         alpha: float,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Document]:
         """Client-side RRF fallback for older OpenSearch versions."""
-        # TODO: Re-enable attribute filtering after fixing OpenSearch filter syntax
         RRF_K = 60
+
+        # Build filter lists
+        filter_list = [{"term": {"collection_id": self.collection_id}}]
+        if filters:
+            filter_list.extend(filters)
 
         # Vector search
         vector_body = {
@@ -409,7 +420,7 @@ class OpenSearchVectorStore:
             "query": {
                 "bool": {
                     "must": [{"knn": {"embedding": {"vector": query_embedding, "k": fetch_k}}}],
-                    "filter": [{"term": {"collection_id": self.collection_id}}],
+                    "filter": filter_list,
                 }
             },
         }
@@ -422,7 +433,7 @@ class OpenSearchVectorStore:
             "query": {
                 "bool": {
                     "must": [{"match": {"chunk_text": {"query": query}}}],
-                    "filter": [{"term": {"collection_id": self.collection_id}}],
+                    "filter": filter_list,
                 }
             },
         }
@@ -500,7 +511,7 @@ class OpenSearchRetriever:
         k: int = 4,
         fetch_k: int = 20,
         alpha: float = 0.5,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self.vector_store = vector_store
         self.search_type = search_type
