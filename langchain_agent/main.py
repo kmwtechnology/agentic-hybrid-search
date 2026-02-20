@@ -402,15 +402,47 @@ class EcommerceSearchAgent:
         intent = state.get("intent", "search")
         print(f"\n[Query Evaluator] Starting evaluation for query: '{last_user_msg[:80]}...' (intent: {intent})")
 
-        # LLM-based query evaluation - determine optimal alpha for hybrid search
-        # Alpha controls lexical/semantic balance; intent provides additional guidance
-        intent_guidance = ""
+        # FAST PATH: Intent-specific alpha selection (high confidence, no LLM)
+        # These patterns are deterministic and highly accurate for e-commerce
+
+        # 1. COMPARISON queries: Highlight product differences
         if intent == "comparison":
-            intent_guidance = "\nNOTE: This is a COMPARISON query comparing products. Use alpha 0.4-0.7 (balanced to semantic) to highlight feature differences and tradeoffs."
+            alpha = 0.60  # Semantic-heavy for quality/feature differences
+            strategy = "Semantic-Heavy (Vector dominant)"
+            reasoning = f"Comparison query: prioritizing semantic search for quality/feature differences"
+
+            elapsed = time.time() - start_time
+            logger.info(f"Query evaluation (FAST PATH - comparison): alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
+            return {
+                "alpha": alpha,
+                "query_analysis": reasoning,
+                "search_strategy": strategy,
+                "intent_optimized": True,
+            }
+
+        # 2. ATTRIBUTE_FILTER queries: Match specific attributes (color, size, price, features)
         elif intent == "attribute_filter":
-            intent_guidance = "\nNOTE: This is an ATTRIBUTE_FILTER query with specific product attributes (color, size, price, features). Use alpha 0.15-0.35 (lexical-heavy) to match exact attributes."
-        elif intent == "follow_up":
-            intent_guidance = "\nNOTE: This is a FOLLOW_UP query continuing a previous search. Analyze query semantics normally and adjust alpha to refine previous results."
+            alpha = 0.25  # Lexical-heavy for exact attribute matching
+            strategy = "Lexical-Heavy (BM25 dominant)"
+            reasoning = f"Attribute filter query: prioritizing lexical search for exact attribute matches"
+
+            elapsed = time.time() - start_time
+            logger.info(f"Query evaluation (FAST PATH - attribute_filter): alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
+            return {
+                "alpha": alpha,
+                "query_analysis": reasoning,
+                "search_strategy": strategy,
+                "intent_optimized": True,
+            }
+
+        # FULL LLM PATH: General search queries (flexible, intent-aware guidance)
+        # For: search, follow_up (need semantic analysis)
+
+        intent_guidance = ""
+        if intent == "follow_up":
+            intent_guidance = "\nNOTE: This is a FOLLOW_UP query continuing a previous search. Analyze query semantics and adjust alpha to refine previous results."
+        else:  # search
+            intent_guidance = "\nNOTE: This is a general SEARCH query. Analyze semantics to determine optimal balance between exact matching and conceptual relevance."
 
         evaluation_prompt = f"""Determine the optimal alpha for hybrid search on this query.{intent_guidance}
 
@@ -459,12 +491,14 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 strategy = "Pure Semantic (Vector)"
 
             elapsed = time.time() - start_time
-            logger.info(f"Query evaluation: strategy={strategy}, alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
+            logger.info(f"Query evaluation (LLM path): strategy={strategy}, alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
             logger.debug(f"Query evaluation details: reasoning={reasoning}, query={last_user_msg}")
 
             return {
                 "alpha": alpha,
                 "query_analysis": reasoning,
+                "search_strategy": strategy,
+                "intent_optimized": False,  # LLM-driven, not fast-path
             }
 
         except Exception as e:
@@ -476,6 +510,8 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             return {
                 "alpha": fallback_alpha,
                 "query_analysis": f"Evaluation failed: {str(e)}",
+                "search_strategy": "Fallback",
+                "intent_optimized": False,
             }
 
     def _verify_and_replace_documents(
@@ -715,32 +751,49 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         recent_context = self._build_recent_context(messages)
         recent_context_block = f"Recent context:\n{recent_context}\n\n" if recent_context else ""
 
-        # Create prompt with context
-        # Check if this is a task-based intent (synthesis/generation requested)
-        intent = state.get("intent", "question")
-        is_task = intent == "task"
+        # Create intent-aware prompt
+        intent = state.get("intent", "search")
 
-        if is_task:
-            # For tasks, allow synthesis and generation from the knowledge base
-            synthesis_instruction = """- You can synthesize and generate new content (tutorials, guides, examples) based on the retrieved documentation.
-- Draw from multiple documents to create comprehensive responses.
-- Clearly cite which documents you're drawing from when synthesizing."""
-        else:
-            # For questions, stick closer to existing documentation
-            synthesis_instruction = "- Use only the retrieved documents above and the recent conversation context to respond; do not hallucinate beyond those facts."
+        # Intent-specific instructions
+        if intent == "comparison":
+            intent_instruction = """Your task is to COMPARE the retrieved products, highlighting key differences and trade-offs:
+- Discuss quality, features, performance, price, and other relevant dimensions
+- Help the user understand which product is best for their specific needs
+- Clearly indicate product names and key differentiators
+- Use a structured format (e.g., "Product A is better for X because..., while Product B excels at Y...")"""
+        elif intent == "attribute_filter":
+            intent_instruction = """Your task is to filter and present products matching specific criteria:
+- Focus on products that match the requested attributes (color, size, price, features, etc.)
+- For each product, clearly state which attributes it matches and which it doesn't
+- Recommend the best matches first
+- Be specific: e.g., "This product comes in blue and costs $45"
+- If some requested attributes aren't available, note that clearly"""
+        elif intent == "follow_up":
+            intent_instruction = """Your task is to refine your previous search results based on the user's follow-up:
+- Connect this response to your previous recommendation(s)
+- Address what the user is asking for (cheaper, different color, better features, etc.)
+- Clearly show how new suggestions compare to earlier recommendations"""
+        else:  # search (default)
+            intent_instruction = """Your task is to help the user find products matching their needs:
+- Recommend relevant products from the knowledge base
+- Explain why each product is a good match for their stated needs
+- Include key product features and specifications
+- Help them make an informed decision"""
 
-        system_prompt = f"""You are a helpful product search assistant. Answer questions using a knowledge base of Amazon product listings.
+        system_prompt = f"""You are a helpful e-commerce product search assistant. Answer questions using a knowledge base of Amazon product listings.
 {recent_context_block}RETRIEVED DOCUMENTS FROM KNOWLEDGE BASE:
 {context}
 
-INSTRUCTIONS:
-{synthesis_instruction}
-- When drawing on a product document, cite it descriptively (e.g., "According to the Wireless Headphones listing..." or "As shown in the product details...").
-- Do NOT cite as "Document N" — always use a descriptive name from the product title so readers can match citations to the Sources list.
+INTENT: {intent.upper()}
+{intent_instruction}
+
+GENERAL INSTRUCTIONS:
+- Use only the retrieved documents above and the recent conversation context to respond; do not hallucinate product information.
+- When referencing a product, cite it descriptively (e.g., "According to the Sony WH-1000XM5 listing..." or "As shown in the product details...").
+- Do NOT cite as "Document N" — always use the actual product name or description so readers can match citations to the Sources list.
 - Always cite sources so users can verify information by reviewing the Sources section.
-- If you cannot find relevant products, explain what you searched for and offer to try a different search query.
-- Help users find, compare, and learn about products based on their needs.
-- Keep tone professional, concise, and helpful; respect the user's stated intent (question, filter request, follow-up, etc.).
+- If you cannot find relevant products, explain what you searched for and offer alternative search suggestions.
+- Keep tone professional, concise, and helpful.
 """
 
         # Build messages for LLM
@@ -1234,21 +1287,34 @@ Respond with JSON only. No other text."""
 
     def retriever_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        Automatic retrieval node - performs hybrid search (no reranking).
+        Intent-aware hybrid retrieval node - performs hybrid search with dynamic alpha.
 
-        This is a deterministic node that always runs after query_evaluator.
-        No LLM involvement - uses original query with dynamic alpha.
-        Reranking is handled by the separate reranker_node.
+        Behavior per intent:
+        - "search": Full hybrid search (vector + BM25 fusion via RRF)
+        - "comparison": Full hybrid search (alpha optimized for differences)
+        - "attribute_filter": Lexical-heavy hybrid (alpha=0.25 for exact attribute matching)
+        - "follow_up": Full hybrid search (refined from previous context)
+        - "summary": Skipped (no retrieval needed)
+
+        All searches use Reciprocal Rank Fusion (RRF) with dynamic alpha weighting.
+        No LLM involvement - deterministic retrieval based on query_evaluator output.
         """
         start_time = time.time()
         messages = state["messages"]
         alpha = state.get("alpha", 0.25)
-        intent = state.get("intent", "question")
+        intent = state.get("intent", "search")
+        intent_optimized = state.get("intent_optimized", False)
 
         # Early exit for summary intent - no retrieval needed
         if intent == "summary":
-            logger.debug("Retriever: skipping hybrid search because intent is summary")
+            logger.debug("Retriever: skipping hybrid search (intent=summary)")
             return {"retrieved_documents": []}
+
+        # Log retrieval strategy
+        if intent_optimized:
+            logger.info(f"Retriever: using FAST PATH alpha={alpha:.2f} (intent={intent})")
+        else:
+            logger.info(f"Retriever: using LLM-determined alpha={alpha:.2f} (intent={intent})")
 
         # Extract original user query from messages
         query = None
@@ -1343,27 +1409,45 @@ Respond with JSON only. No other text."""
                 logger.debug(f"Could not emit hybrid search result event: {e}")
 
         elapsed = time.time() - start_time
-        logger.info(f"Retriever: total time {elapsed:.3f}s")
+
+        # Intent-specific result logging
+        result_summary = f"Retrieved {len(results)} documents in {elapsed:.3f}s"
+        if intent == "comparison":
+            logger.info(f"Retriever (comparison): {result_summary} - highlighting product differences")
+        elif intent == "attribute_filter":
+            logger.info(f"Retriever (attribute_filter): {result_summary} - prioritizing attribute matches")
+        elif intent == "follow_up":
+            logger.info(f"Retriever (follow_up): {result_summary} - refining previous results")
+        else:  # search
+            logger.info(f"Retriever (search): {result_summary}")
 
         return {
             "retrieved_documents": results,
             "user_query": query,
+            "intent": intent,  # Pass intent downstream for reranker/agent
         }
 
     def reranker_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        Reranker node - scores and reorders retrieved documents by relevance.
+        Intent-aware reranker node - scores and reorders documents by relevance.
 
-        Reads retrieved_documents from state, applies LLM reranking if enabled,
-        and returns reranked documents with reranker_max_score for quality gate.
+        Behavior per intent:
+        - "comparison": Reranks by quality/feature differences (highlights tradeoffs)
+        - "attribute_filter": Reranks by attribute match accuracy (exact matches prioritized)
+        - "search": Standard relevance reranking
+        - "follow_up": Reranks by relevance to refine previous results
+
+        Returns reranked documents + reranker_max_score for quality gate.
         """
         retrieved_documents = state.get("retrieved_documents", [])
+        intent = state.get("intent", "search")
 
         if not ENABLE_RERANKING or not self.reranker or not retrieved_documents:
-            logger.debug("Reranker: skipped (disabled or no documents)")
+            logger.debug(f"Reranker: skipped (disabled or no documents, intent={intent})")
             return {
                 "retrieved_documents": retrieved_documents,
                 "reranker_max_score": 0.0,
+                "intent": intent,
             }
 
         # Extract query for reranking
@@ -1438,7 +1522,18 @@ Respond with JSON only. No other text."""
         # Log reranking results with detailed timing
         avg_score = sum(score for _, score in results_with_scores) / len(results_with_scores) if results_with_scores else 0
         max_score = max((score for _, score in results_with_scores), default=0.0)
-        logger.info(f"Reranker: complete in {rerank_elapsed:.3f}s, top {len(results)} selected, avg_score={avg_score:.4f}")
+
+        # Intent-specific result logging
+        result_summary = f"Complete in {rerank_elapsed:.3f}s, top {len(results)} selected, avg_score={avg_score:.4f}, max_score={max_score:.4f}"
+        if intent == "comparison":
+            logger.info(f"Reranker (comparison): {result_summary} - prioritizing feature/quality differences")
+        elif intent == "attribute_filter":
+            logger.info(f"Reranker (attribute_filter): {result_summary} - prioritizing attribute accuracy")
+        elif intent == "follow_up":
+            logger.info(f"Reranker (follow_up): {result_summary} - refining previous results")
+        else:  # search
+            logger.info(f"Reranker (search): {result_summary}")
+
         logger.debug(f"Reranker throughput: {docs_per_sec:.1f} docs/s, {chars_per_sec:.0f} chars/s, {ms_per_doc:.1f} ms/doc")
 
         # Log individual scores at debug level
@@ -1456,21 +1551,37 @@ Respond with JSON only. No other text."""
         return {
             "retrieved_documents": results,
             "reranker_max_score": max_score,
+            "intent": intent,  # Pass intent to quality gate
         }
 
     def quality_gate_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        Quality gate - checks reranker scores and retries with adjusted alpha if needed.
+        Intent-aware quality gate - checks reranker scores and triggers adaptive retry if needed.
 
         Logic:
-        - If reranker_max_score >= threshold: continue to agent
-        - If reranker_max_score < threshold AND not yet retried: adjust alpha ±0.3, retry retriever
-        - If already retried: continue to agent (accept best results)
+        - If reranker_max_score >= intent_threshold: continue to agent (PASS)
+        - If reranker_max_score < intent_threshold AND not yet retried: adjust alpha ±0.3, retry retriever (RETRY)
+        - If already retried: continue to agent with best results (ACCEPT)
+
+        Intent-aware thresholds:
+        - "comparison": 0.55 (higher - need quality comparisons)
+        - "attribute_filter": 0.45 (standard - exact attributes)
+        - "search", "follow_up": 0.50 (standard)
         """
         from config import ENABLE_QUALITY_GATE, QUALITY_GATE_THRESHOLD
 
         current_alpha = state.get("alpha", DEFAULT_ALPHA)
         max_score = state.get("reranker_max_score", 0.0)
+        intent = state.get("intent", "search")
+
+        # Intent-aware thresholds
+        intent_thresholds = {
+            "comparison": 0.55,       # Higher threshold for quality comparisons
+            "attribute_filter": 0.45, # Standard threshold
+            "search": 0.50,          # Standard threshold
+            "follow_up": 0.50,       # Standard threshold
+        }
+        quality_threshold = intent_thresholds.get(intent, QUALITY_GATE_THRESHOLD)
 
         # Early return if quality gate disabled
         if not ENABLE_QUALITY_GATE:
@@ -1497,10 +1608,12 @@ Respond with JSON only. No other text."""
             }
 
         # Score above threshold - good results, continue
-        if max_score >= QUALITY_GATE_THRESHOLD:
+        if max_score >= quality_threshold:
+            logger.info(f"QualityGate ({intent}): PASS - score {max_score:.3f} above threshold {quality_threshold:.2f}")
             return {
                 "quality_gate_retried": False,
-                "quality_gate_reason": f"Max score {max_score:.3f} above threshold {QUALITY_GATE_THRESHOLD}",
+                "quality_gate_reason": f"PASS: max_score {max_score:.3f} >= threshold {quality_threshold:.2f}",
+                "quality_gate_status": "pass",
                 "reranker_max_score": max_score,
             }
 
@@ -1512,12 +1625,13 @@ Respond with JSON only. No other text."""
             new_alpha = min(1.0, current_alpha + 0.3)
             direction = "semantic"
 
-        logger.info(f"QualityGate: low relevance (max_score={max_score:.3f}), adjusting alpha {current_alpha:.2f} → {new_alpha:.2f} ({direction}-boost)")
+        logger.info(f"QualityGate ({intent}): RETRY - score {max_score:.3f} below threshold {quality_threshold:.2f}, alpha {current_alpha:.2f} → {new_alpha:.2f} ({direction}-boost)")
 
         return {
             "alpha": new_alpha,
             "quality_gate_retried": True,
-            "quality_gate_reason": f"Retry triggered (max_score={max_score:.3f} < {QUALITY_GATE_THRESHOLD}), alpha → {new_alpha:.2f}",
+            "quality_gate_reason": f"RETRY ({intent}): score {max_score:.3f} < {quality_threshold:.2f}, alpha → {new_alpha:.2f}",
+            "quality_gate_status": "retry",
             "reranker_max_score": max_score,
         }
 
