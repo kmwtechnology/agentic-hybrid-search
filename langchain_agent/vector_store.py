@@ -220,7 +220,7 @@ class OpenSearchVectorStore:
         search_type: str = "similarity",
         search_kwargs: Optional[Dict[str, Any]] = None,
     ) -> "OpenSearchRetriever":
-        """Return a retriever interface."""
+        """Return a retriever interface with optional attribute filters."""
         if search_kwargs is None:
             search_kwargs = {
                 "k": RETRIEVER_K,
@@ -234,6 +234,7 @@ class OpenSearchVectorStore:
             k=search_kwargs.get("k", RETRIEVER_K),
             fetch_k=search_kwargs.get("fetch_k", RETRIEVER_FETCH_K),
             alpha=search_kwargs.get("alpha", RETRIEVER_ALPHA),
+            filters=search_kwargs.get("filters"),
         )
 
     def similarity_search(self, query: str, k: int = 4) -> List[Document]:
@@ -285,6 +286,7 @@ class OpenSearchVectorStore:
         k: int = 4,
         fetch_k: int = 20,
         alpha: float = 0.5,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """
         Hybrid search combining vector similarity and full-text search.
@@ -297,6 +299,7 @@ class OpenSearchVectorStore:
             k: Number of final results to return
             fetch_k: Number of candidates to fetch from each method
             alpha: Weight for vector vs text (0.0=pure BM25, 1.0=pure vector)
+            filters: Optional OpenSearch filter clause for attribute filtering
 
         Returns:
             List of Document objects ranked by combined score
@@ -319,9 +322,9 @@ class OpenSearchVectorStore:
             query_embedding = self._get_embedding(query)
 
             if self._check_hybrid_support():
-                return self._hybrid_search_native(query, query_embedding, k, fetch_k, alpha)
+                return self._hybrid_search_native(query, query_embedding, k, fetch_k, alpha, filters)
             else:
-                return self._hybrid_search_rrf(query, query_embedding, k, fetch_k, alpha)
+                return self._hybrid_search_rrf(query, query_embedding, k, fetch_k, alpha, filters)
 
         except EmbeddingError:
             raise
@@ -337,8 +340,17 @@ class OpenSearchVectorStore:
         k: int,
         fetch_k: int,
         alpha: float,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Native OpenSearch hybrid search using search pipeline."""
+        # Build filter clause combining collection_id and attribute filters
+        knn_filters = {"term": {"collection_id": self.collection_id}}
+        text_filters = [{"term": {"collection_id": self.collection_id}}]
+
+        if filters:
+            knn_filters = {"and": [knn_filters, filters]}
+            text_filters.append(filters)
+
         body = {
             "size": k,
             "_source": {"excludes": ["embedding"]},
@@ -350,9 +362,7 @@ class OpenSearchVectorStore:
                                 "embedding": {
                                     "vector": query_embedding,
                                     "k": fetch_k,
-                                    "filter": {
-                                        "term": {"collection_id": self.collection_id}
-                                    },
+                                    "filter": knn_filters,
                                 }
                             }
                         },
@@ -367,9 +377,7 @@ class OpenSearchVectorStore:
                                         }
                                     }
                                 ],
-                                "filter": [
-                                    {"term": {"collection_id": self.collection_id}}
-                                ],
+                                "filter": text_filters,
                             }
                         },
                     ]
@@ -389,9 +397,15 @@ class OpenSearchVectorStore:
         k: int,
         fetch_k: int,
         alpha: float,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Client-side RRF fallback for older OpenSearch versions."""
         RRF_K = 60
+
+        # Build filter list
+        filter_list = [{"term": {"collection_id": self.collection_id}}]
+        if filters:
+            filter_list.append(filters)
 
         # Vector search
         vector_body = {
@@ -400,7 +414,7 @@ class OpenSearchVectorStore:
             "query": {
                 "bool": {
                     "must": [{"knn": {"embedding": {"vector": query_embedding, "k": fetch_k}}}],
-                    "filter": [{"term": {"collection_id": self.collection_id}}],
+                    "filter": filter_list,
                 }
             },
         }
@@ -413,7 +427,7 @@ class OpenSearchVectorStore:
             "query": {
                 "bool": {
                     "must": [{"match": {"chunk_text": {"query": query}}}],
-                    "filter": [{"term": {"collection_id": self.collection_id}}],
+                    "filter": filter_list,
                 }
             },
         }
@@ -491,12 +505,14 @@ class OpenSearchRetriever:
         k: int = 4,
         fetch_k: int = 20,
         alpha: float = 0.5,
+        filters: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.vector_store = vector_store
         self.search_type = search_type
         self.k = k
         self.fetch_k = fetch_k
         self.alpha = alpha
+        self.filters = filters
 
     @staticmethod
     def collapse_by_document(
@@ -552,6 +568,7 @@ class OpenSearchRetriever:
                 k=self.k,
                 fetch_k=self.fetch_k,
                 alpha=self.alpha,
+                filters=self.filters,
             )
         elif self.search_type == "similarity":
             documents = self.vector_store.similarity_search(query, k=self.k)

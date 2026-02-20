@@ -911,6 +911,83 @@ Return ONLY the query text, nothing else."""
             logger.warning(f"Query expansion failed: {e}, using original query")
             return query
 
+    def _extract_attributes(self, query: str) -> dict:
+        """
+        Extract product attributes from attribute_filter queries.
+
+        Returns a dict with OpenSearch filter clauses for:
+        - product_brand: Brand names ("blue", "Sony", etc.)
+        - product_color: Colors ("blue", "red", "black", etc.)
+
+        Args:
+            query: The user's attribute filter query
+
+        Returns:
+            Dict with "terms" key containing list of attribute filter clauses,
+            or empty dict if no attributes found
+        """
+        if not query or len(query) < 5:
+            return {}
+
+        prompt = f"""Extract product attributes from a shopping query. Return ONLY a JSON object.
+
+QUERY: "{query}"
+
+Extract these attributes if present:
+- brand: Product brand/manufacturer (e.g., "Sony", "Apple", "Nike")
+- color: Product color (e.g., "blue", "black", "red", "white", "silver")
+
+Return ONLY a JSON object with keys "brand" and "color" (empty string if not found):
+{{"brand": "...", "color": "..."}}"""
+
+        try:
+            response = self.alpha_estimator_llm.invoke(prompt)
+            text = response.content.strip() if hasattr(response, "content") else str(response).strip()
+
+            # Extract JSON from response
+            import json
+            import re
+            json_match = re.search(r'\{.*?\}', text, re.DOTALL)
+            if not json_match:
+                return {}
+
+            attributes = json.loads(json_match.group())
+            filters = []
+
+            # Build OpenSearch filter clauses
+            if attributes.get("brand"):
+                filters.append({
+                    "match": {
+                        "product_brand": {
+                            "query": attributes["brand"],
+                            "operator": "or"
+                        }
+                    }
+                })
+
+            if attributes.get("color"):
+                filters.append({
+                    "match": {
+                        "product_color": {
+                            "query": attributes["color"],
+                            "operator": "or"
+                        }
+                    }
+                })
+
+            if not filters:
+                return {}
+
+            # Combine multiple filters with AND
+            if len(filters) == 1:
+                return filters[0]
+            else:
+                return {"and": filters}
+
+        except Exception as e:
+            logger.debug(f"Attribute extraction failed: {e}")
+            return {}
+
     def _classify_intent(self, user_input: str, messages: Sequence[BaseMessage]) -> tuple[str, str, float, list]:
         """
         Classify user intent using LLM.
@@ -1270,6 +1347,13 @@ Respond with JSON only. No other text."""
 
         logger.info(f"Retriever: query='{query[:50]}...', alpha={alpha:.2f}")
 
+        # Extract attributes for attribute_filter intent
+        filters = None
+        if intent == "attribute_filter":
+            filters = self._extract_attributes(query)
+            if filters:
+                logger.info(f"Retriever: applying attribute filters: {filters}")
+
         # Emit embedding progress
         if SearchProgressEvent:
             try:
@@ -1280,13 +1364,14 @@ Respond with JSON only. No other text."""
             except Exception as e:
                 logger.debug(f"Could not emit embedding progress event: {e}")
 
-        # Create retriever with dynamic alpha
+        # Create retriever with dynamic alpha and attribute filters
         retriever = self.vector_store.as_retriever(
             search_type="hybrid",
             search_kwargs={
                 "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
                 "fetch_k": RETRIEVER_FETCH_K,
-                "alpha": alpha
+                "alpha": alpha,
+                "filters": filters
             }
         )
 
