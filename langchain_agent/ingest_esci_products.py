@@ -56,7 +56,9 @@ ESCI_PRODUCTS_FILE = ESCI_DATASET_DIR / "shopping_queries_dataset_products.parqu
 # Default ingestion parameters
 DEFAULT_LIMIT = 10000
 PRODUCT_LOCALE = "us"
-EMBEDDING_BATCH_SIZE = 100  # Products per embedding API call
+EMBEDDING_BATCH_SIZE = 250  # Products per embedding API call (optimized for throughput vs latency)
+SAVE_INTERVAL = 20  # Flush embeddings to parquet every N batches (~5K products at 250/batch = 5K products per save)
+FULL_US_PARQUET = ESCI_DATASET_DIR / "esci_products_full_us.parquet"  # canonical full-set cache
 
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
@@ -117,13 +119,21 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
     df_us = df[df["product_locale"] == PRODUCT_LOCALE].copy()
     logger.info(f"US products: {len(df_us)}")
 
+    # Deduplicate by product_id (keep first occurrence)
+    df_us_dedup = df_us.drop_duplicates(subset=["product_id"], keep="first").copy()
+    duplicates_removed = len(df_us) - len(df_us_dedup)
+    if duplicates_removed > 0:
+        logger.info(f"Deduplicated: removed {duplicates_removed} duplicate product_ids")
+        print(f"   Deduplicated: removed {duplicates_removed:,} duplicate product_ids", flush=True)
+    logger.info(f"Unique US products: {len(df_us_dedup)}")
+
     # Sample deterministically
-    if limit < len(df_us):
-        df_sample = df_us.sample(n=limit, random_state=42)
+    if limit < len(df_us_dedup):
+        df_sample = df_us_dedup.sample(n=limit, random_state=42)
         logger.info(f"Sampled {limit} US products (deterministic, seed=42)")
     else:
-        df_sample = df_us
-        logger.info(f"Using all {len(df_us)} US products (limit {limit} >= dataset size)")
+        df_sample = df_us_dedup
+        logger.info(f"Using all {len(df_us_dedup)} unique US products (limit {limit} >= dataset size)")
 
     # Initialize embedding column as None (will be populated during ingestion)
     df_sample["embedding"] = None
@@ -163,24 +173,40 @@ def ensure_index_exists(client):
 
 
 def get_indexed_product_ids(client) -> set:
-    """Get set of product IDs already indexed in OpenSearch."""
+    """Get set of product IDs already indexed in OpenSearch using composite aggregation pagination."""
+    product_ids = set()
+    after_key = None
     try:
-        # Query for all unique product_ids in index
-        query = {
-            "size": 0,
-            "aggs": {
-                "product_ids": {
-                    "terms": {"field": "product_id", "size": 100000}
+        while True:
+            body = {
+                "size": 0,
+                "aggs": {
+                    "product_ids": {
+                        "composite": {
+                            "size": 1000,
+                            "sources": [{"product_id": {"terms": {"field": "product_id"}}}],
+                        }
+                    }
                 }
             }
-        }
-        response = client.search(index=OPENSEARCH_INDEX_NAME, body=query)
-        product_ids = {bucket["key"] for bucket in response["aggregations"]["product_ids"]["buckets"]}
-        logger.info(f"Found {len(product_ids)} products already indexed")
+            if after_key:
+                body["aggs"]["product_ids"]["composite"]["after"] = after_key
+
+            response = client.search(index=OPENSEARCH_INDEX_NAME, body=body)
+            buckets = response["aggregations"]["product_ids"]["buckets"]
+            for bucket in buckets:
+                product_ids.add(bucket["key"]["product_id"])
+
+            after_key = response["aggregations"]["product_ids"].get("after_key")
+            if not after_key or len(buckets) < 1000:
+                break
+
+        logger.info(f"Found {len(product_ids):,} products already indexed")
+        print(f"   Found {len(product_ids):,} products already indexed in OpenSearch", flush=True)
         return product_ids
     except Exception as e:
-        logger.warning(f"Could not retrieve indexed product IDs: {e}")
-        return set()
+        logger.warning(f"Could not fetch indexed product IDs: {e}")
+        return product_ids
 
 
 def _prepare_product(row, df_idx) -> Optional[Dict]:
@@ -312,6 +338,21 @@ def _ingest_batch(
     return docs_inserted, chunks_inserted, parquet_updates
 
 
+def _flush_embeddings_to_parquet(df: pd.DataFrame, embedding_cache: dict, sample_file: Path) -> None:
+    """Write pending embeddings from embedding_cache into df and save to parquet."""
+    if not embedding_cache:
+        return
+    if "embedding" not in df.columns:
+        df["embedding"] = pd.Series([None] * len(df), index=df.index, dtype=object)
+    for df_idx, emb in embedding_cache.items():
+        df.at[df_idx, "embedding"] = emb
+    try:
+        df.to_parquet(sample_file)
+        print(f"   [checkpoint] Saved {len(embedding_cache):,} embeddings → {sample_file.name}", flush=True)
+    except Exception as e:
+        logger.warning(f"Could not save embeddings to parquet: {e}")
+
+
 def ingest_esci_products(
     limit: int = DEFAULT_LIMIT,
     force_resample: bool = False,
@@ -336,11 +377,18 @@ def ingest_esci_products(
 
     # Load or create sample
     if all_products:
-        print(f"   Loading all US English products...")
-        df = load_or_create_sample(limit=999999, force_resample=True)
+        print(f"   Loading all unique US English products...")
+        if FULL_US_PARQUET.exists() and not force_resample:
+            print(f"   Loading cached full US dataset from {FULL_US_PARQUET.name}...", flush=True)
+            df = pd.read_parquet(FULL_US_PARQUET)
+        else:
+            # Load all unique US products from source parquet (no arbitrary limit)
+            df = load_or_create_sample(limit=10000000, force_resample=True)  # use very high limit to get all
+        sample_file = FULL_US_PARQUET  # all saves (incremental + final) go here
     else:
         print(f"   Loading {limit} product sample...")
         df = load_or_create_sample(limit=limit, force_resample=force_resample)
+        sample_file = ESCI_DATASET_DIR / f"esci_products_sample_{limit}.parquet"
 
     if df.empty:
         print("   ⚠️  No products loaded")
@@ -418,14 +466,12 @@ def ingest_esci_products(
                     # Parse the API's retry delay (e.g., "retry in 7s") and use it directly
                     match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_str)
                     wait_secs = int(float(match.group(1))) + 1 if match else 30
-                    # Set inter-batch pacing: spread remaining batches across the rate limit window
-                    # e.g., if rate limited after 37 batches in 46s, pace = 46/37 ≈ 1.2s + 25% buffer
-                    elapsed_so_far = time.time() - start_time
-                    batches_done = max(batch_num, 1)
-                    batch_delay = (elapsed_so_far / batches_done) * 0.25
+                    # After any 429, set batch_delay to at least half the API's suggested retry time
+                    # as the ongoing inter-batch pacing. Only increases, never decreases.
+                    new_delay = max(batch_delay, wait_secs / 2)
+                    batch_delay = new_delay
                     print(
-                        f"   ⏳ Batch {batch_num + 1}/{num_batches}: rate limited, waiting {wait_secs}s "
-                        f"(pacing future batches +{batch_delay:.1f}s)...",
+                        f"   ⏳ Rate limited. Waiting {wait_secs}s, then pacing batches +{batch_delay:.1f}s each...",
                         flush=True,
                     )
                     time.sleep(wait_secs)
@@ -459,23 +505,23 @@ def ingest_esci_products(
             flush=True,
         )
 
-    # Save updated embeddings back to parquet
+        # Incremental checkpoint save — flush to disk every SAVE_INTERVAL batches
+        if (batch_num + 1) % SAVE_INTERVAL == 0 and embedding_cache:
+            _flush_embeddings_to_parquet(df, embedding_cache, sample_file)
+            embedding_cache.clear()  # free memory — embeddings now stored in df["embedding"]
+            embeddings_updated = False  # reset flag; final save only triggers if new work remains
+            # Also flush OpenSearch index to consolidate segments
+            try:
+                client.indices.flush(index=OPENSEARCH_INDEX_NAME)
+                print(f"   [checkpoint] Flushed OpenSearch index", flush=True)
+            except Exception as e:
+                logger.warning(f"Could not flush index: {e}")
+
+    # Final save for any remaining embeddings not yet flushed
     if embeddings_updated and embedding_cache:
-        print(f"   Saving {len(embedding_cache)} new embeddings to parquet cache...", flush=True)
-        # Ensure embedding column exists as object dtype
-        if "embedding" not in df.columns:
-            df["embedding"] = pd.Series([None] * len(df), index=df.index, dtype=object)
-        # Write embeddings: use object array to avoid pandas list-broadcasting issue
-        emb_series = df["embedding"].copy()
-        for df_idx, emb in embedding_cache.items():
-            emb_series.at[df_idx] = emb
-        df["embedding"] = emb_series
-        sample_file = ESCI_DATASET_DIR / f"esci_products_sample_{limit}.parquet"
-        try:
-            df.to_parquet(sample_file)
-            print(f"   ✓ Cached {len(embedding_cache)} new embeddings to {sample_file.name}")
-        except Exception as e:
-            logger.warning(f"Could not save embeddings to parquet: {e}")
+        _flush_embeddings_to_parquet(df, embedding_cache, sample_file)
+    elif not embeddings_updated:
+        print("   No new embeddings generated (all products used cached embeddings)", flush=True)
 
     # Refresh index
     client.indices.refresh(index=OPENSEARCH_INDEX_NAME)
