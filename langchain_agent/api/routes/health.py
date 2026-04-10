@@ -26,6 +26,7 @@ async def health_check():
     """
     status = {
         "status": "ok",
+        "version": "1.1.0",
         "postgres": False,
         "google_ai": False,
         "vector_store": False,
