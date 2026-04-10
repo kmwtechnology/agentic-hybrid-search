@@ -226,12 +226,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const data = await response.json()
       console.log('Conversation data loaded:', data)
 
-      const messages: ChatMessage[] = data.messages.map((msg: { type: string; content: string }, index: number) => ({
-        id: `msg-${threadId}-${index}`,
-        role: msg.type === 'human' ? 'user' : 'assistant',
-        content: msg.content,
-        timestamp: new Date(data.created_at),
-      }))
+      const messages: ChatMessage[] = data.messages.map((msg: { type: string; content: unknown }, index: number) => {
+        // Ensure content is always a string (handle Gemini content blocks and other formats)
+        let stringContent: string
+        if (typeof msg.content === 'string') {
+          stringContent = msg.content
+        } else if (Array.isArray(msg.content)) {
+          // If it's an array of content blocks, extract text from each block
+          stringContent = msg.content
+            .map(block => {
+              if (typeof block === 'object' && block !== null && 'text' in block) {
+                return (block as { text: string }).text
+              }
+              return String(block)
+            })
+            .join('')
+        } else {
+          stringContent = String(msg.content || '')
+        }
+
+        return {
+          id: `msg-${threadId}-${index}`,
+          role: msg.type === 'human' ? 'user' : 'assistant',
+          content: stringContent,
+          timestamp: new Date(data.created_at),
+        }
+      })
 
       set({ messages })
     } catch (error) {

@@ -15,9 +15,30 @@ import clsx from 'clsx'
  * - Converts <br> tags to actual newlines
  * - Converts literal \n strings to newlines
  * - Fixes code blocks that use <br> instead of newlines
+ * - Handles non-string content (arrays, objects) by converting to string
  */
-function preprocessMarkdown(content: string): string {
-  return content
+function preprocessMarkdown(content: string | unknown): string {
+  // Handle non-string content (from Gemini content blocks or other formats)
+  let stringContent: string
+  if (typeof content !== 'string') {
+    if (Array.isArray(content)) {
+      // If it's an array of content blocks, extract text from each block
+      stringContent = content
+        .map(block => {
+          if (typeof block === 'object' && block !== null && 'text' in block) {
+            return (block as { text: string }).text
+          }
+          return String(block)
+        })
+        .join('')
+    } else {
+      stringContent = String(content)
+    }
+  } else {
+    stringContent = content
+  }
+
+  return stringContent
     // Convert <br>, <br/>, <br /> tags to newlines
     .replace(/<br\s*\/?>/gi, '\n')
     // Convert literal \n strings to actual newlines (but not \\n which is escaped)
