@@ -100,13 +100,29 @@ jobs:
             --region=${{ env.REGION }} \
             --platform=managed \
             --allow-unauthenticated \
-            --set-env-vars=\
-          "LLM_MODEL=gemini-3-flash-preview,\
+            --set-env-vars="\
+          POSTGRES_HOST=136.111.249.119,\
+          POSTGRES_DB=langchain_agent,\
+          POSTGRES_USER=postgres,\
+          OPENSEARCH_HOST=34.138.97.13,\
+          OPENSEARCH_PORT=9200,\
+          OPENSEARCH_USE_SSL=true,\
+          OPENSEARCH_VERIFY_CERTS=false,\
+          LLM_MODEL=gemini-3-flash-preview,\
           RERANKER_MODEL=gemini-3.1-flash-lite-preview,\
           QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
-          LOG_LEVEL=INFO" \
+          LOG_LEVEL=INFO,\
+          LOG_FORMAT=json" \
+            --set-secrets="\
+          API_KEY=agentic-hybrid-search-api-key:latest,\
+          GOOGLE_API_KEY=agentic-hybrid-search-google-api-key:latest,\
+          POSTGRES_PASSWORD=agentic-hybrid-search-db-password:latest,\
+          OPENSEARCH_USER=agentic-hybrid-search-opensearch-user:latest,\
+          OPENSEARCH_PASSWORD=agentic-hybrid-search-opensearch-password:latest" \
             --memory=2Gi \
             --timeout=3600 \
+            --min-instances=0 \
+            --max-instances=2 \
             --no-traffic \
             --quiet
 
@@ -118,7 +134,7 @@ jobs:
           echo "Service URL: $SERVICE_URL"
 
           # Test health endpoint
-          curl -f "$SERVICE_URL/health" || exit 1
+          curl -f "$SERVICE_URL/api/health" || exit 1
           echo "✓ Health check passed"
 
       - name: Promote to production (100% traffic)

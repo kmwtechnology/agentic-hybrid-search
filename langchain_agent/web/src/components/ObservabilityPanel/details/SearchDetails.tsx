@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { useObservabilityStore } from '../../../stores/observabilityStore'
 import { FileText, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Loader2, ExternalLink, Filter } from 'lucide-react'
 import clsx from 'clsx'
-import type { AgentEvent, OpenSearchQueryEvent } from '../../../types/events'
+import type { OpenSearchQueryEvent } from '../../../types/events'
 
 export function SearchDetails() {
   const { searchCandidates, rerankedDocuments, searchStatus, rerankerStatus, steps } = useObservabilityStore()
