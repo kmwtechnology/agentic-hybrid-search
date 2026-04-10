@@ -12,7 +12,7 @@ A production-grade ReAct agent for product search with the following features:
 - Real-time observability with typed WebSocket events
 
 Powered by:
-- LLM: Google Gemini (gemini-2.5-flash) for reasoning and reranking
+- LLM: Google Gemini (gemini-3-flash-preview) for reasoning and reranking
 - Embeddings: Google Gemini (gemini-embedding-001) for semantic search
 - Vector Store: OpenSearch 2.19.1 with native hybrid search (vector + text)
 - Database: PostgreSQL for conversation checkpoints and metadata

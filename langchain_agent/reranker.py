@@ -1,7 +1,7 @@
 """
 Gemini-based Reranker implementation for LLM-as-reranker document scoring.
 
-Uses gemini-2.5-flash-lite via Google AI to score query-document relevance
+Uses gemini-3.1-flash-lite-preview via Google AI to score query-document relevance
 in a single batch API call, replacing the local cross-encoder model.
 """
 
@@ -75,10 +75,10 @@ class GeminiReranker:
     LLM-based reranker using Google Gemini for semantic relevance scoring.
 
     Scores all candidate documents in a single (or batched) API call by
-    prompting gemini-2.5-flash-lite to return JSON relevance scores.
+    prompting gemini-3.1-flash-lite-preview to return JSON relevance scores.
     """
 
-    def __init__(self, model_name: str = "gemini-2.5-flash-lite"):
+    def __init__(self, model_name: str = "gemini-3.1-flash-lite-preview"):
         self.model_name = model_name
         self.device = "cloud"
         self.batch_size = RERANKER_BATCH_SIZE

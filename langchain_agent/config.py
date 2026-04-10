@@ -130,7 +130,7 @@ __all__ = [
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # LLM Model (Gemini)
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-flash-preview")
 LLM_TEMPERATURE = int(os.getenv("LLM_TEMPERATURE", 0))
 
 # Embeddings Model (Gemini)
@@ -229,7 +229,7 @@ RETRIEVER_SEARCH_TYPE = "hybrid"
 ENABLE_RERANKING = True
 
 # Gemini model for LLM-based reranking (scores documents via batch prompting)
-RERANKER_MODEL = os.getenv("RERANKER_MODEL", "gemini-2.5-flash-lite")
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview")
 
 # Number of candidates to fetch before reranking
 RERANKER_FETCH_K = 40
@@ -261,7 +261,7 @@ ENABLE_QUERY_EVAL_CACHE = True
 QUERY_EVAL_CACHE_MAX_SIZE = 100
 
 # Query evaluator model settings (lightweight alpha estimator)
-QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", "gemini-2.5-flash-lite")
+QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", "gemini-3.1-flash-lite-preview")
 QUERY_EVAL_TEMPERATURE = float(os.getenv("QUERY_EVAL_TEMPERATURE", "0"))
 QUERY_EVAL_MAX_TOKENS = int(os.getenv("QUERY_EVAL_MAX_TOKENS", "1024"))
 
@@ -373,7 +373,7 @@ DEFAULT_THREAD_ID = "default_thread"
 # Enable automatic conversation compaction
 ENABLE_COMPACTION = True
 
-# Maximum estimated tokens in context (conservative estimate for gemini-2.5-flash)
+# Maximum estimated tokens in context (conservative estimate for gemini-3-flash-preview)
 MAX_CONTEXT_TOKENS = 3000
 
 # Trigger compaction at this percentage of max context (0.8 = 80%)

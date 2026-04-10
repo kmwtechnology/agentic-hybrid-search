@@ -377,10 +377,10 @@ run gcloud run deploy "$SERVICE_NAME" \
 POSTGRES_HOST=/cloudsql/${CLOUD_SQL_CONNECTION},\
 POSTGRES_USER=${DB_USER},\
 POSTGRES_DB=${DB_NAME},\
-LLM_MODEL=gemini-2.5-flash,\
+LLM_MODEL=gemini-3-flash-preview,\
 EMBEDDINGS_MODEL=models/gemini-embedding-001,\
-RERANKER_MODEL=gemini-2.5-flash-lite,\
-QUERY_EVAL_MODEL=gemini-2.5-flash-lite,\
+RERANKER_MODEL=gemini-3.1-flash-lite-preview,\
+QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
 VECTOR_DIMENSION=768,\
 LOG_FORMAT=json,\
 LOG_LEVEL=INFO,\

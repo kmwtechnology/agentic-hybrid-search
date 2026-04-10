@@ -197,7 +197,7 @@ def content_type_classifier_node(state: CustomAgentState, agent: "EcommerceSearc
     """
     Classify the user's documentation request into one of 5 content types.
 
-    Uses lightweight LLM (gemini-2.5-flash-lite) to detect content type based on:
+    Uses lightweight LLM (gemini-3.1-flash-lite-preview) to detect content type based on:
     - Explicit keywords (social post, blog, article, tutorial, comprehensive)
     - Implied scope (short vs long, casual vs formal)
     - Action verbs (write, create, document, etc.)
