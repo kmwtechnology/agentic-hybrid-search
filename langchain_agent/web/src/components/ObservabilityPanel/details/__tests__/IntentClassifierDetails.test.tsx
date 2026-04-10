@@ -24,7 +24,7 @@ describe('IntentClassifierDetails Component', () => {
 
   describe('Intent Display', () => {
     const mockEvent: IntentClassificationEvent = {
-      type: 'intent_classified',
+      type: 'intent_classification',
       intent: 'search',
       confidence: 0.95,
       reasoning: 'User is searching for a product',
@@ -56,7 +56,7 @@ describe('IntentClassifierDetails Component', () => {
   describe('Confidence Display', () => {
     it('shows confidence as percentage', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.85,
         reasoning: 'Test',
@@ -70,7 +70,7 @@ describe('IntentClassifierDetails Component', () => {
 
     it('displays confidence bar with correct width', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.75,
         reasoning: 'Test',
@@ -84,7 +84,7 @@ describe('IntentClassifierDetails Component', () => {
 
     it('uses green color for high confidence (>= 0.7)', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.95,
         reasoning: 'Test',
@@ -98,7 +98,7 @@ describe('IntentClassifierDetails Component', () => {
 
     it('uses yellow color for low confidence (< 0.7)', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.65,
         reasoning: 'Test',
@@ -114,7 +114,7 @@ describe('IntentClassifierDetails Component', () => {
   describe('Low Confidence Warning', () => {
     it('shows warning for low confidence (< 0.7)', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.55,
         reasoning: 'Test',
@@ -128,7 +128,7 @@ describe('IntentClassifierDetails Component', () => {
 
     it('does not show warning for high confidence', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.95,
         reasoning: 'Test',
@@ -143,7 +143,7 @@ describe('IntentClassifierDetails Component', () => {
   describe('Reasoning and Query Display', () => {
     it('displays reasoning text', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.9,
         reasoning: 'User is searching for products',
@@ -157,7 +157,7 @@ describe('IntentClassifierDetails Component', () => {
 
     it('displays user query', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.9,
         reasoning: 'Test',
@@ -171,7 +171,7 @@ describe('IntentClassifierDetails Component', () => {
 
     it('shows dash for empty query', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.9,
         reasoning: 'Test',
@@ -185,7 +185,7 @@ describe('IntentClassifierDetails Component', () => {
 
   describe('Query Expansion', () => {
     const baseEvent: IntentClassificationEvent = {
-      type: 'intent_classified',
+      type: 'intent_classification',
       intent: 'follow_up',
       confidence: 0.88,
       reasoning: 'Follow-up',
@@ -196,6 +196,8 @@ describe('IntentClassifierDetails Component', () => {
     it('displays query expansion section when provided', () => {
       const expansion: QueryExpansionEvent = {
         type: 'query_expansion',
+        node: 'retriever',
+        timestamp: new Date().toISOString(),
         original_query: 'Cheaper?',
         expanded_query: 'Find cheaper wireless headphones',
         expansion_reason: 'Expanded vague reference',
@@ -207,6 +209,8 @@ describe('IntentClassifierDetails Component', () => {
     it('displays original and expanded queries', () => {
       const expansion: QueryExpansionEvent = {
         type: 'query_expansion',
+        node: 'retriever',
+        timestamp: new Date().toISOString(),
         original_query: 'Any cheaper?',
         expanded_query: 'Find cheaper product alternatives',
         expansion_reason: 'Resolved pronoun reference',
@@ -244,7 +248,7 @@ describe('IntentClassifierDetails Component', () => {
       
       confidences.forEach(confidence => {
         const event: IntentClassificationEvent = {
-          type: 'intent_classified',
+          type: 'intent_classification',
           intent: 'search',
           confidence,
           reasoning: 'Test',
@@ -261,7 +265,7 @@ describe('IntentClassifierDetails Component', () => {
     it('handles very long reasoning text', () => {
       const longText = 'A'.repeat(500)
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: 0.9,
         reasoning: longText,
@@ -274,7 +278,7 @@ describe('IntentClassifierDetails Component', () => {
 
     it('handles missing confidence gracefully', () => {
       const event: IntentClassificationEvent = {
-        type: 'intent_classified',
+        type: 'intent_classification',
         intent: 'search',
         confidence: undefined as any,
         reasoning: 'Test',

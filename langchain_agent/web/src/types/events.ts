@@ -461,9 +461,6 @@ export type AgentEvent =
   | ConfidenceScoreEvent
   | LinkVerificationEvent
   | DocumentReplacementEvent
-  | ConfigBuilderStartEvent
-  | ComponentSpecRetrievalEvent
-  | ConfigGeneratedEvent
   | DocOutlineEvent
   | DocSectionProgressEvent
   | DocCompleteEvent
