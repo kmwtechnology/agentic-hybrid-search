@@ -199,8 +199,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   loadConversation: async (threadId) => {
     try {
-      // Always set the threadId first so connection can be attempted
-      set({ threadId, connectionError: null })
+      // Set threadId and clear transient state, but keep messages until new ones load
+      set({
+        threadId,
+        connectionError: null,
+        streamingContent: '',
+        isProcessing: false,
+        queuedMessages: [],
+      })
 
       console.log('Loading conversation:', threadId)
       const response = await apiGet(`/api/conversations/${threadId}`)
@@ -210,12 +216,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Failed to load conversation:', response.status, response.statusText, errorText)
-        // Still allow connection even if message history fails to load
+        // If API fails, clear messages and show empty state
         set({
           messages: [],
-          streamingContent: '',
-          isProcessing: false,
-          queuedMessages: [],
         })
         return
       }
@@ -230,22 +233,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         timestamp: new Date(data.created_at),
       }))
 
-      set({
-        messages,
-        streamingContent: '',
-        isProcessing: false,
-        connectionError: null,
-        queuedMessages: [],
-      })
+      set({ messages })
     } catch (error) {
       console.error('Error loading conversation:', error)
-      // Still set threadId so connection attempt can proceed
+      // If exception occurs, clear messages
       set({
-        threadId,
         messages: [],
-        streamingContent: '',
-        isProcessing: false,
-        queuedMessages: [],
       })
     }
   },

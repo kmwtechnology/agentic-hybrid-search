@@ -207,8 +207,17 @@ class ObservableAgentService:
                         for msg in event.get("messages", []):
                             if isinstance(msg, AIMessage) and msg.content:
                                 if not (hasattr(msg, "tool_calls") and msg.tool_calls):
-                                    final_response = msg.content
-                                    logger.debug(f"Extracted final_response: {len(final_response)} chars")
+                                    content = msg.content
+                                    # Extract text if content is a list of content blocks (Gemini format)
+                                    if isinstance(content, list):
+                                        text_parts = []
+                                        for block in content:
+                                            if isinstance(block, dict) and "text" in block:
+                                                text_parts.append(block["text"])
+                                        final_response = "".join(text_parts) if text_parts else ""
+                                    else:
+                                        final_response = content
+                                    logger.debug(f"Extracted final_response: {len(final_response or '')} chars")
 
                     if "retrieved_documents" in event:
                         documents_used = len(event["retrieved_documents"])
@@ -401,7 +410,15 @@ class ObservableAgentService:
                             elif isinstance(chunk, dict) and "content" in chunk:
                                 content = chunk["content"]
 
-                            if content:
+                            # Extract text if content is a list of content blocks (Gemini format)
+                            if isinstance(content, list):
+                                text_parts = []
+                                for block in content:
+                                    if isinstance(block, dict) and "text" in block:
+                                        text_parts.append(block["text"])
+                                content = "".join(text_parts) if text_parts else None
+
+                            if content and isinstance(content, str):
                                 # Emit start event on first chunk (enables chat window streaming)
                                 if not response_streaming_started:
                                     await emit(LLMResponseStartEvent())
@@ -520,7 +537,15 @@ class ObservableAgentService:
                     elif msg.content:
                         # For responses without tool calls, check if content needs parsing
                         # (handles Ollama models that format reasoning as "Reasoning: ... \nAnswer: ...")
-                        reasoning_extracted, response_content = self._parse_structured_response(msg.content)
+                        content = msg.content
+                        # Extract text if content is a list of content blocks (Gemini format)
+                        if isinstance(content, list):
+                            text_parts = []
+                            for block in content:
+                                if isinstance(block, dict) and "text" in block:
+                                    text_parts.append(block["text"])
+                            content = "".join(text_parts) if text_parts else ""
+                        reasoning_extracted, response_content = self._parse_structured_response(content)
 
                         # Emit reasoning if extracted from content
                         if reasoning_extracted and not reasoning:
