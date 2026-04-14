@@ -357,6 +357,27 @@ class EcommerceSearchAgent:
         intent, reasoning, confidence, clarifying_questions = self._classify_intent(user_query, messages)
         logger.info(f"Intent classification: intent={intent}, confidence={confidence:.2f}, query={user_query[:50] if user_query else '<empty>'}...")
 
+        # NEW: Category continuity validation for refinement intents
+        if intent == "refinement":
+            prior_docs = state.get("prior_search_documents", [])
+            if prior_docs:
+                # Validate category continuity
+                continuity_score, category_reasoning = self._validate_category_continuity(
+                    prior_docs, user_query, []
+                )
+
+                # If categories are very different, downgrade to search
+                if continuity_score < 0.3:
+                    logger.info(f"Category continuity check failed ({continuity_score:.2f}): {category_reasoning} → downgrading to search")
+                    intent = "search"
+                    reasoning = f"{category_reasoning}. Treating as new search instead of refinement."
+                    confidence = 0.95  # High confidence that this is a new search
+                # If ambiguous, lower confidence to trigger clarification
+                elif continuity_score < 0.7:
+                    logger.info(f"Category continuity ambiguous ({continuity_score:.2f}): {category_reasoning}")
+                    confidence = min(confidence, 0.65)
+                    reasoning = f"{category_reasoning}. Need clarification on intent."
+
         return {
             "intent": intent,
             "user_query": user_query,
@@ -785,13 +806,20 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 - Be specific: e.g., "This product comes in blue and costs $45"
 - If some requested attributes aren't available, note that clearly"""
         elif intent == "refinement":
-            intent_instruction = """Your task is to narrow the prior search results by applying the user's new constraint:
-- Explicitly connect to the prior search: "From the [product category] I showed you earlier..."
+            # Extract prior search category for explicit feedback
+            prior_docs = state.get("prior_search_documents", [])
+            prior_category = self._extract_product_category_from_documents(prior_docs) if prior_docs else ""
+            prior_count = len(prior_docs)
+
+            category_context = f"From the {prior_count} {prior_category}" if prior_category else f"From the {prior_count} products"
+
+            intent_instruction = f"""Your task is to narrow the prior search results by applying the user's new constraint:
+- Start with explicit context: "{category_context} I showed you earlier, here are the ones that match your new criteria:"
 - State the new constraint being applied: "...filtering for [new attribute]..."
-- List only products that satisfy BOTH the original category AND the new constraint
+- List ONLY products that satisfy BOTH the original search AND the new constraint
 - Where possible, cross-reference against products mentioned in the previous response
 - If a previously recommended product also meets the new constraint, highlight it: "Notably, [Product X] from my earlier recommendations also meets this requirement"
-- If no products satisfy both criteria, be honest: "None of the [category] options I found earlier are [attribute]. Here are the closest matches..."
+- If no products satisfy both criteria, be honest: "None of the {prior_category} options I found earlier are [attribute]. Here are the closest matches..."
 - Be specific about which attribute is being filtered (e.g., "waterproof", "under $100", "leather")"""
         elif intent == "follow_up":
             intent_instruction = """Your task is to refine your previous search results based on the user's follow-up:
@@ -935,6 +963,199 @@ Return ONLY the query text, nothing else."""
         except Exception as e:
             logger.warning(f"Query expansion failed: {e}, using original query")
             return query
+
+    def _extract_product_category_from_documents(self, docs: List[Document]) -> str:
+        """
+        Extract primary product category from document titles.
+
+        Uses LLM fast-path to infer category from first 5 product titles.
+        Examples: "boots", "headphones", "dresses", "shoes", "electronics"
+
+        Args:
+            docs: List of documents to extract category from
+
+        Returns:
+            Inferred product category (lowercase string), or empty string if unknown
+        """
+        if not docs:
+            return ""
+
+        try:
+            # Extract first 5 titles for category inference
+            titles = [doc.metadata.get("title", "") for doc in docs[:5] if doc.metadata.get("title")]
+
+            if not titles:
+                return ""
+
+            # Use fast LLM to categorize (Lite model for speed)
+            prompt = f"""Based on these product titles, what is the primary product category?
+Answer with ONLY the category name in lowercase (e.g., boots, headphones, shoes, dresses).
+Do not include any explanation.
+
+Titles:
+{chr(10).join(titles)}"""
+
+            response = self.query_eval_llm.invoke(prompt)
+            category = response.content.strip().lower()
+
+            # Validate response is a single word/category
+            if category and len(category) < 50 and " " not in category:
+                logger.debug(f"Extracted product category from documents: '{category}'")
+                return category
+
+            return ""
+        except Exception as e:
+            logger.debug(f"Category extraction from documents failed: {e}")
+            return ""
+
+    def _extract_product_category_from_query(self, query: str) -> str:
+        """
+        Extract product category mention from user query using patterns.
+
+        First tries keyword patterns (fast), then LLM for unknown categories.
+        Examples: "boots", "headphones", "dresses", "shoes"
+
+        Args:
+            query: User query string
+
+        Returns:
+            Inferred product category (lowercase string), or empty string if unknown
+        """
+        if not query:
+            return ""
+
+        query_lower = query.lower()
+
+        # Quick pattern matching for common product types
+        category_patterns = {
+            "boots": ["boot", "bootie", "ankle boot"],
+            "shoes": ["shoe", "sneaker", "loafer", "heel", "pump"],
+            "headphones": ["headphone", "earbud", "earphone", "headset", "wireless"],
+            "dresses": ["dress", "gown", "evening", "cocktail", "maxi"],
+            "shirts": ["shirt", "t-shirt", "top", "blouse"],
+            "pants": ["pant", "trouser", "jean", "jeans", "legging"],
+            "jackets": ["jacket", "coat", "blazer", "cardigan"],
+            "watches": ["watch", "smartwatch", "timepiece"],
+            "bags": ["bag", "purse", "backpack", "handbag", "tote"],
+            "electronics": ["phone", "laptop", "tablet", "computer", "device"],
+        }
+
+        for category, keywords in category_patterns.items():
+            if any(kw in query_lower for kw in keywords):
+                logger.debug(f"Detected product category from query via pattern: '{category}'")
+                return category
+
+        # Fallback to LLM for unknown categories
+        try:
+            prompt = f"""What product category does this query mention?
+Answer with ONLY the category name in lowercase (e.g., boots, headphones, shoes, dresses).
+If no specific category is mentioned, respond with empty string.
+Do not include any explanation.
+
+Query: "{query}" """
+
+            response = self.query_eval_llm.invoke(prompt)
+            category = response.content.strip().lower()
+
+            if category and len(category) < 50 and " " not in category:
+                logger.debug(f"Detected product category from query via LLM: '{category}'")
+                return category
+        except Exception as e:
+            logger.debug(f"Category extraction from query (LLM) failed: {e}")
+
+        return ""
+
+    def _validate_category_continuity(
+        self,
+        prior_docs: List[Document],
+        current_query: str,
+        current_results: List[Document],
+    ) -> Tuple[float, str]:
+        """
+        Validate if current query continues prior search or starts new.
+
+        Calculates continuity score (0.0-1.0) based on:
+        1. Product category match (extracted from prior docs vs query)
+        2. Document ID overlap (% of prior results still in new results)
+
+        Returns:
+            (continuity_score, reasoning_text)
+            - Score > 0.7: "Strong category continuity"
+            - Score 0.3-0.7: "Ambiguous category continuity"
+            - Score < 0.3: "Different product categories"
+        """
+        if not prior_docs:
+            return 0.5, "No prior search context available"
+
+        scores = []
+        reasons = []
+
+        # 1. Category name matching
+        prior_category = self._extract_product_category_from_documents(prior_docs)
+        current_category = self._extract_product_category_from_query(current_query)
+
+        if prior_category and current_category:
+            if prior_category == current_category:
+                scores.append(1.0)
+                reasons.append(f"Category match: {prior_category} == {current_category}")
+            elif self._are_related_categories(prior_category, current_category):
+                scores.append(0.7)
+                reasons.append(f"Related categories: {prior_category} ≈ {current_category}")
+            else:
+                scores.append(0.0)
+                reasons.append(f"Different categories: {prior_category} ≠ {current_category}")
+        elif current_category:
+            scores.append(0.5)
+            reasons.append(f"Could not extract prior category, current: {current_category}")
+
+        # 2. Document ID overlap
+        prior_ids = {
+            doc.metadata.get("product_id")
+            for doc in prior_docs
+            if doc.metadata.get("product_id")
+        }
+        current_ids = {
+            doc.metadata.get("product_id")
+            for doc in current_results
+            if doc.metadata.get("product_id")
+        }
+
+        if prior_ids:
+            overlap = len(prior_ids & current_ids) / len(prior_ids)
+            scores.append(overlap)
+            reasons.append(f"Document overlap: {overlap:.1%} of prior results")
+
+        # Calculate final score
+        final_score = sum(scores) / len(scores) if scores else 0.5
+
+        # Generate reasoning
+        if final_score > 0.7:
+            conclusion = "Strong category continuity - treating as refinement"
+        elif final_score > 0.3:
+            conclusion = "Ambiguous category continuity - need clarification"
+        else:
+            conclusion = "Different product categories - treating as new search"
+
+        full_reasoning = f"{conclusion} (score: {final_score:.2f}). " + "; ".join(reasons)
+
+        logger.info(f"Category continuity check: {full_reasoning}")
+
+        return final_score, full_reasoning
+
+    @staticmethod
+    def _are_related_categories(cat1: str, cat2: str) -> bool:
+        """Check if two categories are related (e.g., 'boots' and 'shoes')."""
+        related_groups = [
+            {"boots", "shoes", "sneakers", "heels", "loafers"},
+            {"headphones", "earbuds", "earphones", "headsets"},
+            {"dresses", "gowns", "shirts", "tops", "blouses"},
+            {"pants", "trousers", "jeans", "leggings"},
+        ]
+
+        for group in related_groups:
+            if cat1 in group and cat2 in group:
+                return True
+        return False
 
     def _extract_attributes(self, query: str) -> list:
         """

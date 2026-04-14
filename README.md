@@ -156,23 +156,105 @@ Show me blue running shoes for women
 What waterproof backpacks do you have?
 ```
 
-**Refinement** (refinement intent - add constraint to prior search results):
+**Refinement** (refinement intent - add constraint to prior search results with context validation):
+
+Refinement queries intelligently narrow previous search results by applying new constraints, while detecting context switches between different product categories.
 
 ```text
+SAME CATEGORY (Refinement):
 "Find me boots" → Intent: search, retrieves 30 boots
-"They should also be waterproof"  → Intent: refinement
-                                    Filters results to waterproof boots from prior search
+"They should also be waterproof"  → Intent: refinement (category continuity: 1.0)
+                                    Filters to waterproof boots from prior search ONLY
                                     Alpha: 0.35 (lexical-heavy for attribute matching)
-                                    Agent: "From the boots I showed you earlier, here are the waterproof options..."
+                                    Response: "From the 30 boots I showed you earlier, here are the waterproof options..."
 
+DIFFERENT CATEGORY (New Search):
+"Find me boots" → Intent: search, retrieves 30 boots
+"Find me red dresses" → Intent: search (category continuity: 0.0, boots ≠ dresses)
+                       NOT treated as refinement - resets context
+                       Retrieves red dresses (completely separate from boots)
+                       Response: "I found X red dresses matching your search..."
+
+FOLLOW-UP vs REFINEMENT:
 "Show me headphones" → Intent: search
-"Any cheaper ones?"                → Intent: follow_up (vague expansion)
-                                    Expanded: "Any cheaper noise-cancelling headphones?"
+"Any cheaper ones?" → Intent: follow_up (vague expansion)
+                      Expanded: "Any cheaper noise-cancelling headphones?"
 ```
 
-Refinement intents **constrain results to the prior search** by filtering to product IDs from the previous retrieval,
-then applying the new attribute constraint. This ensures users can add filters to narrow down their previous results
-rather than performing an independent search.
+**Context Validation Algorithm:**
+
+The system validates refinement intents using a 4-step process:
+
+1. **Category Matching** (Weighted: 100%)
+   - Extracts inferred category from prior search documents (e.g., "boots", "dresses", "headphones")
+   - Extracts category from current query using pattern matching (e.g., "boots", "waterproof boots")
+   - Exact category match (e.g., boots → boots) = 1.0 score
+   - Related categories (e.g., boots → shoes) = 0.7 score
+   - Different categories (e.g., boots → dresses) = 0.0 score
+
+2. **Document ID Overlap** (Weighted: 50%)
+   - Calculates % of prior product IDs still in new results
+   - High overlap (>50%) indicates same category = weighted toward 1.0
+   - Low overlap (<10%) indicates different category = weighted toward 0.0
+
+3. **Continuity Score Calculation**
+   - Averages category match + document overlap
+   - Score > 0.7: Strong continuity → Treat as refinement ✓
+   - Score 0.3-0.7: Ambiguous → Lower confidence, may request clarification ⚠️
+   - Score < 0.3: Different categories → Treat as new search ✓
+
+4. **Intent Adjustment**
+   - Score > 0.7: Proceed with refinement intent (alpha=0.35)
+   - Score 0.3-0.7: Lower confidence below 0.7 → triggers clarification intent ⚠️
+   - Score < 0.3: Downgrade to search intent, reset prior_search_documents
+
+**Explicit Context Feedback:**
+
+When refinement is detected and confirmed, the agent response explicitly states the context:
+
+```text
+Response format: "From the [N] [category] I showed you earlier, here are the ones that match your new criteria:
+- Product A (meets waterproof constraint) ✓
+- Product B (meets waterproof constraint) ✓
+- Notably, Product C from my earlier recommendations also meets this requirement ✓
+"
+```
+
+This explicit confirmation ensures users understand what's being refined and why certain products appear.
+
+**Multi-Sequence Conversation Example:**
+
+```text
+Turn 1: User: "Find me boots"
+        Response: "I found 50 boots matching your search..."
+        State: prior_search_documents=[50 boots], prior_category="boots"
+
+Turn 2: User: "Make them waterproof"
+        Intent classification: refinement (category="boots", continuity=1.0)
+        Response: "From the 50 boots I showed earlier, here are the waterproof options..."
+        State: prior_search_documents=[50 boots], prior_category="boots"
+
+Turn 3: User: "Find me red dresses"
+        Intent classification: search (category="dresses", continuity=0.0 < 0.3)
+        Context reset: prior_search_documents cleared, starting fresh search
+        Response: "I found 30 red dresses matching your search..."
+        State: prior_search_documents=[30 dresses], prior_category="dresses"
+
+Turn 4: User: "Casual ones"
+        Intent classification: refinement (category="dresses", continuity=1.0)
+        Response: "From the 30 red dresses I showed earlier, here are the casual options..."
+        State: prior_search_documents=[30 dresses], prior_category="dresses"
+```
+
+**Edge Case Handling:**
+
+| Scenario | Detected | Action |
+|----------|----------|--------|
+| boots → "waterproof" (vague) | Ambiguous (0.5 continuity) | Request clarification: "Did you mean waterproof boots or a different product?" |
+| boots → "Find me dresses" | Different category (0.0) | Reset context, treat as new search ✓ |
+| boots → "dresses" (alone) | Follow-up (0.0) or Search (0.95) | Downgraded from refinement, treated as new search ✓ |
+| boots → "Also in brown" | Refinement (1.0) | Refine to brown boots from prior 30 ✓ |
+| Multiple categories in one query | Ambiguous | Lower confidence to 0.65 → request clarification ⚠️ |
 
 **Attribute Filter** (standalone filtered search):
 
@@ -217,6 +299,8 @@ reason about why certain products were ranked higher than others.
 | **Intent Classification** | 6-intent detection (search/comparison/attribute_filter/refinement/follow_up/summary) with keyword fast-path + LLM fallback |
 | **Conversational Query Rewriting** | Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and attribute questions ("how much?") using conversation context |
 | **Refinement Intent** | When user adds constraints to prior search, filters retrieval to prior product IDs then applies new attribute filters. Ensures "make them X" narrows results instead of searching independently |
+| **Context Continuity Validation** | Validates refinement queries using product category matching + document overlap scoring. Distinguishes between "waterproof boots" (refinement of boots search) vs "Find me dresses" (new search). Auto-resets context when categories differ |
+| **Explicit Context Feedback** | Agent responses explicitly reference prior search: "From the 30 boots I showed earlier, here are the waterproof options..." Improves user confidence in refinement detection and clarifies applied constraints |
 | **Dynamic Alpha** | Fast-path alpha for attribute_filter (0.25), comparison (0.60), refinement (0.35). LLM path for search/follow_up. Analyzes query type for optimal lexical/semantic balance (0.0-1.0) |
 | **Reciprocal Rank Fusion** | Fuses vector + BM25 rankings: `score = Σ 1/(rank + k)` where k=60 |
 | **LLM-Based Reranking** | Gemini Flash Lite scores query-product relevance on 0.0-1.0 scale |
