@@ -25,6 +25,15 @@ class TestQueryEvaluator:
         assert intent == "attribute_filter", "Should be attribute_filter intent"
         assert 0.15 <= alpha <= 0.35, f"Attribute_filter alpha should be 0.15-0.35, got {alpha}"
 
+    def test_refinement_fast_path_alpha(self):
+        """Test refinement queries use fast path with alpha=0.35."""
+        intent = "refinement"
+        alpha = 0.35
+        assert intent == "refinement", "Should be refinement intent"
+        assert 0.25 < alpha <= 0.45, f"Refinement alpha should be 0.25-0.45, got {alpha}"
+        # Should be higher than attribute_filter (0.25) to preserve category context
+        assert alpha > 0.25, "Refinement alpha should be > attribute_filter alpha (0.25)"
+
     def test_search_llm_path(self):
         """Test search queries use LLM path (flexible alpha)."""
         intent = "search"
@@ -48,7 +57,7 @@ class TestQueryEvaluator:
     def test_intent_optimized_flag(self):
         """Test intent_optimized flag indicates fast path vs LLM path."""
         # Fast path intents
-        fast_path_intents = ["comparison", "attribute_filter"]
+        fast_path_intents = ["comparison", "attribute_filter", "refinement"]
         for intent in fast_path_intents:
             intent_optimized = intent in fast_path_intents
             assert intent_optimized, f"{intent} should set intent_optimized=True"

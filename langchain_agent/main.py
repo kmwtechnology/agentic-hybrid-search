@@ -436,6 +436,21 @@ class EcommerceSearchAgent:
                 "intent_optimized": True,
             }
 
+        # 3. REFINEMENT queries: Adding constraint to prior search (category context + new attribute)
+        elif intent == "refinement":
+            alpha = 0.35  # Slightly more semantic than attribute_filter to preserve category context
+            strategy = "Lexical-Heavy (BM25 dominant)"
+            reasoning = "Refinement query: preserving category context while matching new attribute constraint"
+
+            elapsed = time.time() - start_time
+            logger.info(f"Query evaluation (FAST PATH - refinement): alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
+            return {
+                "alpha": alpha,
+                "query_analysis": reasoning,
+                "search_strategy": strategy,
+                "intent_optimized": True,
+            }
+
         # FULL LLM PATH: General search queries (flexible, intent-aware guidance)
         # For: search, follow_up (need semantic analysis)
 
@@ -769,6 +784,15 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 - Recommend the best matches first
 - Be specific: e.g., "This product comes in blue and costs $45"
 - If some requested attributes aren't available, note that clearly"""
+        elif intent == "refinement":
+            intent_instruction = """Your task is to narrow the prior search results by applying the user's new constraint:
+- Explicitly connect to the prior search: "From the [product category] I showed you earlier..."
+- State the new constraint being applied: "...filtering for [new attribute]..."
+- List only products that satisfy BOTH the original category AND the new constraint
+- Where possible, cross-reference against products mentioned in the previous response
+- If a previously recommended product also meets the new constraint, highlight it: "Notably, [Product X] from my earlier recommendations also meets this requirement"
+- If no products satisfy both criteria, be honest: "None of the [category] options I found earlier are [attribute]. Here are the closest matches..."
+- Be specific about which attribute is being filtered (e.g., "waterproof", "under $100", "leather")"""
         elif intent == "follow_up":
             intent_instruction = """Your task is to refine your previous search results based on the user's follow-up:
 - Connect this response to your previous recommendation(s)
@@ -937,9 +961,15 @@ QUERY: "{query}"
 Extract these attributes if present:
 - brand: Product brand/manufacturer (e.g., "Sony", "Apple", "Nike")
 - color: Product color (e.g., "blue", "black", "red", "white", "silver")
+- material_or_feature: Physical feature or material keyword users add as constraints
+  (e.g., "waterproof", "breathable", "insulated", "vegan leather", "leather", "mesh",
+   "wireless", "noise canceling", "anti-slip", "slip-resistant", "Gore-Tex")
+- size: Size specification (e.g., "size 10", "XL", "large", "medium", "10.5")
+- price_max: Maximum price as a number only if "under $X" or "less than $X" present (e.g., 100)
+- price_min: Minimum price as a number only if "over $X" or "more than $X" present (e.g., 50)
 
-Return ONLY a JSON object with keys "brand" and "color" (empty string if not found):
-{{"brand": "...", "color": "..."}}"""
+Return ONLY a JSON object (use null for missing attributes):
+{{"brand": "...", "color": "...", "material_or_feature": "...", "size": "...", "price_max": null, "price_min": null}}"""
 
         try:
             response = self.alpha_estimator_llm.invoke(prompt)
@@ -974,6 +1004,47 @@ Return ONLY a JSON object with keys "brand" and "color" (empty string if not fou
                     }
                 })
 
+            # material_or_feature → multi_match against title + description
+            if attributes.get("material_or_feature"):
+                filters.append({
+                    "multi_match": {
+                        "query": attributes["material_or_feature"],
+                        "fields": ["product_title", "product_description"],
+                        "type": "best_fields"
+                    }
+                })
+
+            # size → multi_match against title + description
+            if attributes.get("size"):
+                filters.append({
+                    "multi_match": {
+                        "query": attributes["size"],
+                        "fields": ["product_title", "product_description"],
+                        "type": "best_fields"
+                    }
+                })
+
+            # price range → range filter (if price field exists in index)
+            if attributes.get("price_max") is not None:
+                try:
+                    filters.append({
+                        "range": {
+                            "price": {"lte": float(attributes["price_max"])}
+                        }
+                    })
+                except (ValueError, TypeError):
+                    logger.debug(f"Could not parse price_max: {attributes.get('price_max')}")
+
+            if attributes.get("price_min") is not None:
+                try:
+                    filters.append({
+                        "range": {
+                            "price": {"gte": float(attributes["price_min"])}
+                        }
+                    })
+                except (ValueError, TypeError):
+                    logger.debug(f"Could not parse price_min: {attributes.get('price_min')}")
+
             return filters
 
         except Exception as e:
@@ -1002,6 +1073,20 @@ Return ONLY a JSON object with keys "brand" and "color" (empty string if not fou
                     elif "product_color" in match_obj:
                         query = match_obj["product_color"].get("query", "")
                         parts.append(f"color: {query}")
+                elif "multi_match" in f:
+                    mm = f["multi_match"]
+                    query_text = mm.get("query", "")
+                    fields = mm.get("fields", [])
+                    if "product_description" in fields or "product_title" in fields:
+                        parts.append(f"feature: {query_text}")
+                elif "range" in f:
+                    range_obj = f["range"]
+                    if "price" in range_obj:
+                        price_range = range_obj["price"]
+                        if "lte" in price_range:
+                            parts.append(f"price: under ${price_range['lte']}")
+                        if "gte" in price_range:
+                            parts.append(f"price: over ${price_range['gte']}")
             return ", ".join(parts) if parts else None
         except Exception:
             return None
@@ -1035,6 +1120,13 @@ Return ONLY a JSON object with keys "brand" and "color" (empty string if not fou
                 logger.info(f"Low confidence ({confidence:.2f}), will ask for clarification")
                 return "clarify", reasoning, confidence, clarifying_questions
 
+            # Guard: refinement requires prior conversation context
+            if intent == "refinement":
+                prior_human_msgs = [m for m in messages if isinstance(m, HumanMessage)]
+                if len(prior_human_msgs) <= 1:  # Only the current message, no prior context
+                    logger.info("Refinement intent with no prior context — downgrading to attribute_filter")
+                    intent = "attribute_filter"
+
             return intent, reasoning, confidence, clarifying_questions
         except Exception as e:
             logger.error(f"Intent classification failed: {e}")
@@ -1045,7 +1137,7 @@ Return ONLY a JSON object with keys "brand" and "color" (empty string if not fou
         history_block = self._build_recent_context(messages, limit=6)
 
         # Available intents for e-commerce product search
-        available_intents = ["search", "comparison", "attribute_filter", "follow_up", "summary"]
+        available_intents = ["search", "comparison", "attribute_filter", "refinement", "follow_up", "summary"]
 
         intents_str = "|".join(available_intents)
         example_intent = "search"
@@ -1056,14 +1148,18 @@ CRITICAL - CHECK THESE KEYWORDS FIRST (in order):
 1. Is message a short acknowledgment (<5 words: "ok", "got it", "thanks", "understood", "yes", "no", "perfect")? → follow_up (ALWAYS)
 2. Does message contain "summarize", "recap", "summary", "what have we covered"? → summary (ALWAYS)
 3. Does message compare two or more products? ("Compare X vs Y", "Which is better: X or Y?", "How does X compare to Y?") → comparison (ALWAYS)
-4. Does message request products with specific attributes? ("Show me X in [color/size/brand]", "Find X with [attribute]", "X under/over [price]") → attribute_filter (ALWAYS)
-5. Is message vague expansion? ("more", "show", "tell me", "alternatives", "cheaper", "similar", "other options") → follow_up (ALWAYS)
-6. Everything else (general product searches) → search (DEFAULT)
+4. Does message add a NEW constraint to a PRIOR product search in this conversation? ("they should also be waterproof", "make them under $100", "only in leather", "but size 10", "can they also be breathable?") AND prior search exists in history? → refinement (ALWAYS - takes priority over attribute_filter when prior search exists)
+5. Does message request products with specific attributes (standalone, no prior context)? ("Show me X in [color/size/brand]", "Find X with [attribute]", "X under/over [price]") → attribute_filter (ALWAYS)
+6. Is message vague expansion? ("more", "show", "tell me", "alternatives", "cheaper", "similar", "other options") → follow_up (ALWAYS)
+7. Everything else (general product searches) → search (DEFAULT)
 
 IMPORTANT FOR E-COMMERCE:
 - "Find wireless headphones" → search (general discovery)
 - "Compare Sony vs Bose headphones" → comparison (product comparison)
-- "Show me headphones in blue under $100" → attribute_filter (specific attributes)
+- "Show me headphones in blue under $100" → attribute_filter (specific attributes, standalone)
+- "Oh, they should also be waterproof" (after boot search) → refinement (constraint added to prior search)
+- "Make them under $100" (after showing options) → refinement (narrowing prior search)
+- "But they need to be waterproof" (no prior context) → attribute_filter (standalone filter)
 - "Tell me more about those" → follow_up (vague expansion)
 
 AVAILABLE INTENTS: {intents_str}
@@ -1088,19 +1184,26 @@ CLASSIFICATION RULES:
    - Examples: "Compare Sony WH-1000XM5 vs Bose QuietComfort 45", "Which is better: Apple Watch or Garmin?"
    - Key: User wants to understand differences/tradeoffs between products
 
-3. ATTRIBUTE_FILTER: User requests products with specific attributes/filters
+3. ATTRIBUTE_FILTER: User requests products with specific attributes/filters (standalone)
    - Keywords: colors, sizes, brands, prices, features, ranges
    - Examples: "Show me headphones in blue under $100", "Find wireless earbuds with 30+ hour battery", "Running shoes in size 10"
-   - Key: User has specific attribute requirements (color/size/brand/price/feature)
+   - Key: User has specific attribute requirements (color/size/brand/price/feature) WITHOUT prior search context
    - Pattern: "[Product] with/in [attribute] [value]" or "[Product] under/over [price]"
 
-4. FOLLOW_UP: Vague continuation/expansion requests that need conversation context
+4. REFINEMENT: User adds a NEW constraint to a prior product search in this conversation
+   - REQUIRES: Conversation history must contain a prior product search
+   - Keywords/patterns: "they should also", "but also", "make them", "only if", "can they be", "I want ones that are", implicit constraint additions using pronouns
+   - Examples: "Oh, they should also be waterproof" (after "show me men's boots"), "Make them under $100" (after showing headphones), "Can they also be breathable?" (after running shoe search)
+   - CONTRAST with ATTRIBUTE_FILTER: "Show me waterproof boots" with NO prior search → attribute_filter
+   - CONTRAST with FOLLOW_UP: "Tell me more about those" (vague, no new constraint) → follow_up
+
+5. FOLLOW_UP: Vague continuation/expansion requests that need conversation context
    - Vague expansion: "show me more", "tell me more", "other options", "alternatives", "something cheaper"
    - Short acknowledgments: "ok", "got it", "thanks", "yes", "no"
    - Key: Request only makes sense with conversation history
    - Examples: "Any cheaper alternatives?", "Tell me more about that one", "What else do you have?"
 
-5. SUMMARY: User explicitly requests a recap of the conversation
+6. SUMMARY: User explicitly requests a recap of the conversation
    - Keywords: "summarize", "recap", "summary", "what have we covered"
    - Examples: "Summarize what we discussed", "What products did we look at?"
 
@@ -1108,8 +1211,9 @@ PRIORITY ORDER - Check in this exact order:
 1. SUMMARY if "summarize", "recap", or "summary" present
 2. FOLLOW_UP if very short acknowledgment or vague expansion keyword
 3. COMPARISON if "compare", "vs", "which is better", "how does X compare"
-4. ATTRIBUTE_FILTER if specific attribute/filter keywords (color, size, price, features)
-5. SEARCH for everything else (DEFAULT)
+4. REFINEMENT if a new constraint is being added to a PRIOR search (check conversation history for prior product search)
+5. ATTRIBUTE_FILTER if specific attribute/filter keywords AND no prior search context
+6. SEARCH for everything else (DEFAULT)
 
 CONFIDENCE GUIDELINES:
 - 0.9-1.0: Very clear intent, unambiguous message
@@ -1365,9 +1469,9 @@ Respond with JSON only. No other text."""
 
         logger.info(f"Retriever: query='{query[:50]}...', alpha={alpha:.2f}")
 
-        # Extract attributes for attribute_filter intent
+        # Extract attributes for attribute_filter and refinement intents
         attribute_filters = None
-        if intent == "attribute_filter":
+        if intent in ("attribute_filter", "refinement"):
             attribute_filters = self._extract_attributes(query)
             if attribute_filters:
                 logger.info(f"Retriever: applying {len(attribute_filters)} attribute filter(s)")
@@ -1634,6 +1738,7 @@ Respond with JSON only. No other text."""
         intent_thresholds = {
             "comparison": 0.55,       # Higher threshold for quality comparisons
             "attribute_filter": 0.45, # Standard threshold
+            "refinement": 0.45,       # Same as attribute_filter — feature keyword matching is specific
             "search": 0.50,          # Standard threshold
             "follow_up": 0.50,       # Standard threshold
         }
