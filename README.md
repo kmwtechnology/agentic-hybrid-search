@@ -156,18 +156,23 @@ Show me blue running shoes for women
 What waterproof backpacks do you have?
 ```
 
-**Refinement** (refinement intent - add constraint to prior search):
+**Refinement** (refinement intent - add constraint to prior search results):
 
 ```text
-"Find me boots" → Intent: search
-"They should also be waterproof"  → Intent: refinement (constraint on prior search)
-                                    Alpha: 0.35 (preserves category context)
-                                    Agent: "From the boots I showed you earlier..."
+"Find me boots" → Intent: search, retrieves 30 boots
+"They should also be waterproof"  → Intent: refinement
+                                    Filters results to waterproof boots from prior search
+                                    Alpha: 0.35 (lexical-heavy for attribute matching)
+                                    Agent: "From the boots I showed you earlier, here are the waterproof options..."
 
 "Show me headphones" → Intent: search
 "Any cheaper ones?"                → Intent: follow_up (vague expansion)
                                     Expanded: "Any cheaper noise-cancelling headphones?"
 ```
+
+Refinement intents **constrain results to the prior search** by filtering to product IDs from the previous retrieval,
+then applying the new attribute constraint. This ensures users can add filters to narrow down their previous results
+rather than performing an independent search.
 
 **Attribute Filter** (standalone filtered search):
 
@@ -211,6 +216,7 @@ reason about why certain products were ranked higher than others.
 |-----------|-------------|
 | **Intent Classification** | 6-intent detection (search/comparison/attribute_filter/refinement/follow_up/summary) with keyword fast-path + LLM fallback |
 | **Conversational Query Rewriting** | Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and attribute questions ("how much?") using conversation context |
+| **Refinement Intent** | When user adds constraints to prior search, filters retrieval to prior product IDs then applies new attribute filters. Ensures "make them X" narrows results instead of searching independently |
 | **Dynamic Alpha** | Fast-path alpha for attribute_filter (0.25), comparison (0.60), refinement (0.35). LLM path for search/follow_up. Analyzes query type for optimal lexical/semantic balance (0.0-1.0) |
 | **Reciprocal Rank Fusion** | Fuses vector + BM25 rankings: `score = Σ 1/(rank + k)` where k=60 |
 | **LLM-Based Reranking** | Gemini Flash Lite scores query-product relevance on 0.0-1.0 scale |

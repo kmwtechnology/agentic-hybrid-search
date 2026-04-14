@@ -59,6 +59,12 @@ class CustomAgentState(TypedDict, total=False):
     # Default: empty list
     retrieved_documents: List[Document]
 
+    # Prior search context for refinement intents
+    # Tracks documents and intent from the previous search turn
+    # Used to constrain refinement queries to prior results
+    prior_search_documents: List[Document]
+    prior_search_intent: Optional[str]
+
     # Reranker output
     reranker_max_score: float  # Max reranker score (0.0-1.0), set by reranker_node
 

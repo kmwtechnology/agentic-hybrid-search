@@ -1429,6 +1429,7 @@ Respond with JSON only. No other text."""
         - "search": Full hybrid search (vector + BM25 fusion via RRF)
         - "comparison": Full hybrid search (alpha optimized for differences)
         - "attribute_filter": Lexical-heavy hybrid (alpha=0.25 for exact attribute matching)
+        - "refinement": Hybrid search constrained to prior search results with new attribute filter
         - "follow_up": Full hybrid search (refined from previous context)
         - "summary": Skipped (no retrieval needed)
 
@@ -1441,10 +1442,18 @@ Respond with JSON only. No other text."""
         intent = state.get("intent", "search")
         intent_optimized = state.get("intent_optimized", False)
 
+        # Save prior search context before overwriting
+        prior_search_documents = state.get("retrieved_documents", [])
+        prior_search_intent = state.get("intent", None)
+
         # Early exit for summary intent - no retrieval needed
         if intent == "summary":
             logger.debug("Retriever: skipping hybrid search (intent=summary)")
-            return {"retrieved_documents": []}
+            return {
+                "retrieved_documents": [],
+                "prior_search_documents": prior_search_documents,
+                "prior_search_intent": prior_search_intent,
+            }
 
         # Log retrieval strategy
         if intent_optimized:
@@ -1465,7 +1474,11 @@ Respond with JSON only. No other text."""
 
         if not query:
             logger.warning("Retriever: no user query found in messages")
-            return {"retrieved_documents": []}
+            return {
+                "retrieved_documents": [],
+                "prior_search_documents": prior_search_documents,
+                "prior_search_intent": prior_search_intent,
+            }
 
         logger.info(f"Retriever: query='{query[:50]}...', alpha={alpha:.2f}")
 
@@ -1475,6 +1488,21 @@ Respond with JSON only. No other text."""
             attribute_filters = self._extract_attributes(query)
             if attribute_filters:
                 logger.info(f"Retriever: applying {len(attribute_filters)} attribute filter(s)")
+
+        # For refinement intents, constrain results to prior search documents
+        if intent == "refinement" and prior_search_documents:
+            prior_product_ids = [
+                doc.metadata.get("product_id")
+                for doc in prior_search_documents
+                if doc.metadata.get("product_id")
+            ]
+            if prior_product_ids:
+                # Add product_id filter to constrain refinement to prior results
+                product_id_filter = {"terms": {"product_id": prior_product_ids}}
+                if attribute_filters is None:
+                    attribute_filters = []
+                attribute_filters.append(product_id_filter)
+                logger.info(f"Retriever (refinement): constraining to {len(prior_product_ids)} prior search product(s)")
 
         # Emit OpenSearch query event with filters and modifications
         if OpenSearchQueryEvent:
@@ -1576,6 +1604,8 @@ Respond with JSON only. No other text."""
             logger.info(f"Retriever (comparison): {result_summary} - highlighting product differences")
         elif intent == "attribute_filter":
             logger.info(f"Retriever (attribute_filter): {result_summary} - prioritizing attribute matches")
+        elif intent == "refinement":
+            logger.info(f"Retriever (refinement): {result_summary} - filtered to prior search with new constraint")
         elif intent == "follow_up":
             logger.info(f"Retriever (follow_up): {result_summary} - refining previous results")
         else:  # search
@@ -1583,6 +1613,8 @@ Respond with JSON only. No other text."""
 
         return {
             "retrieved_documents": results,
+            "prior_search_documents": prior_search_documents,
+            "prior_search_intent": prior_search_intent,
             "user_query": query,
             "intent": intent,  # Pass intent downstream for reranker/agent
         }
@@ -1689,6 +1721,8 @@ Respond with JSON only. No other text."""
             logger.info(f"Reranker (comparison): {result_summary} - prioritizing feature/quality differences")
         elif intent == "attribute_filter":
             logger.info(f"Reranker (attribute_filter): {result_summary} - prioritizing attribute accuracy")
+        elif intent == "refinement":
+            logger.info(f"Reranker (refinement): {result_summary} - from prior search with new constraint")
         elif intent == "follow_up":
             logger.info(f"Reranker (follow_up): {result_summary} - refining previous results")
         else:  # search
