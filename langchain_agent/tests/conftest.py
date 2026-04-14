@@ -76,6 +76,7 @@ def intent_test_cases():
         ("Show me blue wireless headphones under $200", "attribute_filter", "Filtered search"),
         ("Any cheaper alternatives?", "follow_up", "Vague expansion"),
         ("Summarize our conversation", "summary", "Conversation recap"),
+        ("Oh, they should also be waterproof", "refinement", "Constraint added to prior search"),
     ]
 
 
@@ -99,6 +100,8 @@ def quality_gate_test_cases():
         (0.52, "search", "pass", 0.50),
         (0.32, "search", "retry", 0.50),
         (0.42, "comparison", "retry", 0.55),
+        (0.46, "refinement", "pass", 0.45),
+        (0.35, "refinement", "retry", 0.45),
     ]
 
 

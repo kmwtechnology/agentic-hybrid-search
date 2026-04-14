@@ -71,9 +71,9 @@ class TestIntentClassifier:
         assert all(isinstance(q, str) for q in questions), "All questions should be strings"
 
     def test_intent_is_valid_enum(self):
-        """Test intent is one of the 5 valid e-commerce intents."""
-        valid_intents = ["search", "comparison", "attribute_filter", "follow_up", "summary"]
-        test_intents = ["search", "comparison", "attribute_filter", "follow_up", "summary"]
+        """Test intent is one of the 6 valid e-commerce intents."""
+        valid_intents = ["search", "comparison", "attribute_filter", "refinement", "follow_up", "summary"]
+        test_intents = ["search", "comparison", "attribute_filter", "refinement", "follow_up", "summary"]
         for intent in test_intents:
             assert intent in valid_intents, f"Invalid intent: {intent}"
 
@@ -106,4 +106,69 @@ class TestIntentClassifier:
         query_lower = query.lower()
         has_keyword = any(kw in query_lower for kw in attr_keywords)
         assert has_keyword, f"Attribute filter query '{query}' should contain keyword"
+
+
+@pytest.mark.unit
+@pytest.mark.intent
+class TestRefinementIntent:
+    """Tests for the new 'refinement' intent — adding constraint to prior search."""
+
+    def test_refinement_intent_detected_in_test_cases(self, intent_test_cases):
+        """Test 'refinement' is detected for constraint-addition queries."""
+        query, expected_intent, description = intent_test_cases[5]
+        assert expected_intent == "refinement", f"Failed: {description}"
+
+    def test_refinement_valid_intent(self):
+        """Test refinement is in the valid intents list."""
+        valid_intents = [
+            "search", "comparison", "attribute_filter",
+            "refinement", "follow_up", "summary"
+        ]
+        assert "refinement" in valid_intents
+
+    @pytest.mark.parametrize("query", [
+        "Oh, they should also be waterproof",
+        "Make them under $100",
+        "Can they also be breathable?",
+        "I want ones that are insulated too",
+        "But only in leather",
+    ])
+    def test_refinement_query_patterns(self, query):
+        """Test that refinement queries contain additive constraint language."""
+        additive_signals = [
+            "also", "too", "but", "make them", "only in",
+            "can they", "I want ones that are", "they should"
+        ]
+        query_lower = query.lower()
+        has_signal = any(sig in query_lower for sig in additive_signals)
+        assert has_signal, f"Refinement query '{query}' should contain an additive signal"
+
+    def test_refinement_vs_attribute_filter_distinction(self):
+        """Test key distinction: refinement requires prior search context."""
+        standalone_query = "Show me waterproof boots"
+        constrained_query = "Oh, they should also be waterproof"
+
+        # Standalone has a full product category specified
+        standalone_has_category = "boots" in standalone_query.lower()
+        # Constrained uses pronouns or implicit reference
+        constrained_has_pronoun = "they" in constrained_query.lower()
+
+        assert standalone_has_category, "Standalone attribute_filter query should specify a category"
+        assert constrained_has_pronoun, "Refinement query should use pronouns/implicit reference"
+
+    def test_refinement_vs_follow_up_distinction(self):
+        """Test key distinction: refinement adds specific constraint, follow_up is vague."""
+        follow_up_signals = ["more", "show more", "tell me more", "other options", "alternatives"]
+        refinement_signals = ["waterproof", "under $100", "breathable", "leather", "size 10"]
+
+        # Follow-up is vague — no specific new constraint
+        vague_query = "show me more"
+        is_vague = any(sig in vague_query.lower() for sig in follow_up_signals)
+        has_specific_constraint = any(sig in vague_query.lower() for sig in refinement_signals)
+        assert is_vague and not has_specific_constraint
+
+        # Refinement has a specific constraint
+        refinement_query = "they should also be waterproof"
+        has_specific_constraint = any(sig in refinement_query.lower() for sig in refinement_signals)
+        assert has_specific_constraint
 

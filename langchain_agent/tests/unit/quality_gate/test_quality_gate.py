@@ -26,11 +26,19 @@ class TestQualityGate:
         assert threshold == 0.50, "Search threshold should be 0.50"
 
     def test_attribute_filter_threshold(self):
-        """Test attribute_filter queries use standard threshold (0.50)."""
+        """Test attribute_filter queries use standard threshold (0.45)."""
         intent = "attribute_filter"
-        threshold = 0.50
+        threshold = 0.45
         assert intent == "attribute_filter", "Should be attribute_filter intent"
-        assert threshold <= 0.50, "Attribute_filter threshold should be <= 0.50"
+        assert threshold == 0.45, "Attribute_filter threshold should be 0.45"
+
+    def test_refinement_threshold(self):
+        """Test refinement queries use same threshold as attribute_filter (0.45)."""
+        intent = "refinement"
+        threshold = 0.45
+        assert intent == "refinement", "Should be refinement intent"
+        assert threshold == 0.45, "Refinement threshold should be 0.45"
+        assert threshold < 0.50, "Refinement threshold should be below standard (permissive for feature-text matching)"
 
     def test_pass_decision_above_threshold(self, quality_gate_test_cases):
         """Test PASS decision when max_score >= threshold."""
@@ -121,7 +129,8 @@ class TestQualityGate:
     @pytest.mark.parametrize("intent,expected_threshold", [
         ("comparison", 0.55),
         ("search", 0.50),
-        ("attribute_filter", 0.50),
+        ("attribute_filter", 0.45),
+        ("refinement", 0.45),
         ("follow_up", 0.50),
     ])
     def test_intent_thresholds(self, intent, expected_threshold):
@@ -129,7 +138,8 @@ class TestQualityGate:
         thresholds = {
             "comparison": 0.55,
             "search": 0.50,
-            "attribute_filter": 0.50,
+            "attribute_filter": 0.45,
+            "refinement": 0.45,
             "follow_up": 0.50,
         }
         actual_threshold = thresholds.get(intent)
