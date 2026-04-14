@@ -29,7 +29,7 @@ Secret Manager, and Artifact Registry. Scales to zero when idle.
 A conversational RAG agent powered by Google Gemini AI for e-commerce product discovery:
 
 - **Product Search** - Hybrid search combining vector embeddings + full-text (BM25)
-- **Intent Classification** - 3 intents (question, summary, follow_up) with keyword fast-path + LLM fallback
+- **Intent Classification** - 6 intents (search, comparison, attribute_filter, refinement, follow_up, summary) with keyword fast-path + LLM fallback
 - **LangGraph Pipeline** - Deterministic graph-based orchestration with dynamic alpha refinement
 - **Hybrid Search** - Vector + full-text search with Reciprocal Rank Fusion (RRF, k=60)
 - **LLM-Based Reranking** - Gemini Flash Lite reranker for relevance scoring (0.0-1.0)
@@ -51,11 +51,11 @@ flowchart TB
     end
 
     subgraph Pipeline["LangGraph Pipeline"]
-        IC["Intent Classifier<br/>(question/summary/follow_up)"]
+        IC["Intent Classifier<br/>(search/comparison/attribute_filter/<br/>refinement/follow_up/summary)"]
         QR["Query Rewriter<br/>(resolve follow-up refs)"]
         QE["Query Evaluator<br/>Set α balance"]
         RET["Retriever<br/>Hybrid Search"]
-        REFINE["Alpha Refiner<br/>(bidirectional retry)"]
+        REFINE["Quality Gate<br/>(alpha refinement)"]
         RERANK["Reranker<br/>(LLM scoring)"]
         AGENT["LLM Agent<br/>(response generation)"]
     end
@@ -156,13 +156,24 @@ Show me blue running shoes for women
 What waterproof backpacks do you have?
 ```
 
-**Refinement** (follow_up intent with conversational query rewriting):
+**Refinement** (refinement intent - add constraint to prior search):
 
 ```text
-Which is cheaper?                 → "Which noise-cancelling headphone is cheaper?"
-Does it come in white?            → "Does the Sony WH-1000XM5 come in white?"
-How much?                         → "How much do the running shoes cost?"
-How about ones from Nike?         → expands to full previous query context
+"Find me boots" → Intent: search
+"They should also be waterproof"  → Intent: refinement (constraint on prior search)
+                                    Alpha: 0.35 (preserves category context)
+                                    Agent: "From the boots I showed you earlier..."
+
+"Show me headphones" → Intent: search
+"Any cheaper ones?"                → Intent: follow_up (vague expansion)
+                                    Expanded: "Any cheaper noise-cancelling headphones?"
+```
+
+**Attribute Filter** (standalone filtered search):
+
+```text
+"Show me waterproof boots"        → Intent: attribute_filter (specific attributes, no prior search)
+"Blue running shoes size 10"      → Intent: attribute_filter (specific constraints)
 ```
 
 **Conversation Summary** (summary intent):
@@ -198,9 +209,9 @@ reason about why certain products were ranked higher than others.
 
 | Technique | Description |
 |-----------|-------------|
-| **Intent Classification** | 3-intent detection (question/summary/follow_up) with keyword fast-path + LLM fallback |
+| **Intent Classification** | 6-intent detection (search/comparison/attribute_filter/refinement/follow_up/summary) with keyword fast-path + LLM fallback |
 | **Conversational Query Rewriting** | Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and attribute questions ("how much?") using conversation context |
-| **Dynamic Alpha** | Query evaluator analyzes query type and sets optimal α (0.0-1.0) for lexical/semantic balance |
+| **Dynamic Alpha** | Fast-path alpha for attribute_filter (0.25), comparison (0.60), refinement (0.35). LLM path for search/follow_up. Analyzes query type for optimal lexical/semantic balance (0.0-1.0) |
 | **Reciprocal Rank Fusion** | Fuses vector + BM25 rankings: `score = Σ 1/(rank + k)` where k=60 |
 | **LLM-Based Reranking** | Gemini Flash Lite scores query-product relevance on 0.0-1.0 scale |
 | **Alpha Refinement** | If max reranker score < 0.5, automatically retries with opposite search strategy |
