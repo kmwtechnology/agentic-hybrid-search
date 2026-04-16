@@ -133,10 +133,11 @@ class TestAuthentication:
 
         # Should get 200 (or 400 for bad params) but NOT 401 auth error.
         # Accept 403 only when origin-restricted (deployment blocks non-UI callers).
-        acceptable_codes = [200, 400]
         if response.status_code == 403 and "origin" in response.text.lower():
             pytest.skip("Deployment is origin-restricted; cannot test auth from smoke test")
-        assert response.status_code in acceptable_codes, (
+        if response.status_code == 429:
+            pytest.skip("Rate limited; cannot verify auth acceptance")
+        assert response.status_code in [200, 400], (
             f"Valid API key rejected: {response.status_code} - {response.text}"
         )
 
@@ -152,6 +153,8 @@ class TestAuthentication:
                 headers=headers
             )
 
+        if response.status_code == 429:
+            pytest.skip("Rate limited; cannot verify auth rejection")
         assert response.status_code in [401, 403], (
             f"Invalid API key should be rejected, got {response.status_code}"
         )
@@ -163,6 +166,8 @@ class TestAuthentication:
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(f"{DEPLOYMENT_URL}/api/conversations")
 
+        if response.status_code == 429:
+            pytest.skip("Rate limited; cannot verify auth rejection")
         assert response.status_code in [401, 403], (
             f"Missing API key should be rejected, got {response.status_code}"
         )
