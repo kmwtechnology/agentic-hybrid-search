@@ -18,6 +18,14 @@ DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 TIMEOUT = 30
 
 
+def _skip_if_origin_blocked(exc: BaseException) -> None:
+    """Skip test when the deployment rejects WebSocket connections due to
+    origin restriction (HTTP 403)."""
+    msg = str(exc).lower()
+    if "http 403" in msg or "rejected websocket" in msg:
+        pytest.skip("Deployment is origin-restricted; cannot test WebSocket from smoke test")
+
+
 class TestESCIProductIndexing:
     """ESCI product data indexing and retrieval tests."""
 
@@ -102,6 +110,7 @@ class TestESCIProductIndexing:
                 # Should have gotten results mentioning products
                 assert len(response_text) > 0, "No products found in search"
         except Exception as e:
+            _skip_if_origin_blocked(e)
             pytest.fail(f"Hybrid search test failed: {e}")
 
     @pytest.mark.e2e
@@ -148,6 +157,7 @@ class TestESCIProductIndexing:
                 # Should understand semantic meaning and return products
                 assert len(response_text) > 0, "Vector search failed"
         except Exception as e:
+            _skip_if_origin_blocked(e)
             pytest.fail(f"Vector search test failed: {e}")
 
     @pytest.mark.e2e
@@ -194,6 +204,7 @@ class TestESCIProductIndexing:
                 # Should mention Sony specifically
                 assert len(response_text) > 0, "Lexical search failed"
         except Exception as e:
+            _skip_if_origin_blocked(e)
             pytest.fail(f"Lexical search test failed: {e}")
 
 
@@ -244,6 +255,7 @@ class TestProductMetadata:
                     len(metadata) > 0 or "citations" in str(metadata).lower()
                 ), "No product metadata found"
         except Exception as e:
+            _skip_if_origin_blocked(e)
             pytest.fail(f"Product metadata test failed: {e}")
 
     @pytest.mark.e2e
@@ -289,6 +301,7 @@ class TestProductMetadata:
 
                 assert len(response_text) > 0, "Brand search failed"
         except Exception as e:
+            _skip_if_origin_blocked(e)
             pytest.fail(f"Brand attribute test failed: {e}")
 
 
@@ -359,6 +372,7 @@ class TestDataConsistency:
                 f"Results inconsistent: {len(response_1)} vs {len(response_2)} chars"
             )
         except Exception as e:
+            _skip_if_origin_blocked(e)
             pytest.fail(f"Data consistency test failed: {e}")
 
     @pytest.mark.e2e
@@ -408,6 +422,7 @@ class TestDataConsistency:
                     ord(c) >= 32 for c in response_text
                 ), "Control characters in response"
         except Exception as e:
+            _skip_if_origin_blocked(e)
             pytest.fail(f"Data integrity test failed: {e}")
 
 
@@ -469,6 +484,7 @@ class TestCheckpointPersistence:
                 # Should have maintained conversation context
                 assert len(response_text) > 0, "Checkpoint not restored"
         except Exception as e:
+            _skip_if_origin_blocked(e)
             pytest.fail(f"Checkpoint persistence test failed: {e}")
 
 
