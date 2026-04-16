@@ -10,7 +10,7 @@ from typing import List, Optional
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Request, Query, Path as PathParam
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
