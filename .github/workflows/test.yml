@@ -12,9 +12,97 @@ on:
       - 'langchain_agent/**'
 
 jobs:
-  test-backend:
-    name: Backend Tests
+  unit-tests:
+    name: Phase 1 - Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.13']
+      fail-fast: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd langchain_agent
+          pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout pytest-xdist
+
+      - name: Create test .env
+        run: |
+          cd langchain_agent
+          cat > .env.test << EOF
+          GOOGLE_API_KEY=test-key-12345
+          POSTGRES_USER=test
+          POSTGRES_PASSWORD=test
+          POSTGRES_HOST=localhost
+          POSTGRES_PORT=5432
+          POSTGRES_DB=agentic_hybrid_search_test
+          OPENSEARCH_HOST=localhost
+          OPENSEARCH_PORT=9200
+          OPENSEARCH_USE_SSL=false
+          API_KEY=test-api-key-12345
+          LLM_MODEL=gemini-3-flash-preview
+          RERANKER_MODEL=gemini-3.1-flash-lite-preview
+          QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview
+          EMBEDDINGS_MODEL=models/gemini-embedding-001
+          EOF
+
+      - name: Run Phase 1 Unit Tests
+        run: |
+          cd langchain_agent
+          PYTHONPATH=. pytest tests/unit/ \
+            -v \
+            --tb=short \
+            --timeout=30 \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing:skip-covered \
+            --junit-xml=test-results-phase1.xml
+        env:
+          ENV_FILE: .env.test
+
+      - name: Upload Phase 1 Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-phase1
+          path: langchain_agent/htmlcov/
+          retention-days: 30
+
+      - name: Upload Phase 1 Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-phase1
+          path: langchain_agent/test-results-phase1.xml
+          retention-days: 30
+
+      - name: Report Phase 1 Test Summary
+        if: always()
+        run: |
+          cd langchain_agent
+          echo "## Phase 1 - Unit Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          PYTHONPATH=. pytest tests/unit/ --co -q | tail -1 >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f test-results-phase1.xml ]; then
+            grep -o 'tests="[0-9]*"' test-results-phase1.xml | head -1 >> $GITHUB_STEP_SUMMARY
+          fi
+
+  integration-tests:
+    name: Phase 2 - Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
 
     services:
       postgres:
@@ -81,37 +169,53 @@ jobs:
           EMBEDDINGS_MODEL=models/gemini-embedding-001
           EOF
 
-      - name: Run Phase 1 Tests
+      - name: Verify Services
+        run: |
+          echo "Checking PostgreSQL..."
+          pg_isready -h localhost -p 5432 -U test
+          echo "PostgreSQL ready!"
+
+          echo "Checking OpenSearch..."
+          curl -s http://localhost:9200 | head -c 50
+          echo ""
+          echo "OpenSearch ready!"
+
+      - name: Run Phase 2 Integration Tests
         run: |
           cd langchain_agent
-          pytest tests/test_reranker_phase1.py -v --tb=short --timeout=30
-          pytest tests/test_vector_store_phase1.py -v --tb=short --timeout=30
-          pytest tests/test_api_auth_phase1.py -v --tb=short --timeout=30 || true  # Some tests skip
+          PYTHONPATH=. pytest tests/integration/ \
+            -v \
+            --tb=short \
+            --timeout=60 \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing:skip-covered \
+            --junit-xml=test-results-phase2.xml
+        env:
+          ENV_FILE: .env.test
 
-      - name: Run Phase 2 Tests (with skips expected)
-        run: |
-          cd langchain_agent
-          pytest tests/test_graph_error_handling_phase2.py -v --tb=short --timeout=30 -k "skip" || true
-          pytest tests/test_integration_phase2.py -v --tb=short --timeout=30 -k "skip" || true
-          pytest tests/test_link_verification_phase2.py -v --tb=short --timeout=30 -k "skip" || true
-
-      - name: Generate coverage report
-        run: |
-          cd langchain_agent
-          pytest tests/test_reranker_phase1.py tests/test_vector_store_phase1.py \
-            --cov=. --cov-report=xml --cov-report=term-missing
-        continue-on-error: true
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+      - name: Upload Phase 2 Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          files: ./langchain_agent/coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-        continue-on-error: true
+          name: test-results-phase2
+          path: langchain_agent/test-results-phase2.xml
+          retention-days: 30
+
+      - name: Report Phase 2 Test Summary
+        if: always()
+        run: |
+          cd langchain_agent
+          echo "## Phase 2 - Integration Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          PYTHONPATH=. pytest tests/integration/ --co -q | tail -1 >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f test-results-phase2.xml ]; then
+            grep -o 'tests="[0-9]*"' test-results-phase2.xml | head -1 >> $GITHUB_STEP_SUMMARY
+          fi
 
   lint-backend:
-    name: Backend Linting
+    name: Linting & Type Checks
     runs-on: ubuntu-latest
 
     steps:
@@ -126,49 +230,40 @@ jobs:
       - name: Install linting tools
         run: |
           pip install --upgrade pip
-          pip install flake8 black isort mypy
+          pip install flake8 black isort mypy types-requests
 
       - name: Check code formatting with black
+        continue-on-error: true
         run: |
           cd langchain_agent
-          black --check . --exclude venv/ || true
+          black --check . --exclude venv/ --exclude .venv
+          echo "✓ Black formatting check passed"
 
       - name: Sort imports with isort
+        continue-on-error: true
         run: |
           cd langchain_agent
-          isort --check-only . --skip venv/ || true
+          isort --check-only . --skip venv/ --skip .venv
+          echo "✓ isort import sorting check passed"
 
       - name: Lint with flake8
+        continue-on-error: true
         run: |
           cd langchain_agent
-          flake8 . --exclude venv/ --max-line-length=100 --count || true
-
-  type-check:
-    name: Type Checking
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.13'
-          cache: 'pip'
-
-      - name: Install type checking tools
-        run: |
-          pip install --upgrade pip
-          pip install mypy types-requests
+          flake8 . --exclude venv/,.venv --max-line-length=100 --count
+          echo "✓ flake8 linting check passed"
 
       - name: Type check with mypy
+        continue-on-error: true
         run: |
           cd langchain_agent
-          mypy main.py --ignore-missing-imports || true
+          mypy main.py --ignore-missing-imports
+          echo "✓ mypy type checking passed"
 
-  e2e-test:
-    name: E2E Tests (Playwright)
+  e2e-tests:
+    name: Phase 3 - E2E Tests (Playwright)
     runs-on: ubuntu-latest
+    continue-on-error: true  # E2E tests optional in CI
 
     steps:
       - uses: actions/checkout@v4
@@ -181,96 +276,86 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd web
+          cd langchain_agent/web
           npm ci
           npx playwright install --with-deps
 
       - name: Run E2E tests
+        continue-on-error: true
+        timeout-minutes: 10
         run: |
-          cd web
+          cd langchain_agent/web
           npm run dev &
           sleep 5
           npx playwright test
-        continue-on-error: true
+        env:
+          CI: true
 
       - name: Upload E2E test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: web/playwright-report/
+          path: langchain_agent/web/playwright-report/
           retention-days: 7
 
-  deployment-check:
-    name: Deployment Verification
+  test-summary:
+    name: Test Results Summary
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: agentic_hybrid_search_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-      opensearch:
-        image: opensearchproject/opensearch:2.11.0
-        env:
-          discovery.type: single-node
-          OPENSEARCH_INITIAL_ADMIN_PASSWORD: TestPassword123!
-        options: >-
-          --health-cmd "curl -s http://localhost:9200 > /dev/null || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 9200:9200
+    needs: [unit-tests, integration-tests, lint-backend]
+    if: always()
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v4
         with:
-          python-version: '3.13'
-          cache: 'pip'
+          path: test-artifacts
 
-      - name: Install dependencies
+      - name: Generate Test Summary Report
         run: |
-          cd langchain_agent
-          pip install --upgrade pip
-          pip install -e .
-          pip install pytest pytest-asyncio pytest-timeout
+          echo "# Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-      - name: Create test .env
-        run: |
-          cd langchain_agent
-          cat > .env.test << EOF
-          GOOGLE_API_KEY=test-key
-          POSTGRES_USER=test
-          POSTGRES_PASSWORD=test
-          POSTGRES_HOST=localhost
-          POSTGRES_PORT=5432
-          POSTGRES_DB=agentic_hybrid_search_test
-          OPENSEARCH_HOST=localhost
-          OPENSEARCH_PORT=9200
-          OPENSEARCH_USE_SSL=false
-          API_KEY=test-api-key
-          LLM_MODEL=gemini-3-flash-preview
-          RERANKER_MODEL=gemini-3.1-flash-lite-preview
-          QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview
-          EMBEDDINGS_MODEL=models/gemini-embedding-001
-          EOF
+          echo "### Phase 1 - Unit Tests" >> $GITHUB_STEP_SUMMARY
+          if [ -f test-artifacts/test-results-phase1/test-results-phase1.xml ]; then
+            PHASE1_TESTS=$(grep -o 'tests="[0-9]*"' test-artifacts/test-results-phase1/test-results-phase1.xml | head -1 | cut -d'"' -f2)
+            PHASE1_FAILURES=$(grep -o 'failures="[0-9]*"' test-artifacts/test-results-phase1/test-results-phase1.xml | head -1 | cut -d'"' -f2)
+            echo "- Tests: $PHASE1_TESTS" >> $GITHUB_STEP_SUMMARY
+            echo "- Failures: $PHASE1_FAILURES" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Status: No results available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-      - name: Run deployment verification tests
+          echo "### Phase 2 - Integration Tests" >> $GITHUB_STEP_SUMMARY
+          if [ -f test-artifacts/test-results-phase2/test-results-phase2.xml ]; then
+            PHASE2_TESTS=$(grep -o 'tests="[0-9]*"' test-artifacts/test-results-phase2/test-results-phase2.xml | head -1 | cut -d'"' -f2)
+            PHASE2_FAILURES=$(grep -o 'failures="[0-9]*"' test-artifacts/test-results-phase2/test-results-phase2.xml | head -1 | cut -d'"' -f2)
+            echo "- Tests: $PHASE2_TESTS" >> $GITHUB_STEP_SUMMARY
+            echo "- Failures: $PHASE2_FAILURES" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Status: No results available (services may not be available)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Phase 3 - E2E Tests" >> $GITHUB_STEP_SUMMARY
+          if [ -f test-artifacts/playwright-report/index.html ]; then
+            echo "- Status: Report generated" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Status: Optional (skipped or not run)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Verdict
+        if: needs.unit-tests.result == 'failure' || needs.integration-tests.result == 'failure'
         run: |
-          cd langchain_agent
-          pytest tests/test_deployment_verification_phase3.py -v --tb=short -k "skip" || true
-        continue-on-error: true
+          echo "⚠️ Some tests failed. Review artifacts above." >> $GITHUB_STEP_SUMMARY
+          exit 1
+
+      - name: Success
+        if: needs.unit-tests.result == 'success' && needs.integration-tests.result == 'success'
+        run: |
+          echo "✅ All critical tests (Phase 1 & 2) passed!" >> $GITHUB_STEP_SUMMARY
