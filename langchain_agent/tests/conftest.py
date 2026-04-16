@@ -114,3 +114,20 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "evaluator: mark test as query evaluator test")
     config.addinivalue_line("markers", "quality_gate: mark test as quality gate test")
     config.addinivalue_line("markers", "slow: mark test as slow")
+    config.addinivalue_line("markers", "requires_real_api: mark test as requiring real API credentials")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests requiring real API credentials when API key is fake/test."""
+    google_api_key = os.environ.get("GOOGLE_API_KEY", "")
+    is_fake_key = google_api_key.startswith("test-") or google_api_key == ""
+
+    if is_fake_key:
+        skip_marker = pytest.mark.skip(reason="Requires real GOOGLE_API_KEY")
+        for item in items:
+            # Skip content generation tests that require real API
+            if "test_content_gen" in item.nodeid or "test_*_generation" in item.nodeid:
+                item.add_marker(skip_marker)
+            # Skip tests that explicitly require real API
+            if item.get_closest_marker("requires_real_api"):
+                item.add_marker(skip_marker)
