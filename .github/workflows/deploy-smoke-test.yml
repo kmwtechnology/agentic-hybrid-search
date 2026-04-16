@@ -5,6 +5,7 @@ on:
     workflows: ["Build & Deploy"]
     types: [completed]
     branches: [main]
+  workflow_dispatch:
 
 env:
   PROJECT_ID: gen-lang-client-0250737934
@@ -15,7 +16,7 @@ jobs:
   smoke-test:
     name: Run Deployment Smoke Tests
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 15
 
     steps:
