@@ -111,6 +111,7 @@ jobs:
           LLM_MODEL=gemini-3-flash-preview,\
           RERANKER_MODEL=gemini-3.1-flash-lite-preview,\
           QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
+          EMBEDDINGS_MODEL=models/gemini-embedding-001,\
           LOG_LEVEL=INFO,\
           LOG_FORMAT=json" \
             --set-secrets="\

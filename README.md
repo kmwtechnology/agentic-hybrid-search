@@ -73,8 +73,8 @@ flowchart TB
     end
 
     subgraph GoogleAI["Google Gemini"]
-        LLM["gemini-2.5-flash<br/>(generation)"]
-        CLASSIFIER["gemini-2.5-flash-lite<br/>(intent + reranking)"]
+        LLM["gemini-3-flash-preview<br/>(generation)"]
+        CLASSIFIER["gemini-3.1-flash-lite-preview<br/>(intent + reranking)"]
         EMB["gemini-embedding-001<br/>(768-dim)"]
     end
 
@@ -132,9 +132,9 @@ retries with opposite strategy to ensure good results.
 
 | Category | Technology | Purpose |
 |----------|-----------|---------|
-| **LLM** | Google Gemini 2.5 Flash | Response generation |
-| **Intent Classifier** | Gemini 2.5 Flash Lite | Intent detection (question/summary/follow_up) |
-| **Reranker** | Gemini 2.5 Flash Lite | LLM-based relevance scoring (0.0-1.0) |
+| **LLM** | Google Gemini 3 Flash | Response generation |
+| **Intent Classifier** | Gemini 3.1 Flash Lite | Intent detection (question/summary/follow_up) |
+| **Reranker** | Gemini 3.1 Flash Lite | LLM-based relevance scoring (0.0-1.0) |
 | **Embeddings** | Gemini Embedding 001 | 768-dimensional product chunk vectors |
 | **Vector Database** | OpenSearch 2.19.1 | HNSW knn_vector index + BM25 lexical |
 | **Search Algorithm** | Reciprocal Rank Fusion | Hybrid fusion of vector + lexical scores |

@@ -75,6 +75,10 @@ jobs:
           OPENSEARCH_PORT=9200
           OPENSEARCH_USE_SSL=false
           API_KEY=test-api-key-12345
+          LLM_MODEL=gemini-3-flash-preview
+          RERANKER_MODEL=gemini-3.1-flash-lite-preview
+          QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview
+          EMBEDDINGS_MODEL=models/gemini-embedding-001
           EOF
 
       - name: Run Phase 1 Tests
@@ -259,6 +263,10 @@ jobs:
           OPENSEARCH_PORT=9200
           OPENSEARCH_USE_SSL=false
           API_KEY=test-api-key
+          LLM_MODEL=gemini-3-flash-preview
+          RERANKER_MODEL=gemini-3.1-flash-lite-preview
+          QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview
+          EMBEDDINGS_MODEL=models/gemini-embedding-001
           EOF
 
       - name: Run deployment verification tests
