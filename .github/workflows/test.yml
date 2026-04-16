@@ -125,6 +125,7 @@ jobs:
           discovery.type: single-node
           OPENSEARCH_INITIAL_ADMIN_PASSWORD: TestPassword123!
           OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+          OPENSEARCH_SSL_HTTP_ENABLED: "false"
         options: >-
           --health-cmd "curl -s http://localhost:9200 > /dev/null || exit 1"
           --health-interval 10s
@@ -205,13 +206,17 @@ jobs:
       - name: Report Phase 2 Test Summary
         if: always()
         run: |
-          cd langchain_agent
           echo "## Phase 2 - Integration Tests Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          PYTHONPATH=. pytest tests/integration/ --co -q | tail -1 >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f test-results-phase2.xml ]; then
-            grep -o 'tests="[0-9]*"' test-results-phase2.xml | head -1 >> $GITHUB_STEP_SUMMARY
+          if [ -d langchain_agent ]; then
+            cd langchain_agent
+            PYTHONPATH=. pytest tests/integration/ --co -q | tail -1 >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ -f test-results-phase2.xml ]; then
+              grep -o 'tests="[0-9]*"' test-results-phase2.xml | head -1 >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ No test results generated (containers may have failed to start)" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
 
   lint-backend:
@@ -273,6 +278,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
+          cache-dependency-path: langchain_agent/web/package-lock.json
 
       - name: Install dependencies
         run: |
