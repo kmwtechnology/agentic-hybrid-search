@@ -655,7 +655,8 @@ class TestWebSocketConnectionLifecycle:
         for i in range(10):
             websocket_mock.send_json({"type": "llm_response_chunk", "token": "test"})
 
-        assert websocket_mock.events_sent == 10
+        # Verify send_json was called 10 times
+        assert websocket_mock.send_json.call_count == 10
 
     def test_connection_closure_after_completion(self, websocket_mock):
         """Test connection can be closed after content generation."""
