@@ -158,18 +158,28 @@ manager = ConnectionManager()
 
 
 class ChatMessage(BaseModel):
-    """Incoming chat message from client with validation."""
+    """Incoming chat message from client with validation.
+
+    Example:
+        ```json
+        {
+            "type": "chat_message",
+            "message": "Show me wireless headphones with active noise cancellation under $200",
+            "thread_id": "conv_abc123"
+        }
+        ```
+    """
 
     type: str = "chat_message"
     message: str = Field(
         ...,
         min_length=1,
         max_length=4000,
-        description="User message content (1-4000 characters)"
+        description="User query or statement (1-4000 characters). Can be a product search, comparison, attribute filter, or follow-up question."
     )
     thread_id: Optional[str] = Field(
         None,
-        description="Conversation thread ID (optional)"
+        description="Conversation thread ID for resuming conversations. Format: alphanumeric, underscore, hyphen, max 64 chars. Auto-generated if omitted."
     )
 
     @field_validator('thread_id')
@@ -201,28 +211,67 @@ class ChatMessage(BaseModel):
 @router.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
     """
-    WebSocket endpoint for chat with real-time observability.
+    WebSocket endpoint for real-time chat with streaming observability.
 
-    Protocol:
-        1. Client connects from UI (same-origin)
-        2. Server verifies origin authentication
-        3. Server sends connection_established event
-        4. Client sends chat_message events
-        5. Server streams observability events as agent executes
-        6. Server sends agent_complete or agent_error when done
+    This is the primary endpoint for client-server communication. Supports:
+    - Real-time message streaming with token-by-token output
+    - Observability events showing pipeline execution (retrieval, reranking, etc.)
+    - Multiple parallel conversations via thread_id
+    - Conversation resumption by thread_id
 
-    Query Parameters:
-        thread_id: Conversation thread ID (optional, generated if not provided)
+    **Connection Flow:**
+        1. Client connects via WebSocket (same-origin required)
+        2. Server verifies authentication via Origin header
+        3. Server sends ConnectionEstablished event with thread_id
+        4. Client sends chat_message events in a loop
+        5. Server streams observability events as agent processes
+        6. Server sends AgentCompleteEvent or AgentErrorEvent when done
+        7. Client can request stop_execution to cancel in-flight processing
 
-    Client Message Format:
+    **Query Parameters:**
+        - `thread_id` (optional, str): Conversation thread ID for resuming conversations.
+          Format: alphanumeric, underscore, hyphen, max 64 chars.
+          If not provided, server generates `conversation_{uuid}`.
+
+    **Client Message Format (JSON):**
+        ```json
         {
             "type": "chat_message",
-            "message": "What is LangGraph?",
-            "thread_id": "conv_abc123"  // optional
+            "message": "What wireless earbuds have the best noise cancellation?",
+            "thread_id": "conv_abc123"
         }
+        ```
+        or to stop execution:
+        ```json
+        {
+            "type": "stop_execution",
+            "thread_id": "conv_abc123"
+        }
+        ```
 
-    Server Event Format:
-        See api/schemas/events.py for all event types
+    **Server Event Types** (see api/schemas/events.py):
+        - `ConnectionEstablished` — Initial connection confirmation with thread_id
+        - `SearchProgressEvent` — Search initiated
+        - `OpenSearchQueryEvent` — Detailed query (DSL, alpha, intent)
+        - `RerankerProgressEvent` — Documents being reranked
+        - `QualityGateEvent` — Quality validation results
+        - `QueryExpansionEvent` — Vague query expansion with context
+        - `LLMResponseChunkEvent` — Token-by-token output streaming
+        - `ContentTypeClassificationEvent` — Content mode (RAG Q&A vs Writer)
+        - `SocialPostProgressEvent`, `BlogPostProgressEvent`, etc. — Content generation
+        - `AgentCompleteEvent` — Execution finished with response and citations
+        - `AgentErrorEvent` — Error occurred (recoverable or fatal)
+        - `ClarificationRequestedEvent` — Intent classification too uncertain
+        - `ClarificationResolvedEvent` — User provided clarification
+
+    **Authentication:**
+        Verified via Origin header (must match request origin).
+        Same-origin policy enforced from UI.
+
+    **Error Handling:**
+        - Invalid thread_id format → disconnects with error
+        - Processing errors → sends AgentErrorEvent with error message
+        - Network errors → logs and attempts graceful reconnection
     """
     # Verify same-origin authentication before accepting connection
     if not await verify_websocket_origin(websocket):
@@ -396,18 +445,46 @@ class ChatRequest(BaseModel):
 
 
 class Citation(BaseModel):
-    """Citation source for a response."""
-    label: str
-    url: str
+    """Citation source for a response.
+
+    Example:
+        ```json
+        {
+            "label": "Sony WH-1000XM5 Headphones",
+            "url": "https://www.amazon.com/dp/B09YLDRQ7L"
+        }
+        ```
+    """
+    label: str = Field(description="Product name or title")
+    url: str = Field(description="Product URL (ASIN-based for ESCI products)")
 
 
 class ChatResponse(BaseModel):
-    """REST chat response."""
+    """REST chat response (non-streaming fallback).
 
-    thread_id: str
-    response: str
-    duration_ms: float
-    citations: List[Citation] = []
+    Returns the final response text, citations, and execution timing.
+    For real-time streaming, use the WebSocket endpoint instead.
+
+    Example:
+        ```json
+        {
+            "thread_id": "conversation_abc123",
+            "response": "Here are some great wireless earbuds...",
+            "duration_ms": 2450.5,
+            "citations": [
+                {
+                    "label": "Sony WH-1000XM5",
+                    "url": "https://www.amazon.com/dp/B09YLDRQ7L"
+                }
+            ]
+        }
+        ```
+    """
+
+    thread_id: str = Field(description="Conversation thread ID (for resuming conversations)")
+    response: str = Field(description="Agent's response text with product information and recommendations")
+    duration_ms: float = Field(description="Total execution time in milliseconds")
+    citations: List[Citation] = Field(default=[], description="Product sources with labels and URLs")
 
 
 @router.post("/api/chat", response_model=ChatResponse)
@@ -416,16 +493,52 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
     """
     REST endpoint for chat (non-streaming fallback).
 
-    For real-time streaming with observability, use the WebSocket endpoint.
+    **Use this endpoint for:**
+        - Testing without WebSocket support
+        - Simple synchronous requests
+        - Integrations that don't support WebSocket
 
-    Requires same-origin authentication.
+    **For real-time streaming and observability, use `/ws/chat` (WebSocket) instead.**
+
+    **Features:**
+        - Synchronous request-response pattern
+        - Final response + citations returned in one response
+        - Conversation resumption via thread_id
+        - Rate limited (default: 10 req/min per IP)
+
+    **Authentication:**
+        - Same-origin required (enforced via Origin header)
+        - API_KEY auth via Authorization header (optional for browser requests)
+
+    **Request:** `POST /api/chat`
+        ```json
+        {
+            "message": "What are the best gaming laptops under $1500?",
+            "thread_id": "conv_my_session"
+        }
+        ```
+
+    **Response:** 200 OK
+        ```json
+        {
+            "thread_id": "conv_my_session",
+            "response": "Here are some excellent gaming laptops...",
+            "duration_ms": 2450.5,
+            "citations": [...]
+        }
+        ```
+
+    **Errors:**
+        - 400: Invalid request (empty message, invalid thread_id format)
+        - 429: Rate limited (too many requests)
+        - 500: Internal server error
 
     Args:
         request: FastAPI request object (for auth and rate limiting)
         chat_request: Chat request with message and optional thread_id
 
     Returns:
-        Chat response with agent's answer.
+        Chat response with agent's answer and citations.
     """
     # Verify same-origin authentication
     await verify_same_origin(request)

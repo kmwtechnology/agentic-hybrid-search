@@ -19,7 +19,48 @@ router = APIRouter()
 @router.get("/health")
 async def health_check():
     """
-    Check health of API and all dependencies.
+    Comprehensive health check of API and all dependencies.
+
+    **Purpose:** Monitor system health and diagnose dependency failures.
+
+    **Checks:**
+        - **PostgreSQL** — Database for conversation checkpoints
+        - **Google AI API** — LLM and embeddings service (checks API key only)
+        - **OpenSearch** — Vector store for product search index
+
+    **Response:** 200 OK
+        ```json
+        {
+            "status": "ok",
+            "version": "1.1.0",
+            "postgres": true,
+            "google_ai": true,
+            "vector_store": true,
+            "document_count": 10000
+        }
+        ```
+
+    **Status Values:**
+        - `"ok"` — All critical services healthy
+        - `"degraded"` — At least one service unhealthy (still responds 200)
+
+    **Response Fields:**
+        - `status` — Overall system health ("ok" or "degraded")
+        - `version` — API version
+        - `postgres` — PostgreSQL connection healthy (bool)
+        - `postgres_error` — Error message if postgres check failed (optional)
+        - `google_ai` — Google AI API key configured (bool)
+        - `google_ai_error` — Error message if google_ai check failed (optional)
+        - `vector_store` — OpenSearch has documents (bool)
+        - `vector_store_error` — Error message if vector_store check failed (optional)
+        - `document_count` — Number of indexed documents (int, optional)
+
+    **Use cases:**
+        - Load balancer health probes
+        - Monitoring alerts
+        - Deployment readiness checks
+
+    **Note:** Always returns 200 even if degraded (fail-open for monitoring).
 
     Returns:
         Health status of postgres, google_ai, vector_store, and overall system.
@@ -71,7 +112,43 @@ async def health_check():
 async def readiness_check():
     """
     Kubernetes-style readiness probe.
-    Returns 200 if ready to accept traffic.
+
+    **Purpose:** Determine if the service is ready to accept traffic.
+
+    **Behavior:**
+        - Returns 200 OK if all critical services are healthy
+        - Returns 503 Service Unavailable if any critical service is down
+        - Used by Kubernetes, load balancers, and orchestration systems
+
+    **Request:** `GET /api/health/ready`
+
+    **Success Response:** 200 OK
+        ```json
+        {
+            "ready": true
+        }
+        ```
+
+    **Failure Response:** 503 Service Unavailable
+        ```json
+        {
+            "ready": false,
+            "reason": {
+                "status": "degraded",
+                "postgres": false,
+                "postgres_error": "Connection refused"
+            }
+        }
+        ```
+
+    **Use cases:**
+        - Kubernetes liveness/readiness probes
+        - Load balancer traffic routing
+        - Deployment validation
+        - Service orchestration
+
+    Returns:
+        Ready status and full health details if not ready.
     """
     health = await health_check()
     if health["status"] == "ok":
@@ -83,7 +160,41 @@ async def readiness_check():
 async def get_frontend_config(request: Request):
     """
     Runtime configuration for frontend.
-    Allows frontend to discover the API URL at runtime instead of build time.
+
+    **Purpose:** Allow frontend to discover API URL at runtime (not build time).
+
+    **Why needed:**
+        - Same code runs on localhost (dev) and Cloud Run (prod)
+        - Frontend doesn't know its own domain until runtime
+        - API_URL is environment-dependent
+
+    **Request:** `GET /api/config`
+
+    **Response:** 200 OK
+        ```json
+        {
+            "apiUrl": "https://agentic-hybrid-search-abc123.run.app"
+        }
+        ```
+        (or empty string in dev if not configured)
+
+    **Behavior:**
+        - If request Origin is HTTPS → use Origin as apiUrl (Cloud Run)
+        - If request Origin is HTTP → use API_URL env var (dev, may be empty)
+        - Frontend uses this to construct WebSocket and API URLs
+
+    **Frontend Usage:**
+        ```typescript
+        const config = await fetch('/api/config').then(r => r.json());
+        const wsUrl = `${config.apiUrl}/ws/chat`;
+        const ws = new WebSocket(wsUrl);
+        ```
+
+    **Environment Variables:**
+        - `API_URL` — Optional explicit API base URL (for dev behind proxy)
+
+    Returns:
+        Frontend configuration object with apiUrl.
     """
     # Get the origin URL from the request
     origin = request.headers.get("origin", "")

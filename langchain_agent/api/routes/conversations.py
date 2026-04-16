@@ -60,29 +60,54 @@ router = APIRouter()
 
 
 class ConversationSummary(BaseModel):
-    """Summary of a conversation for listing."""
+    """Summary of a conversation for listing.
 
-    thread_id: str
-    title: str
-    created_at: datetime
-    updated_at: Optional[datetime] = None
+    Example:
+        ```json
+        {
+            "thread_id": "conv_abc123",
+            "title": "Laptop Shopping Help",
+            "created_at": "2026-04-16T10:30:00",
+            "updated_at": "2026-04-16T11:45:00"
+        }
+        ```
+    """
+
+    thread_id: str = Field(description="Unique conversation identifier (alphanumeric, underscore, hyphen, max 64 chars)")
+    title: str = Field(description="Auto-generated title based on first message (derived from thread_id if not set)")
+    created_at: datetime = Field(description="Conversation creation timestamp (ISO 8601)")
+    updated_at: Optional[datetime] = Field(None, description="Last message timestamp (ISO 8601)")
 
 
 class ConversationDetail(BaseModel):
-    """Full conversation details including messages."""
+    """Full conversation details including messages.
 
-    thread_id: str
-    title: str
-    created_at: datetime
-    message_count: int
-    messages: List[dict]
+    Example:
+        ```json
+        {
+            "thread_id": "conv_abc123",
+            "title": "Laptop Shopping Help",
+            "created_at": "2026-04-16T10:30:00",
+            "message_count": 5,
+            "messages": [
+                {
+                    "type": "human",
+                    "content": "What are good gaming laptops?"
+                },
+                {
+                    "type": "ai",
+                    "content": "Here are some great options..."
+                }
+            ]
+        }
+        ```
+    """
 
-
-class DeleteResponse(BaseModel):
-    """Response after deleting conversations."""
-
-    deleted_metadata: int
-    deleted_checkpoints: int
+    thread_id: str = Field(description="Conversation thread ID")
+    title: str = Field(description="Conversation title")
+    created_at: datetime = Field(description="Creation timestamp")
+    message_count: int = Field(description="Total number of human + AI messages")
+    messages: List[dict] = Field(description="Message history (human and AI messages only, tool messages filtered)")
 
 
 # ============================================================================
@@ -102,9 +127,43 @@ async def list_conversations(
     )
 ):
     """
-    List all previous conversations with titles and dates.
+    List all previous conversations with summaries.
 
-    Only accessible from the UI (same-origin).
+    **Purpose:** Populate conversation sidebar/history in the UI.
+
+    **Features:**
+        - Sorted by most recent first (by updated_at or created_at)
+        - Configurable limit (1-100, default 20)
+        - Rate limited (default: 30 req/min per IP)
+        - Same-origin required
+
+    **Request:** `GET /api/conversations?limit=20`
+
+    **Response:** 200 OK
+        ```json
+        [
+            {
+                "thread_id": "conversation_abc123",
+                "title": "Wireless Earbuds Comparison",
+                "created_at": "2026-04-16T10:30:00",
+                "updated_at": "2026-04-16T11:45:00"
+            },
+            {
+                "thread_id": "conversation_def456",
+                "title": "Gaming Laptop Search",
+                "created_at": "2026-04-15T14:20:00",
+                "updated_at": "2026-04-15T15:10:00"
+            }
+        ]
+        ```
+
+    **Query Parameters:**
+        - `limit` (int, 1-100, default 20): Max conversations to return
+
+    **Errors:**
+        - 401: Unauthorized (same-origin violation)
+        - 429: Rate limited
+        - 500: Database error
 
     Args:
         request: FastAPI request object (for auth and rate limiting)
@@ -143,9 +202,46 @@ async def list_conversations(
 @limiter.limit(RATE_LIMIT_CONVERSATIONS)
 async def get_conversation(request: Request, thread_id: str):
     """
-    Get full details of a specific conversation including messages.
+    Get full details of a specific conversation including message history.
 
-    Requires same-origin authentication.
+    **Purpose:** Load a conversation for resuming or viewing in detail.
+
+    **Features:**
+        - Returns complete message history
+        - Filters out tool/system messages (human + AI only)
+        - Includes message count and metadata
+        - Thread ID validation to prevent injection attacks
+
+    **Request:** `GET /api/conversations/conversation_abc123`
+
+    **Response:** 200 OK
+        ```json
+        {
+            "thread_id": "conversation_abc123",
+            "title": "Wireless Earbuds Comparison",
+            "created_at": "2026-04-16T10:30:00",
+            "message_count": 4,
+            "messages": [
+                {
+                    "type": "human",
+                    "content": "What wireless earbuds have the best noise cancellation?"
+                },
+                {
+                    "type": "ai",
+                    "content": "Here are some great options with ANC..."
+                }
+            ]
+        }
+        ```
+
+    **Path Parameters:**
+        - `thread_id` (str, 1-64 chars): Conversation ID (alphanumeric, underscore, hyphen)
+
+    **Errors:**
+        - 400: Invalid thread_id format
+        - 404: Conversation not found
+        - 429: Rate limited
+        - 500: Database error
 
     Args:
         request: FastAPI request object (for auth and rate limiting)
@@ -226,9 +322,31 @@ async def clear_all_conversations(request: Request):
     """
     Delete all conversations and their history.
 
-    Returns 204 No Content on success (RESTful standard for DELETE).
+    **⚠️ WARNING: This is DESTRUCTIVE and cannot be undone.**
 
-    WARNING: This is destructive and cannot be undone.
+    **Purpose:** Clear all conversation history from the database.
+
+    **Use cases:**
+        - Clearing debug/test conversations
+        - Privacy: remove all user data
+        - System cleanup/reset
+
+    **Request:** `DELETE /api/conversations`
+
+    **Response:** 204 No Content (no body)
+
+    **Behavior:**
+        - Deletes all entries in conversation_metadata table
+        - Deletes all LangGraph checkpoints
+        - Deletes all checkpoint blobs (message history)
+        - Atomic transaction (all-or-nothing)
+
+    **Errors:**
+        - 401: Unauthorized (same-origin violation)
+        - 429: Rate limited
+        - 500: Database error
+
+    **Note:** This cannot be undone. Consider using `DELETE /api/conversations/{thread_id}` for selective deletion.
 
     Args:
         request: FastAPI request object (for auth and rate limiting)
@@ -264,11 +382,37 @@ async def clear_all_conversations(request: Request):
 @limiter.limit(RATE_LIMIT_CONVERSATIONS)
 async def delete_conversation(request: Request, thread_id: str):
     """
-    Delete a specific conversation.
+    Delete a specific conversation and its history.
 
     Returns 204 No Content on success (RESTful standard for DELETE).
 
-    Requires same-origin authentication.
+    **Purpose:** Remove a single conversation from history.
+
+    **Features:**
+        - Selective deletion (only specified conversation)
+        - Removes metadata and all message history
+        - Thread ID validation to prevent injection attacks
+        - Atomic transaction
+
+    **Request:** `DELETE /api/conversations/conversation_abc123`
+
+    **Response:** 204 No Content (no body)
+
+    **Behavior:**
+        - Deletes conversation metadata entry
+        - Deletes LangGraph checkpoints for this thread
+        - Removes all message history
+
+    **Path Parameters:**
+        - `thread_id` (str, 1-64 chars): Conversation to delete (alphanumeric, underscore, hyphen)
+
+    **Errors:**
+        - 400: Invalid thread_id format
+        - 404: Conversation not found
+        - 429: Rate limited
+        - 500: Database error
+
+    **Note:** This cannot be undone. Ensure the user confirms before calling.
 
     Args:
         request: FastAPI request object (for auth and rate limiting)

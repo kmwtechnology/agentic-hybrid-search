@@ -1,9 +1,12 @@
 import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { DocsPage } from './pages/DocsPage'
+import { GuidePage } from './pages/GuidePage'
 import { useChatStore } from './stores/chatStore'
 import { useWebSocket } from './hooks/useWebSocket'
 
-function App() {
+function ChatApp() {
   const threadId = useChatStore((s) => s.threadId)
   const setThreadId = useChatStore((s) => s.setThreadId)
   const { connect } = useWebSocket()
@@ -28,6 +31,18 @@ function App() {
   }, [threadId, connect])
 
   return <Layout />
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<ChatApp />} />
+        <Route path="/docs" element={<DocsPage />} />
+        <Route path="/guide" element={<GuidePage />} />
+      </Routes>
+    </BrowserRouter>
+  )
 }
 
 export default App

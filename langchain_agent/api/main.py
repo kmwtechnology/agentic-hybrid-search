@@ -139,8 +139,8 @@ if static_dir.exists():
     @app.get("/{full_path:path}")
     async def serve_react(full_path: str):
         """Serve React frontend for all non-API routes"""
-        # Skip API routes
-        if full_path.startswith("api/") or full_path.startswith("ws/"):
+        # Skip API routes and documentation
+        if full_path.startswith("api/") or full_path.startswith("ws/") or full_path in ("docs", "redoc", "openapi.json"):
             return JSONResponse({"error": "Not Found"}, status_code=404)
 
         # Serve index.html for all other routes (React Router will handle)

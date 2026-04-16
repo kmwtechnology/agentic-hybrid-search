@@ -3,7 +3,8 @@
  */
 
 import { useEffect, useCallback, useState } from 'react'
-import { Plus, Trash2, MessageSquare, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Trash2, MessageSquare, RefreshCw, BookOpen, HelpCircle } from 'lucide-react'
 import { useChatStore, type ConversationSummary } from '../../stores/chatStore'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import { ConversationItem } from './ConversationItem'
@@ -149,8 +150,26 @@ export function ConversationsSidebar({ onConversationSelect }: ConversationsSide
       </div>
 
       {/* Footer */}
-      {conversations.length > 0 && (
-        <div className="px-4 py-3 border-t border-gray-800">
+      <div className="px-4 py-3 border-t border-gray-800 space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            to="/guide"
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+            title="User guide and tutorials"
+          >
+            <HelpCircle className="w-4 h-4" />
+            Guide
+          </Link>
+          <Link
+            to="/docs"
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
+            title="API reference documentation"
+          >
+            <BookOpen className="w-4 h-4" />
+            API
+          </Link>
+        </div>
+        {conversations.length > 0 && (
           <button
             onClick={handleClearAll}
             className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 ${
@@ -162,8 +181,8 @@ export function ConversationsSidebar({ onConversationSelect }: ConversationsSide
             <Trash2 className="w-4 h-4" />
             {confirmingClearAll ? 'Click again to confirm' : 'Clear All'}
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
