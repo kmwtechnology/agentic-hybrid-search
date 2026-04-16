@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd langchain_agent
-          pip install pytest pytest-asyncio httpx websockets
+          pip install pytest pytest-asyncio pytest-timeout httpx websockets
 
       - name: Get Cloud Run service URL
         id: service-url
