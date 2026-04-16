@@ -134,7 +134,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-flash-preview")
 LLM_TEMPERATURE = int(os.getenv("LLM_TEMPERATURE", 0))
 
 # Embeddings Model (Gemini)
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "models/gemini-embedding-001")
+EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "models/text-embedding-005")
 
 # ============================================================================
 # POSTGRES CONFIGURATION
@@ -170,9 +170,8 @@ DB_POOL_MAX_SIZE = 20
 # VECTOR CONFIGURATION
 # ============================================================================
 
-# Vector embedding dimension (gemini-embedding-001 with output_dimensionality=768)
-# Default is 3072 but 768 is recommended: nearly identical quality (MTEB 67.99 vs 68.16),
-# 4x less storage
+# Vector embedding dimension (text-embedding-005 with output_dimensionality=768)
+# Default is 1024 but 768 is recommended: nearly identical quality with 4x less storage
 VECTOR_DIMENSION = 768
 
 # Collection name for vector storage

@@ -1546,14 +1546,26 @@ Respond with JSON only. No other text."""
             for chunk in self.llm.stream(messages):
                 chunk_count += 1
 
-                # Extract content from chunk
+                # Extract content from chunk (handle both string and Gemini's list format)
                 if hasattr(chunk, "content") and chunk.content:
-                    accumulated_content += chunk.content
+                    content = chunk.content
 
-                    # Emit chunk event (if event classes are available)
-                    if LLMResponseChunkEvent is not None:
-                        chunk_event = LLMResponseChunkEvent(content=chunk.content, is_complete=False)
-                        self._emit_streaming_event(chunk_event)
+                    # Extract text if content is a list of content blocks (Gemini format)
+                    if isinstance(content, list):
+                        text_parts = []
+                        for block in content:
+                            if isinstance(block, dict) and "text" in block:
+                                text_parts.append(block["text"])
+                        content = "".join(text_parts) if text_parts else ""
+
+                    # Only accumulate and emit non-empty string content
+                    if content and isinstance(content, str):
+                        accumulated_content += content
+
+                        # Emit chunk event (if event classes are available)
+                        if LLMResponseChunkEvent is not None:
+                            chunk_event = LLMResponseChunkEvent(content=content, is_complete=False)
+                            self._emit_streaming_event(chunk_event)
 
         except StopIteration:
             pass

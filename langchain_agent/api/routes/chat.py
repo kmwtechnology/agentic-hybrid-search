@@ -282,7 +282,9 @@ async def websocket_chat(websocket: WebSocket):
 
     try:
         # Ensure agent service is initialized
+        logger.info("initializing_agent_service", thread_id=thread_id)
         await manager.agent_service.ensure_initialized()
+        logger.info("agent_service_initialized", thread_id=thread_id)
 
         while True:
             # Wait for client message
@@ -345,7 +347,8 @@ async def websocket_chat(websocket: WebSocket):
     except WebSocketDisconnect:
         logger.info("websocket_disconnected", thread_id=thread_id)
     except Exception as e:
-        logger.error("websocket_error", thread_id=thread_id, error=str(e))
+        import traceback
+        logger.error("websocket_error", thread_id=thread_id, error=str(e), traceback=traceback.format_exc())
     finally:
         # Always cleanup connection and cancel any running tasks
         logger.info("websocket_cleanup", thread_id=thread_id)
