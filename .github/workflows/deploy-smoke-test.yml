@@ -90,6 +90,7 @@ jobs:
             --tb=short \
             -m "e2e and slow" \
             --timeout=30 \
+            --asyncio-mode=auto \
             2>&1 | tee smoke-test-results.txt
 
           exit_code=${PIPESTATUS[0]}
@@ -114,6 +115,7 @@ jobs:
             --tb=short \
             -m "e2e and slow" \
             --timeout=30 \
+            --asyncio-mode=auto \
             2>&1 | tee cloud-run-test-results.txt
 
           exit_code=${PIPESTATUS[0]}
@@ -138,6 +140,7 @@ jobs:
             --tb=short \
             -m "e2e and slow" \
             --timeout=30 \
+            --asyncio-mode=auto \
             2>&1 | tee data-test-results.txt
 
           exit_code=${PIPESTATUS[0]}

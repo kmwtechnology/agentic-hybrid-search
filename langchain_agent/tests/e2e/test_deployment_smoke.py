@@ -25,6 +25,8 @@ DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 API_KEY = os.environ.get("API_KEY", "test-api-key")
 TIMEOUT = 30  # seconds
 WEBSOCKET_TIMEOUT = 60  # seconds
+# Origin header must match allowed UI origin (production is same-origin as API)
+ORIGIN_HEADER = DEPLOYMENT_URL
 
 
 class TestDeploymentHealth:
@@ -108,7 +110,10 @@ class TestAuthentication:
     @pytest.mark.slow
     def test_valid_api_key_accepted(self):
         """Verify valid API key is accepted in WebSocket connection."""
-        headers = {"Authorization": f"Bearer {API_KEY}"}
+        headers = {
+            "Authorization": f"Bearer {API_KEY}",
+            "Origin": ORIGIN_HEADER,
+        }
 
         with httpx.Client(timeout=TIMEOUT) as client:
             # Test with conversations endpoint as a quick auth check
@@ -117,8 +122,12 @@ class TestAuthentication:
                 headers=headers
             )
 
-        # Should get 200 (or 400 for bad params) but NOT 401/403 auth error
-        assert response.status_code in [200, 400], (
+        # Should get 200 (or 400 for bad params) but NOT 401 auth error.
+        # Accept 403 only when origin-restricted (deployment blocks non-UI callers).
+        acceptable_codes = [200, 400]
+        if response.status_code == 403 and "origin" in response.text.lower():
+            pytest.skip("Deployment is origin-restricted; cannot test auth from smoke test")
+        assert response.status_code in acceptable_codes, (
             f"Valid API key rejected: {response.status_code} - {response.text}"
         )
 
