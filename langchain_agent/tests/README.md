@@ -1,283 +1,267 @@
-# Agentic Hybrid Search Test Suite
+# Agentic Hybrid Search — Test Suite
 
-Comprehensive testing framework organized by test scope and purpose.
+Pytest-based tests organized by scope. All commands assume you're in
+`langchain_agent/` with `PYTHONPATH=.` (bare imports across the project
+require it).
 
-## Directory Structure
+## Layout
 
-```
+```text
 tests/
-├── unit/                          # Component unit tests (no external dependencies)
-│   ├── test_reranker.py          # Reranker validation (score bounds, model loading)
-│   ├── test_vector_store.py      # Vector store & hybrid search (alpha, k params)
-│   ├── test_auth.py              # API authentication (keys, origins, timing attacks)
-│   └── test_link_verifier.py     # Link verification (URL validation, caching)
+├── unit/                          # Fast, no external services
+│   ├── intent/
+│   │   └── test_intent_classifier.py
+│   ├── evaluator/
+│   │   └── test_query_evaluator.py
+│   ├── quality_gate/
+│   │   └── test_quality_gate.py
+│   ├── test_config_validation.py
+│   ├── test_llm_streaming_content_blocks.py
+│   └── test_model_compatibility.py
 │
-├── integration/                   # Multi-component integration tests (requires services)
-│   ├── test_intent_routing.py    # Intent classification (104 tests, 95%+ accuracy)
-│   ├── test_graph_error_handling.py  # Error propagation (graph, timeouts, state)
-│   └── test_pipeline_flow.py     # End-to-end pipeline execution
+├── integration/                   # Multi-component; requires services
+│   ├── test_agent_response.py
+│   ├── test_content_generation_e2e.py
+│   ├── test_content_generators.py
+│   ├── test_edge_cases.py
+│   ├── test_pipeline_flow.py
+│   ├── test_quality_gate_retry.py
+│   ├── test_retriever_reranker.py
+│   ├── test_websocket_content_streaming.py
+│   └── test_websocket_integration.py
 │
-├── e2e/                          # End-to-end deployment tests
-│   └── test_deployment.py        # Health checks, service connectivity, config validation
+├── e2e/                           # Against a deployed Cloud Run instance
+│   ├── test_cloud_run_deployment.py
+│   ├── test_deployment_data.py
+│   ├── test_deployment_smoke.py
+│   ├── test_latency_profiling.py
+│   ├── test_performance_load.py
+│   ├── test_real_world_scenarios.py
+│   ├── test_stress.py
+│   ├── DEPLOYMENT_TESTING.md
+│   └── README.md
 │
-├── conftest.py                   # Shared pytest fixtures and configuration
-└── README.md                     # This file
+├── conftest.py                    # Shared fixtures + env defaults
+├── PERFORMANCE_TESTING.md         # Perf test guidance
+├── load_test_phase3.js            # k6 load script
+└── README.md                      # This file
 ```
 
 ## Running Tests
 
-### All Tests
+### Everything
+
 ```bash
-cd langchain_agent
-PYTHONPATH=. .venv/bin/pytest tests/ -v
+PYTHONPATH=. pytest tests/ -v
 ```
 
-### By Scope
+### By scope
 
 ```bash
-# Unit tests only (fast, ~0.5s)
-PYTHONPATH=. .venv/bin/pytest tests/unit/ -v
-
-# Integration tests (requires services, ~5-30s)
-PYTHONPATH=. .venv/bin/pytest tests/integration/ -v
-
-# E2E tests (requires deployment, ~10-60s)
-PYTHONPATH=. .venv/bin/pytest tests/e2e/ -v
+PYTHONPATH=. pytest tests/unit/ -v             # ~0.5 s, no deps
+PYTHONPATH=. pytest tests/integration/ -v      # needs Postgres + OpenSearch + GOOGLE_API_KEY
+PYTHONPATH=. pytest tests/e2e/ -v              # needs CLOUD_RUN_URL (and API_KEY)
 ```
 
-### By Component
+### By file or pattern
 
 ```bash
-# Reranker validation only
-PYTHONPATH=. .venv/bin/pytest tests/unit/test_reranker.py -v
-
-# Vector store and hybrid search
-PYTHONPATH=. .venv/bin/pytest tests/unit/test_vector_store.py -v
-
-# Intent classification (104 tests)
-PYTHONPATH=. .venv/bin/pytest tests/integration/test_intent_routing.py -v
-
-# Full pipeline E2E
-PYTHONPATH=. .venv/bin/pytest tests/integration/test_pipeline_flow.py -v
+PYTHONPATH=. pytest tests/unit/intent/test_intent_classifier.py -v
+PYTHONPATH=. pytest tests/integration/test_pipeline_flow.py -v
+PYTHONPATH=. pytest tests/ -k "quality_gate"
 ```
 
-### With Coverage
+### By marker (`pytest.ini`)
 
 ```bash
-PYTHONPATH=. .venv/bin/pytest tests/ --cov=. --cov-report=html
+PYTHONPATH=. pytest tests/ -m unit
+PYTHONPATH=. pytest tests/ -m "integration and not slow"
+PYTHONPATH=. pytest tests/ -m content_generation
+PYTHONPATH=. pytest tests/ -m performance
+```
+
+Available markers: `phase1`, `phase2`, `phase3`, `unit`, `integration`,
+`e2e`, `slow`, `auth`, `search`, `rerank`, `websocket`, `database`,
+`performance`, `load`, `stress`, `profile`, `content_generation`,
+`asyncio`.
+
+### Coverage
+
+```bash
+PYTHONPATH=. pytest tests/ --cov=. --cov-report=html
 open htmlcov/index.html
-```
-
-### With Markers
-
-```bash
-# Run only Phase 1 unit tests (fast)
-PYTHONPATH=. .venv/bin/pytest tests/unit/ -m phase1 -v
-
-# Skip slow tests
-PYTHONPATH=. .venv/bin/pytest tests/ -m "not slow" -v
-
-# Smoke tests only
-PYTHONPATH=. .venv/bin/pytest tests/e2e/ -m smoke -v
 ```
 
 ## Test Categories
 
-### Unit Tests (`tests/unit/`)
+### Unit (`tests/unit/`)
 
-**Purpose**: Test individual components in isolation, validate boundaries, check error handling
+**Purpose:** component isolation, validation, error paths. No external
+services — everything is mocked through `conftest.py`.
 
-| File | Tests | Coverage |
-|------|-------|----------|
-| test_reranker.py | 24 | Reranker model, score validation (0.0-1.0), index ranges, batch processing |
-| test_vector_store.py | 19 | Alpha parameter (0.0-1.0), k/fetch_k validation, search results, error propagation |
-| test_auth.py | 5 | API key validation, origin headers, timing attack resistance, middleware |
-| test_link_verifier.py | 30 | URL validation, broken link detection, cache TTL, batch verification |
+| File | Focus |
+|------|-------|
+| `intent/test_intent_classifier.py` | 6-intent classification, keyword fast-path vs LLM fallback, confidence thresholds |
+| `evaluator/test_query_evaluator.py` | Dynamic α selection, query expansion, fast-path vs LLM-path |
+| `quality_gate/test_quality_gate.py` | Retry decision logic, α adjustment bounds, intent-specific thresholds |
+| `test_config_validation.py` | Required env vars, value ranges, type checks |
+| `test_llm_streaming_content_blocks.py` | Streaming event emission, token assembly |
+| `test_model_compatibility.py` | Gemini model ID handling, version compatibility |
 
-**Run Time**: ~0.5 seconds
-**Dependencies**: None (all mocked)
-**Best For**: Quick validation, TDD, continuous testing
+**Run time:** ~0.5 s. **Best for:** TDD, pre-commit, CI fast lane.
 
-### Integration Tests (`tests/integration/`)
+### Integration (`tests/integration/`)
 
-**Purpose**: Test multi-component interactions, state persistence, event streaming
+**Purpose:** multi-component flows with real or near-real services.
 
-| File | Tests | Coverage |
-|------|-------|----------|
-| test_intent_routing.py | 104 | Intent classification (question, config, doc, summary, follow-up), confidence scoring, keywords |
-| test_graph_error_handling.py | 45 | Node errors, timeouts, state validation, error propagation, recovery |
-| test_pipeline_flow.py | 35 | Query expansion, retrieval, reranking, response generation, citations |
+| File | Focus |
+|------|-------|
+| `test_pipeline_flow.py` | Full RAG pipeline: classifier → evaluator → retriever → reranker → quality gate → agent |
+| `test_retriever_reranker.py` | Hybrid search + RRF fusion + reranker scoring |
+| `test_quality_gate_retry.py` | Retry triggered when max reranker score < 0.5, α ±0.3 adjustment |
+| `test_agent_response.py` | Response generation, citation formatting, Amazon URL construction |
+| `test_content_generators.py` | Per-type generators (social, blog, article, tutorial, comprehensive) |
+| `test_content_generation_e2e.py` | End-to-end content generation with streaming |
+| `test_websocket_integration.py` | WebSocket lifecycle, auth, event ordering |
+| `test_websocket_content_streaming.py` | Token-by-token streaming contract |
+| `test_edge_cases.py` | Empty retrievals, malformed input, low-confidence intents |
 
-**Run Time**: ~5-30 seconds (requires services)
-**Dependencies**: PostgreSQL, OpenSearch, Google API
-**Best For**: Validating workflows, catching cross-component issues, E2E before deployment
+**Run time:** ~5–60 s. **Requires:** PostgreSQL + OpenSearch running
+(`docker compose up -d` from repo root) and `GOOGLE_API_KEY` set.
 
-### E2E Tests (`tests/e2e/`)
+### E2E (`tests/e2e/`)
 
-**Purpose**: Validate deployment, health checks, service connectivity
+**Purpose:** smoke and regression testing against a deployed Cloud Run
+instance. See [`tests/e2e/README.md`](e2e/README.md) for scenarios and
+[`tests/e2e/DEPLOYMENT_TESTING.md`](e2e/DEPLOYMENT_TESTING.md) for the
+testing workflow.
 
-| File | Tests | Coverage |
-|------|-------|----------|
-| test_deployment.py | 25 | Health check endpoints, config validation, graceful degradation, recovery |
+| File | Focus |
+|------|-------|
+| `test_deployment_smoke.py` | Health check, auth, basic round-trip |
+| `test_cloud_run_deployment.py` | Cold start, scaling, service metadata |
+| `test_deployment_data.py` | Product index population, sample queries |
+| `test_real_world_scenarios.py` | All 6 intents against live data with realistic queries |
+| `test_latency_profiling.py` | Per-node latency breakdown |
+| `test_performance_load.py` | Sustained load, throughput, p95/p99 |
+| `test_stress.py` | Concurrent users, failure modes under pressure |
 
-**Run Time**: ~10-60 seconds (requires deployment)
-**Dependencies**: Deployed Cloud Run service, OpenSearch, PostgreSQL
-**Best For**: Post-deployment validation, smoke tests, production verification
-
-## Test Results Summary
-
-```
-Total Tests: 248
-├── Unit Tests: 78 (fast, no dependencies)
-├── Integration Tests: 145 (requires services)
-└── E2E Tests: 25 (requires deployment)
-
-Status:
-✅ 24 Unit tests passing
-✅ 104 Intent routing tests passing (95%+ accuracy)
-⏭️ 145 Integration tests (skipped without full stack)
-⏭️ 25 E2E tests (skipped without deployment)
-```
-
-## Setting Up for Testing
-
-### Local Development
+**Run time:** ~10 s – several minutes (load/stress). **Requires:**
+deployed Cloud Run URL and an `API_KEY` with access. Set:
 
 ```bash
-# Install dependencies
-cd langchain_agent
-.venv/bin/pip install -r requirements-dev.txt
-
-# Start local services
-./scripts/setup.sh    # One-time: Docker, venv, DB, docs
-./scripts/start.sh    # Start PostgreSQL, OpenSearch, backend, frontend
-
-# Run tests
-PYTHONPATH=. .venv/bin/pytest tests/ -v
+export CLOUD_RUN_URL="https://agentic-hybrid-search-xyz.us-central1.run.app"
+export API_KEY="..."
+PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
-### CI/CD (GitHub Actions)
+## Fixtures (`conftest.py`)
 
-Tests run automatically on:
-- Push to `main`
-- Pull requests
-- Scheduled nightly runs
+Shared setup injects sensible defaults for test runs:
 
-See `.github/workflows/test.yml` for configuration.
+```python
+os.environ.setdefault("ENABLE_RERANKING", "true")
+os.environ.setdefault("ENABLE_QUALITY_GATE", "true")
+os.environ.setdefault("QUALITY_GATE_THRESHOLD", "0.50")
+```
+
+The repo root is added to `sys.path` so bare imports (`from config import ...`)
+resolve inside tests without `PYTHONPATH=.` — but setting `PYTHONPATH=.` is
+still recommended for consistency with the rest of the project.
+
+## Setup
+
+### Local
+
+```bash
+cd langchain_agent
+pip install -r requirements-dev.txt
+../scripts/setup.sh          # one-time: Docker + venv + DB + ingestion
+../scripts/start.sh          # start services
+PYTHONPATH=. pytest tests/ -v
+```
+
+### CI (GitHub Actions)
+
+`.github/workflows/test.yml` runs on PRs and pushes — unit + integration
+with ephemeral Postgres and OpenSearch services.
 
 ## Common Issues
 
-### ModuleNotFoundError: No module named 'X'
+### `ModuleNotFoundError: No module named 'config'` (or similar)
 
 ```bash
-# Solution: Always set PYTHONPATH
-PYTHONPATH=/Users/kevin/github/personal/agentic-hybrid-search/langchain_agent .venv/bin/pytest tests/
+PYTHONPATH=. pytest tests/
 ```
 
-### ImportError: cannot import name 'XyzError'
+### Tests hang or time out
+
+Services may not be up. Verify:
 
 ```bash
-# Solution: Add missing exception to exceptions.py (see MEMORY.md)
-# The exceptions.py file must have all custom exception classes
-```
-
-### Tests timeout or hang
-
-```bash
-# Solution: Ensure services are running
 docker compose ps
-curl http://localhost:9200/_cluster/health  # OpenSearch
-curl http://localhost:5432                  # PostgreSQL
+curl http://localhost:9200/_cluster/health
+PGPASSWORD=postgres psql -h localhost -U postgres -d langchain_agent -c 'SELECT 1;'
 ```
 
-### Skipped tests with "Requires full LangGraph setup"
+Pytest has a 30-second default timeout (`pytest.ini`). Mark longer tests
+with `@pytest.mark.slow` or raise the timeout via `--timeout=N`.
 
-```bash
-# Solution: This is expected - some tests need async runtime
-# To run integration tests:
-./scripts/start.sh  # Start all services
-PYTHONPATH=. .venv/bin/pytest tests/integration/ -v
-```
+### Integration tests skipped
+
+They assert against running services — start them via
+`docker compose up -d` from the repo root plus `./scripts/start.sh` for
+the backend if the test exercises the HTTP/WebSocket layer.
+
+### E2E tests failing with 401
+
+Check `API_KEY` matches what's stored in Secret Manager for the deployed
+service, and that `CLOUD_RUN_URL` has the correct scheme + host.
+
+## Performance Testing
+
+See [`PERFORMANCE_TESTING.md`](PERFORMANCE_TESTING.md) for the full
+perf-testing workflow (latency profiling, load, stress). The k6 script
+(`load_test_phase3.js`) can be run against either localhost or a
+deployed instance.
 
 ## Writing New Tests
 
-### Unit Test Template
+### Unit
 
 ```python
-# tests/unit/test_my_component.py
+# tests/unit/my_module/test_my_thing.py
 import pytest
-from my_module import MyComponent
+from my_module import MyThing
 
-class TestMyComponent:
-    """Tests for MyComponent validation and error handling."""
+class TestMyThing:
+    def test_valid(self):
+        assert MyThing(42).value == 42
 
-    def test_valid_input(self):
-        """Test with valid input."""
-        result = MyComponent(valid_input=42)
-        assert result.value == 42
-
-    def test_invalid_input_raises_error(self):
-        """Test that invalid input raises exception."""
+    def test_invalid_raises(self):
         with pytest.raises(ValueError):
-            MyComponent(invalid_input=-1)
+            MyThing(-1)
 ```
 
-### Integration Test Template
+### Integration
 
 ```python
-# tests/integration/test_my_pipeline.py
+# tests/integration/test_my_flow.py
 import pytest
-from unittest.mock import AsyncMock
 
 @pytest.mark.asyncio
-class TestMyPipeline:
-    """Tests for multi-component pipeline."""
-
-    async def test_end_to_end_flow(self, mock_services):
-        """Test complete pipeline execution."""
-        result = await run_pipeline(query="test")
-        assert result.success
-        assert len(result.documents) > 0
+@pytest.mark.integration
+class TestMyFlow:
+    async def test_end_to_end(self, compiled_graph):
+        result = await compiled_graph.ainvoke({"messages": [("user", "hi")]})
+        assert result["messages"]
 ```
 
-### Running New Tests
-
-```bash
-# Add test file, then run:
-PYTHONPATH=. .venv/bin/pytest tests/unit/test_my_component.py -v
-
-# Or with coverage:
-PYTHONPATH=. .venv/bin/pytest tests/unit/test_my_component.py --cov=my_module
-```
-
-## Troubleshooting
-
-See `.venv/bin/pytest --help` for all options. Common flags:
-
-```bash
-# Verbose output with full diffs
--vv
-
-# Show print statements
--s
-
-# Stop on first failure
--x
-
-# Run N tests in parallel (requires pytest-xdist)
--n auto
-
-# Only run tests matching pattern
--k "pattern"
-
-# Run with full traceback
---tb=long
-```
+Mark tests with the appropriate marker(s) so scope-based runs pick them up.
 
 ## References
 
-- [pytest documentation](https://docs.pytest.org/)
+- [pytest docs](https://docs.pytest.org/)
 - [pytest fixtures](https://docs.pytest.org/en/stable/how-to/fixtures.html)
-- [pytest markers](https://docs.pytest.org/en/stable/example/markers.html)
 - [pytest-asyncio](https://pytest-asyncio.readthedocs.io/)
-- [conftest.py patterns](https://docs.pytest.org/en/stable/how-to/fixtures.html#conftest-py-sharing-fixtures-across-multiple-files)
+- [pytest markers](https://docs.pytest.org/en/stable/example/markers.html)

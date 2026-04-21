@@ -1,27 +1,27 @@
-# Agentic Hybrid Search - E-Commerce Product Search Agent
+# Agentic Hybrid Search — E-Commerce Product Search Agent
 
 A production-grade LangGraph agent with two specialized capabilities:
-**RAG Q&A** and **Product Comparison Writer**. Both modes share
-the same data layer, LangGraph graph, and frontend. Uses Google Gemini AI
-for LLM inference and embeddings, OpenSearch for hybrid vector + BM25 search,
-PostgreSQL for checkpoints, and sophisticated retrieval with hybrid search and LLM-based reranking.
+**RAG Q&A** and **Product Comparison Writer**. Both modes share the same
+data layer, LangGraph graph, and frontend. Uses Google Gemini for LLM
+inference and embeddings, OpenSearch for hybrid vector + BM25 search, and
+PostgreSQL for LangGraph checkpoints.
 
-**Capabilities**:
+**Capabilities:**
 
-- **RAG Q&A**: Hybrid search + reranking + self-improving retrieval for e-commerce product data (Amazon Shopping Queries Dataset / ESCI)
-- **Product Comparison Writer**: 5 content types with intelligent classification and optimized retrieval
-  - **Social Posts** (100-300 words, 1 pass, ~6s) - Engaging LinkedIn/Twitter content about products
-  - **Blog Posts** (1000-2000 words, 2 passes, ~20s) - Product roundups and buying guides
-  - **Technical Articles** (800-1500 words, 3 passes, ~25s) - Deep-dive product analysis with specs
-  - **Tutorials** (1000 words, 2 passes, ~20s) - Step-by-step shopping and comparison guides
-  - **Comprehensive Docs** (2500+ words, 5 passes, ~50s) - Full product category reference documentation
+- **RAG Q&A** — 6-intent classification, hybrid retrieval, LLM reranking, and a quality gate that retries on low-relevance hits. Data is the Amazon ESCI / Shopping Queries Dataset.
+- **Product Comparison Writer** — 5 content types, classified automatically and routed to specialized generators:
+  - **Social post** (100–300 words, 1 retrieval pass, ~6 s)
+  - **Blog post** (1000–2000 words, 2 passes, ~20 s)
+  - **Technical article** (800–1500 words, 3 passes, ~25 s)
+  - **Tutorial** (~1000 words, 2 passes, ~20 s)
+  - **Comprehensive docs** (2500+ words, 5 passes, ~50 s)
 
-**Key Components**:
+**Stack:**
 
-- **Backend**: Python (FastAPI) with LangGraph + LangChain
-- **Frontend**: React 18 + TypeScript + Tailwind
-- **Data Layer**: OpenSearch (document search + hybrid search) | PostgreSQL (checkpoints only)
-- **LLM**: Google Gemini AI (gemini-2.5-flash, gemini-2.5-flash-lite)
+- **Backend:** Python 3.13, FastAPI, LangGraph, LangChain
+- **Frontend:** React 18, TypeScript, Tailwind, Zustand
+- **Data layer:** OpenSearch 2.19.1 (HNSW + BM25) · PostgreSQL 16 (LangGraph checkpoints only)
+- **LLM:** Google Gemini 3 Flash (generation) + Gemini 3.1 Flash Lite (classify/rerank) · `text-embedding-005` (embeddings)
 
 ---
 
@@ -30,77 +30,48 @@ PostgreSQL for checkpoints, and sophisticated retrieval with hybrid search and L
 ### Prerequisites
 
 ```bash
-# Check you have these installed:
-docker --version          # Docker Desktop
-python3 --version         # Python 3.11+
-node --version            # Node.js 18+
+docker --version      # Docker Desktop
+python3 --version     # Python 3.13+
+node --version        # Node.js 18+
 ```
 
-If not installed:
+You'll also need a Google API key from <https://aistudio.google.com/apikey>
+(set `GOOGLE_API_KEY` in `.env`).
 
-- **Docker**: <https://docker.com>
-- **Python**: <https://python.org>
-- **Node.js**: <https://nodejs.org>
-
-**Additional Requirements**:
-
-- **Google API Key**: Get one from <https://aistudio.google.com/apikey>
-- Set `GOOGLE_API_KEY` in your `.env` file
-
-### Setup (One-time)
+### Setup (one-time)
 
 ```bash
 cd langchain_agent
 ./scripts/setup.sh
 ```
 
-This takes 10-20 minutes on first run and will:
+Takes 10–20 min on first run:
 
-1. Generate secure API keys
-2. Install Python and frontend dependencies
-3. Start PostgreSQL and OpenSearch via Docker
-4. Initialize database and search index
-5. Validate Google AI API key
-6. Ingest ESCI product data (Amazon Shopping Queries Dataset)
+1. Generates a secure `API_KEY`
+2. Creates `.venv`, installs Python + frontend dependencies
+3. Starts PostgreSQL and OpenSearch via Docker
+4. Initializes the checkpoint DB and OpenSearch index
+5. Validates the Google AI API key
+6. Ingests an ESCI product sample (default 10 k)
 
-### Start Services
-
-```bash
-cd langchain_agent
-./scripts/start.sh
-```
-
-Then open: <http://localhost:5173>
-
-To re-ingest ESCI product data:
+### Start / Stop
 
 ```bash
-cd langchain_agent
-python ingest_esci_products.py
-```
-
-### Stop Services
-
-```bash
+./scripts/start.sh    # → http://localhost:5173
 ./scripts/stop.sh
 ```
 
-### Teardown (Complete Removal)
+Backend FastAPI runs on `:8000`, React frontend on `:5173` (Vite proxies
+`/api` to the backend).
 
-To completely remove all installed components and data:
+### Teardown
 
 ```bash
 ./scripts/teardown.sh
 ```
 
-This removes:
-
-- Running services
-- PostgreSQL container and volumes
-- Python virtual environment
-- Node modules
-- Log files
-- Optionally: .env file
+Removes running services, the Docker volumes, `.venv`, `node_modules`, and
+log files. Keeps `.env` by default (prompted separately).
 
 ---
 
@@ -108,132 +79,128 @@ This removes:
 
 ### Web UI
 
-1. Visit <http://localhost:5173>
-2. Type a message in the chat box
-3. Press Enter to send
-4. Watch the agent think and respond in real-time
+Open <http://localhost:5173> and chat. The observability panel on the right
+streams every pipeline stage in real time.
 
-### CLI (No Web UI)
+### CLI
 
 ```bash
-cd langchain_agent
 source .venv/bin/activate
-python main.py
+PYTHONPATH=. python main.py
 ```
 
 ### API
 
-All endpoints require the `X-API-Key` header (or `?api_key=` query param):
+All endpoints require `X-API-Key` (or `?api_key=` query param):
 
 ```bash
-# Health check
-curl -H "X-API-Key: $(grep API_KEY .env | cut -d= -f2)" \
+curl -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
   http://localhost:8000/api/health
 ```
 
+The primary surface is the WebSocket endpoint under `/api/chat` — see
+`api/routes/chat.py`. REST routes cover health (`/api/health`) and
+conversation CRUD (`/api/conversations`).
+
 ### Example Queries
 
-**RAG Q&A (Product Search):**
-- "Find wireless headphones under $50"
-- "Show me Nike running shoes"
-- "What are the best-rated noise canceling earbuds?"
-- "Compare Sony and Bose over-ear headphones"
-- "Find waterproof fitness trackers with heart rate monitoring"
+**RAG Q&A:**
+
+```text
+Find wireless headphones under $50
+Show me Nike running shoes
+Compare Sony WH-1000XM5 vs Bose QuietComfort 45
+Make them waterproof                  ← refinement of prior search
+Any cheaper options?                  ← follow-up
+Summarize our conversation
+```
 
 **Product Comparison Writer:**
-- "Write a LinkedIn post about the top wireless earbuds of 2025" (social post)
-- "Create a buying guide for mechanical keyboards" (blog post)
-- "Write a technical comparison of OLED vs LED monitors" (technical article)
-- "Create a tutorial for choosing the right running shoe" (tutorial)
-- "Document all product categories in home electronics" (comprehensive docs)
+
+```text
+Write a LinkedIn post about the top wireless earbuds of 2025
+Create a buying guide for mechanical keyboards
+Write a technical comparison of OLED vs LED monitors
+Create a tutorial for choosing the right running shoe
+Document all product categories in home electronics
+```
 
 ---
 
 ## Configuration
 
-All settings in `config.py` or via `.env` file:
+Everything lives in `config.py` with `.env` overrides (see `.env.example`).
 
-```python
-# Models (Google Gemini AI)
-LLM_MODEL = "gemini-2.5-flash"
-EMBEDDINGS_MODEL = "models/gemini-embedding-001"
-RERANKER_MODEL = "gemini-2.5-flash-lite"     # LLM-based reranker (Gemini)
-QUERY_EVAL_MODEL = "gemini-2.5-flash-lite"   # Lightweight query evaluator
-QUERY_EVAL_TEMPERATURE = 0
-QUERY_EVAL_MAX_TOKENS = 1024
+### Models
 
-# OpenSearch (Document Search)
-OPENSEARCH_HOST = "localhost"                 # Local: localhost:9200, GCP: 34.138.97.13:9200
-OPENSEARCH_PORT = 9200
-OPENSEARCH_INDEX_NAME = "agentic_hybrid_search_docs"
-OPENSEARCH_USE_SSL = false                    # Local dev: false, GCP: true
-
-# PostgreSQL (Checkpoints Only)
-POSTGRES_HOST = "localhost"
-POSTGRES_PORT = 5432
-POSTGRES_USER = "postgres"
-POSTGRES_PASSWORD = "postgres"
-POSTGRES_DB = "langchain_agent"
-
-# Retrieval
-RETRIEVER_K = 4              # Final documents
-RETRIEVER_FETCH_K = 30       # Candidates before reranking
-RETRIEVER_ALPHA = 0.25       # Balance: 0.0 (lexical/BM25) to 1.0 (semantic/vector)
-
-# Reranking (Gemini LLM-as-Reranker)
-ENABLE_RERANKING = True
-RERANKER_FETCH_K = 40                        # Candidates before reranking
-RERANKER_TOP_K = 10                          # Final documents after reranking
-
-# Reflection Loop
-ENABLE_REFLECTION = True
-ENABLE_DOCUMENT_GRADING = True
-ENABLE_RESPONSE_GRADING = True
-REFLECTION_MAX_ITERATIONS = 2
-
-# Multi-Capability Agent
-ENABLE_DOC_WRITER = True       # Product comparison writer pipeline
+```bash
+LLM_MODEL=gemini-3-flash-preview                   # generation
+RERANKER_MODEL=gemini-3.1-flash-lite-preview       # reranking
+QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview     # query evaluator
+EMBEDDINGS_MODEL=models/text-embedding-005         # 768-dim embeddings
+VECTOR_DIMENSION=768
+LLM_TEMPERATURE=0
+QUERY_EVAL_TEMPERATURE=0
+QUERY_EVAL_MAX_TOKENS=1024
 ```
 
-See `.env.example` for all available options.
+### Data stores
 
-### Multi-Capability Agent Feature Flags
+```bash
+# OpenSearch (hybrid search)
+OPENSEARCH_HOST=localhost
+OPENSEARCH_PORT=9200
+OPENSEARCH_INDEX_NAME=agentic_hybrid_search_docs
+OPENSEARCH_USE_SSL=false
 
-The agent automatically routes requests based on user intent. Feature flags control which capabilities are available:
+# PostgreSQL (LangGraph checkpoints only)
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=langchain_agent
+```
 
-| Flag | Default | Capability | Description |
-|------|---------|-----------|-------------|
-| `ENABLE_DOC_WRITER` | `True` | Product Comparison Writer | Creates 5 content types (social/blog/article/tutorial/comprehensive) with intelligent classification |
-| `ENABLE_CONTENT_TYPE_CLASSIFICATION` | `True` | Content Type Sub-Classification | Enables LLM-based routing between the 5 product comparison content types |
+### Retrieval / reranking
 
-**Intent Routing:**
+```bash
+RETRIEVER_K=10              # Final docs
+RETRIEVER_FETCH_K=40        # Candidates before reranking
+RETRIEVER_ALPHA=0.25        # Default α (evaluator usually overrides)
+ENABLE_RERANKING=true
+RERANKER_FETCH_K=40         # Candidates reranked
+RERANKER_TOP_K=10           # Final top-K
+ENABLE_QUERY_EVALUATION=true
+QUERY_EVAL_TIMEOUT_MS=3000
+```
 
-When the flag is enabled, the intent classifier automatically routes requests:
+### Content generation
 
-- **Questions** ("Find wireless headphones", "What are the top-rated laptops?") → RAG Q&A pipeline (DEFAULT)
-- **Documentation Requests** ("Write a buying guide for X", "Create a comparison", "Write a review of X") → Product Comparison Writer pipeline → Content Type Classifier → Appropriate Generator (social/blog/article/tutorial/comprehensive)
-- **Summaries** ("Summarize our conversation") → Summary generator
+```bash
+ENABLE_CONTENT_TYPE_CLASSIFICATION=true
+```
 
-**Key Distinction:**
-- **Conversational Q&A** (questions expecting direct answers) → RAG Q&A pipeline
-- **Publication content** (tutorials, buying guides, comparisons, reviews) → Product Comparison Writer pipeline
+When enabled, documentation-style requests are routed to the Product
+Comparison Writer; the content type classifier picks one of the five
+generators. Disable for RAG-only deployments (writer requests fall back
+to the RAG Q&A pipeline).
 
-**Intents:**
+### Intent routing
 
-| Intent | Pipeline | Examples | Trigger Keywords |
-|--------|----------|----------|------------------|
-| `question` | RAG Q&A | "Find wireless headphones", "What are the best laptops?" | Questions expecting direct answers |
-| `documentation_request` | Product Comparison Writer | "Write a buying guide for X", "Compare Y products" | "write", "create", "tutorial", "guide", "article", "compare" |
-| `summary` | Summary | "Summarize our conversation" | "summarize", "recap", "summary" |
-| `follow_up` | RAG Q&A | "OK", "That makes sense", "Got it" | Short acknowledgments (<10 words) |
+The 6-intent classifier routes every turn:
 
-**When to Disable:**
+| Intent | Pipeline | Examples |
+|--------|----------|----------|
+| `search` | RAG Q&A | "Find wireless headphones" |
+| `comparison` | RAG Q&A (fast-path α=0.60) | "Compare Sony vs Bose" |
+| `attribute_filter` | RAG Q&A (fast-path α=0.25) | "Blue running shoes size 10" |
+| `refinement` | RAG Q&A (fast-path α=0.35) | "Make them waterproof" |
+| `follow_up` | RAG Q&A (LLM-path α, context-aware) | "Any cheaper ones?" |
+| `summary` | Summary node (no retrieval) | "Recap our conversation" |
 
-- **Memory-constrained environments**: Disable to reduce memory footprint
-- **RAG-only deployments**: Set to `False` for pure question-answering mode
-- **Debugging**: Disable to isolate issues
-
-When the feature is disabled, requests that would use it are automatically remapped to the RAG Q&A pipeline.
+Documentation-style asks ("write a guide", "create a comparison") are
+detected during content-type classification inside the generator pipeline
+rather than as a separate intent class.
 
 ---
 
@@ -242,89 +209,332 @@ When the feature is disabled, requests that would use it are automatically remap
 ### Deploy to Cloud Run
 
 ```bash
-cd langchain_agent
-./scripts/deploy.sh --project gen-lang-client-0250737934
+./scripts/deploy.sh --project <GCP_PROJECT_ID>
 ```
 
 This will:
-1. Build Docker image locally
+
+1. Build the multi-stage Docker image locally
 2. Push to Artifact Registry
 3. Deploy to Cloud Run
-4. Create Cloud SQL for checkpoints
-5. Manage secrets in Secret Manager
+4. Wire secrets (`GOOGLE_API_KEY`, `API_KEY`, OpenSearch creds) via Secret Manager
+5. Connect to Cloud SQL via the built-in proxy
 
-### Initialize Cloud SQL + Ingest Products
-
-```bash
-./scripts/gcp-init.sh --project gen-lang-client-0250737934
-```
-
-This initializes:
-1. Cloud SQL checkpoint tables
-2. OpenSearch index and search pipeline
-3. ESCI product data ingestion
-
-### Check Cloud Run Logs
+### One-time Cloud SQL + product ingestion
 
 ```bash
-gcloud logging read resource.type=cloud_run_revision --project=gen-lang-client-0250737934
+./scripts/gcp-init.sh --project <GCP_PROJECT_ID>
 ```
 
-**Key events to watch**:
-- `POST /api/chat` with status 200 = successful requests
-- `AgentCompleteEvent` = response generation completed
-- `DocReplacer` = broken links being fixed automatically
-- `ERROR` = investigate problematic requests
+### Check Cloud Run logs
+
+```bash
+gcloud logging read resource.type=cloud_run_revision --project=<GCP_PROJECT_ID>
+```
+
+Useful signals:
+
+- `POST /api/chat` 200 — successful request
+- `AgentCompleteEvent` — generation finished
+- `DocReplacer` — broken citation link auto-fixed
+- `ERROR` — investigate
 
 ### Live Deployment
 
-- **Service URL**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app
-- **Health Check**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app/api/health
-- **API Docs**: https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app/docs
-- **OpenSearch**: 34.138.97.13:9200 (hosted, ESCI product data indexed)
-- **PostgreSQL**: Cloud SQL (checkpoints only)
-
-**Recent Updates**:
-- ✅ Phase 1-3 comprehensive testing framework deployed (validation, integration, E2E, load testing)
-- ✅ Fixed alpha boundary logic in search strategy mapping (QueryEvaluationEvent validation)
-- ✅ All components initialized and healthy
+- **Service URL:** <https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app>
+- **Health:** `/api/health`
+- **API docs:** `/docs`
+- **OpenSearch:** hosted externally on GCP VM, ESCI products indexed
+- **PostgreSQL:** Cloud SQL (checkpoints only)
 
 ---
 
 ## Features
 
-### Link Verification
+### Conversational query rewriting
 
-The agent includes automatic link verification that:
-- Validates all citation URLs before sending to the LLM
-- Caches verification results for 60 minutes (TTL)
-- Replaces broken links with valid alternatives automatically
-- Gracefully handles timeouts (>2 seconds marked invalid)
+Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and
+short attribute questions ("how much?") using conversation history before
+retrieval. Skips expansion when the query already names a specific
+brand/product. Emits `QueryExpansionEvent` for the observability panel.
 
-This prevents citing broken links in responses.
+### Context-validated refinement
+
+"Make them waterproof" narrows the prior result set, not a fresh search.
+A continuity score combines category matching and document-ID overlap:
+
+- `> 0.7` — refine against prior products (α=0.35)
+- `0.3–0.7` — ambiguous; ask the user to clarify
+- `< 0.3` — pivot detected; reset prior context, treat as new search
+
+### Quality gate with α adjustment
+
+If the top reranker score is below 0.5 after reranking, the quality gate
+adjusts α by ±0.3 (toward the opposite strategy) and retries retrieval
+once. Prevents low-relevance outputs without an infinite loop.
+
+### Link verification
+
+Every citation URL is validated before reaching the LLM. Results cached
+for 60 minutes (thread-safe); URLs timing out above 2 s are marked
+invalid. Broken links are replaced with valid alternatives via
+`doc_replacer.py`.
+
+### Observable events
+
+Full pipeline is instrumented with Pydantic-typed events streamed over
+WebSocket:
+
+| Event | Purpose |
+|-------|---------|
+| `intent_classification` | 6 intents + confidence + keyword/LLM path |
+| `query_evaluation` | Assigned α, reasoning |
+| `query_expansion` | Original vs rewritten query |
+| `opensearch_query` | Full DSL, α, intent, applied filters |
+| `hybrid_search_start` / `hybrid_search_result` | Candidates + scores |
+| `reranker_start` / `reranker_progress` / `reranker_result` | Per-doc 0.0–1.0 |
+| `quality_gate` | pass / retry / α adjusted |
+| `content_type_classification` | Content type, target length, tone |
+| `social_post_progress` / `blog_post_progress` / `article_progress` / `tutorial_progress` | Per-type generation progress |
+| `llm_response_start` / `llm_response_chunk` | Token streaming |
+| `content_complete` | Word/char counts |
+| `doc_outline` / `doc_section_progress` / `doc_complete` | Comprehensive docs pipeline |
+| `agent_complete` | Final response + citations |
+
+Schemas in [api/schemas/events.py](api/schemas/events.py) must stay in sync
+with [web/src/types/events.ts](web/src/types/events.ts).
+
+---
+
+## Architecture
+
+### LangGraph Pipeline
+
+Seven nodes wired into a graph:
+
+```text
+START → intent_classifier
+  ├── search / comparison / attribute_filter /
+  │   refinement / follow_up   → query_evaluator → retriever → reranker → quality_gate → agent → END
+  │                                                                               │
+  │                                                                               └─(retry)→ retriever
+  ├── summary                  → summary → agent → END
+  └── clarify (confidence<0.7) → agent (requests disambiguation) → END
+```
+
+Documentation requests bifurcate inside the generator pipeline via the
+content-type classifier:
+
+```text
+documentation request → content_type_classifier
+  ├── social_post          → social generator           (1 pass, ~6 s)
+  ├── blog_post            → blog generator             (2 passes, ~20 s)
+  ├── technical_article    → article generator          (3 passes, ~25 s)
+  ├── tutorial             → tutorial generator         (2 passes, ~20 s)
+  └── comprehensive_docs   → doc planner → gatherer → synthesizer (5 passes, ~50 s)
+```
+
+All generators stream: `LLMResponseStartEvent` (placeholder) →
+`LLMResponseChunkEvent` (tokens) → `ContentCompleteEvent` (final counts).
+
+### Hybrid Search
+
+Reciprocal Rank Fusion combines vector and BM25 rankings:
+
+```text
+rrf_score = Σ 1 / (rank + k)      where k = 60
+```
+
+The **α parameter** controls weighting:
+
+| α | Strategy | Best for |
+|---|----------|----------|
+| 0.0–0.15 | Pure lexical | ASINs, model numbers, UPCs |
+| 0.15–0.40 | Lexical-heavy | Brand + category, attributes |
+| 0.40–0.60 | Balanced | Feature combinations |
+| 0.60–0.75 | Semantic-heavy | "Best for X", use-case queries |
+| 0.75–1.0 | Pure semantic | Gift ideas, mood/style, exploration |
+
+The query evaluator picks α per turn. If the top reranker score is still
+below 0.5, the quality gate retries with α adjusted by ±0.3.
+
+### State
+
+`CustomAgentState` (see [agent_state.py](agent_state.py)) is a `total=False`
+TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
+
+| Added by | Fields |
+|----------|--------|
+| Classifier | `intent`, `confidence`, `user_query` |
+| Query Evaluator | `alpha`, `intent_description` |
+| Retriever | `retrieved_documents` |
+| Reranker | `reranker_max_score`, `reranked_documents` |
+| Quality Gate | `quality_gate_retried`, `alpha_adjusted_value` |
+| Other | `thread_id`, `current_node`, `retrieved_products`, `citations` |
+
+---
+
+## Development
+
+### Re-ingest ESCI products
+
+```bash
+PYTHONPATH=. python ingest_esci_products.py              # default 10 k sample
+PYTHONPATH=. python ingest_esci_products.py --limit 500
+PYTHONPATH=. python ingest_esci_products.py --all        # all ~1.2 M US products
+PYTHONPATH=. python ingest_esci_products.py --resample   # force new sample
+PYTHONPATH=. python ingest_esci_products.py --stats
+```
+
+Sample parquets are cached at `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`.
+
+### Batch embedding via BigQuery
+
+For large ingestions, `bigquery_batch_embeddings.py` offloads embedding
+generation to BigQuery ML (`AI.GENERATE_EMBEDDING`) — ~15–30 min for
+1.2 M products vs ~4.5 h serially. See the script's `--help` for the
+one-time GCP setup and flags.
+
+### Benchmarks
+
+```bash
+PYTHONPATH=. python benchmark_search.py
+```
+
+### Checkpoint maintenance
+
+```bash
+PYTHONPATH=. python checkpoint_maintenance.py   # garbage-collect old checkpoints
+PYTHONPATH=. python checkpoint_optimizer.py     # tune checkpoint performance
+```
+
+### Testing
+
+```bash
+PYTHONPATH=. pytest tests/unit/           # no external deps, ~0.5 s
+PYTHONPATH=. pytest tests/integration/    # requires Postgres + OpenSearch
+PYTHONPATH=. pytest tests/e2e/            # requires deployed Cloud Run
+PYTHONPATH=. pytest --cov=. --cov-report=html
+```
+
+See [tests/README.md](tests/README.md) for the full layout and fixtures.
+
+### Lint / format / types
+
+```bash
+make lint            # pylint
+make format          # black
+make type-check      # mypy
+```
+
+### Frontend (from `web/`)
+
+```bash
+npm install
+npm run dev          # vite dev server on :5173
+npm run build        # tsc + vite build → dist/
+npm run lint         # eslint
+```
+
+---
+
+## Performance
+
+| Operation | Typical |
+|-----------|---------|
+| Hybrid search (BM25 + kNN) | ~300–800 ms |
+| LLM reranking (40 → 10) | ~1–3 s |
+| Query evaluation (α + expansion) | ~300–500 ms |
+| Quality Gate retry | +1–2 s |
+| LLM response (streaming) | ~3–8 s |
+| **Total per query** | **~6–15 s** local; ~10–30 s Cloud Run cold start |
+| Link verification (cached) | ~50 ms / URL |
+
+Optimizations: HNSW vector index · embedding cache (60-min TTL) ·
+thread-safe link cache · streaming WebSocket generation · fast-path α
+for comparison/attribute_filter/refinement to skip the LLM evaluator.
+
+---
+
+## Directory Layout
+
+```text
+langchain_agent/
+├── scripts/
+│   ├── setup.sh           # One-time local setup
+│   ├── start.sh           # Start services
+│   ├── stop.sh            # Stop services
+│   ├── teardown.sh        # Full local cleanup
+│   ├── logs.sh            # View backend/frontend logs
+│   ├── deploy.sh          # GCP Cloud Run deploy
+│   ├── gcp-init.sh        # Cloud SQL + product ingestion (one-time)
+│   ├── gcp-teardown.sh    # Remove GCP resources
+│   └── smoke_test.sh      # Post-deploy smoke test
+├── api/
+│   ├── main.py            # FastAPI lifespan
+│   ├── routes/            # chat (WebSocket), conversations, health
+│   ├── middleware/auth.py # Constant-time API key check
+│   ├── schemas/events.py  # Pydantic event models
+│   └── services/          # Observable agent wrapper
+├── web/                   # React frontend (Zustand, WebSocket, ObservabilityPanel)
+├── tests/                 # unit / integration / e2e (see tests/README.md)
+├── main.py                # LangGraph agent core (~2,600 lines)
+├── agent_state.py         # CustomAgentState TypedDict
+├── config.py              # All configuration constants
+├── exceptions.py          # Custom exception hierarchy
+├── vector_store.py        # OpenSearchVectorStore + retriever (RRF)
+├── reranker.py            # GeminiReranker (Pydantic-validated scoring)
+├── content_generators.py  # 5-format content generation
+├── embedding_cache.py     # Thread-safe query embedding cache
+├── link_verifier.py       # URL validation w/ TTL cache
+├── doc_replacer.py        # Broken-link replacement
+├── retry_utils.py         # Tenacity decorators
+├── logging_config.py      # structlog setup (JSON/console)
+├── setup.py               # DB + index init + ingestion orchestration
+├── ingest_esci_products.py
+├── bigquery_batch_embeddings.py   # Parallel embedding via BigQuery ML
+├── generate_embeddings.py         # Serial embedding fallback
+├── benchmark_search.py            # Latency benchmarks
+├── checkpoint_maintenance.py      # Checkpoint GC
+├── checkpoint_optimizer.py        # Checkpoint tuning
+├── migrate_to_hnsw.py             # Index migration utility
+├── Dockerfile             # Multi-stage (Node + Python)
+├── cloudbuild.yaml
+├── Makefile
+├── requirements.txt
+├── requirements-dev.txt
+└── pytest.ini
+```
 
 ---
 
 ## Troubleshooting
 
-### View Logs
+### `ModuleNotFoundError: No module named 'config'`
+
+Bare imports require `PYTHONPATH=.`:
 
 ```bash
-./scripts/logs.sh backend     # Backend logs
-./scripts/logs.sh frontend    # Frontend logs
-./scripts/logs.sh all         # All logs
+cd langchain_agent
+PYTHONPATH=. python ingest_esci_products.py
+PYTHONPATH=. pytest tests/unit/
+```
+
+### View logs
+
+```bash
+./scripts/logs.sh backend
+./scripts/logs.sh frontend
+./scripts/logs.sh all
 ```
 
 ### Backend won't start
 
 ```bash
-# Check API key exists
-grep API_KEY .env
-
-# Check logs
+grep ^API_KEY .env       # must exist
 ./scripts/logs.sh backend
 
-# If "Address already in use" error, kill stale processes
+# If the port is stuck:
 lsof -ti :8000 | xargs kill -9
 ./scripts/start.sh
 ```
@@ -332,352 +542,61 @@ lsof -ti :8000 | xargs kill -9
 ### Frontend shows connection error
 
 ```bash
-# Check backend is running
 curl http://localhost:8000/api/health
-
-# Check logs
 ./scripts/logs.sh frontend
 ```
 
 ### Google AI API issues
 
 ```bash
-# Check your API key is set
 echo $GOOGLE_API_KEY
-
-# Test with a simple Python call
-python -c "from langchain_google_genai import GoogleGenerativeAIEmbeddings; e = GoogleGenerativeAIEmbeddings(model='models/gemini-embedding-001'); print(len(e.embed_query('test')))"
+python -c "from langchain_google_genai import GoogleGenerativeAIEmbeddings; \
+  e = GoogleGenerativeAIEmbeddings(model='models/text-embedding-005'); \
+  print(len(e.embed_query('test')))"
 ```
 
 ### Database issues
 
 ```bash
-# Check PostgreSQL is running
 docker compose ps
-
-# Restart PostgreSQL
-cd ..
-docker compose down
-docker compose up -d postgres
-cd langchain_agent
-
-# Re-initialize database
-python setup.py
+# Restart:
+cd .. && docker compose down && docker compose up -d postgres && cd langchain_agent
+PYTHONPATH=. python setup.py
 ```
 
-### Content not appearing after generation
+### Content stops streaming after generation completes
 
-If content generation completes in the observability panel but doesn't appear in chat:
+Backend logs should show `LLM STREAMING STARTED` followed by
+`Emitting AgentCompleteEvent: N chars`. If they don't, pull latest,
+`./scripts/stop.sh` and `./scripts/start.sh`.
 
-**Symptom**: Observability shows "Content Complete: X words" but chat window is empty
-
-**Cause**: WebSocket streaming events not properly initialized
-
-**Fix**: This was resolved in commit `e773b0a`. If you're on an older version:
-```bash
-git pull
-./scripts/stop.sh
-./scripts/start.sh
-```
-
-**Verification**: Backend logs should show:
-```
-LLM STREAMING STARTED
-Emitting AgentCompleteEvent: XXXX chars
-```
-
-### Verify Setup
+### Verify the stack
 
 ```bash
-# Check all services
-docker compose ps                              # PostgreSQL
-curl http://localhost:11434/api/tags           # Ollama
+docker compose ps                              # PostgreSQL + OpenSearch
+curl http://localhost:9200/_cluster/health     # OpenSearch
 curl http://localhost:8000/api/health          # Backend
 ```
 
 ---
 
-## Architecture
-
-### Agent Pipeline
-
-The agent uses intent-based routing to direct queries to one of three pipelines:
-
-```text
-START → Intent Classifier
-  ├── [question]                 → Query Rewriter → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
-  ├── [summary]                  → Summary → Agent → END
-  ├── [documentation_request]    → Doc Planner → Doc Gatherer → Doc Synthesizer → END
-  └── [follow_up]                → Query Rewriter → Query Evaluator → Summary → Retriever → Alpha Refiner → Agent → END
-```
-
-#### RAG Q&A Pipeline (Default)
-
-```text
-Query → Intent Classifier → Query Rewriter → Query Evaluator → Summary
-  → Retriever (hybrid search + reranking) → Alpha Refiner → Agent → END
-```
-
-**Features**:
-- **Intent Detection**: 4 intents (question, documentation_request, summary, follow_up) with confidence scoring
-- **Smart Routing**: Summary/follow_up skip retrieval or use minimal context; doc intent routes to specialized pipeline
-- **Query Rewriting**: Resolves pronouns ("it", "those"), comparatives ("which is cheaper"), and short attribute questions ("how much?") using conversation context via LLM. Skips expansion when query contains a specific brand/product topic.
-- **Alpha Refinement**: Bidirectional - tries opposite search strategy when max score < 0.5
-- **Product Citations**: Generates Amazon product URLs from ASIN metadata (`https://www.amazon.com/dp/{ASIN}`) for ESCI products. Suppresses citations when max relevance < 10%.
-- **Honest Responses**: Returns "no info found" when retrieval fails (prevents hallucination)
-
-#### Product Comparison Writer Pipeline
-
-```text
-Doc Request → Content Type Classifier → [Route by Type]
-  ├─ social_post → Social Generator (1 pass) → END (~6s)
-  ├─ blog_post → Blog Generator (2 passes) → END (~20s)
-  ├─ technical_article → Article Generator (3 passes) → END (~25s)
-  ├─ tutorial → Tutorial Generator (2 passes) → END (~20s)
-  └─ comprehensive_docs → Doc Planner → Doc Gatherer → Doc Synthesizer → END (~50s)
-```
-
-**Content Type Classifier**: Uses lightweight LLM (`gemini-2.5-flash-lite`) to detect content type based on keywords and query structure
-
-**Lightweight Generators** (social/blog/article/tutorial):
-- **Outline Creation**: LLM generates structure (sections or steps)
-- **Multi-Pass Retrieval**: 1-3 targeted retrieval passes with different alpha values
-- **Streaming Generation**: Real-time token streaming for instant feedback
-- **Specialized Prompts**: Optimized for tone, length, and structure per content type
-
-**Comprehensive Docs Pipeline** (existing):
-- **Doc Planner**: Creates documentation outline from component catalog
-- **Doc Gatherer**: Iterative retrieval loop - 5 retrieval passes
-- **Doc Synthesizer**: Multi-pass generation producing full multi-section documentation
-
-**Performance**: Lightweight modes are 2-10× faster than comprehensive mode while maintaining quality
-
-**Streaming Architecture**:
-All content generators emit real-time streaming events:
-1. `LLMResponseStartEvent` - Creates placeholder message in chat UI before generation
-2. `LLMResponseChunkEvent` - Streams each token as generated (display updates instantly)
-3. `ContentCompleteEvent` - Finalizes with word/character counts
-
-**Frontend Integration**:
-- **Observability Panel**: Purple-themed nodes for content type classification and generation
-- **Event Types**: 6 new event types (ContentTypeClassificationEvent, 4 progress events, ContentCompleteEvent)
-- **Real-time Display**: WebSocket events update UI as content streams in
-
-### Hybrid Search
-
-Uses **Reciprocal Rank Fusion (RRF)** to combine vector and full-text rankings:
-
-```text
-rrf_score = sum of 1/(rank_vector + k) + 1/(rank_text + k)
-where k=60 (constant)
-```
-
-The **Alpha Parameter** controls weighting (standard hybrid search convention):
-
-- `α=0.0-0.15`: Pure lexical (BM25, exact matches, product names, SKUs)
-- `α=0.15-0.4`: Lexical-heavy (specific product attributes, brand names)
-- `α=0.4-0.6`: Balanced hybrid
-- `α=0.6-0.75`: Semantic-heavy (how-to, "best for" queries)
-- `α=0.75-1.0`: Pure semantic (vector, conceptual product questions)
-
-Query Evaluator dynamically adjusts alpha based on query type.
-
-### Observability Events
-
-The UI provides real-time observability via WebSocket events:
-
-| Event | Description |
-|-------|-------------|
-| `intent_classification` | Intent with confidence score (4 intents: question, documentation_request, summary, follow_up) |
-| `query_expansion` | Original and rewritten query for follow-ups (resolves pronouns, comparatives, attribute questions) |
-| `query_evaluation` | Alpha value and query analysis reasoning |
-| `hybrid_search_start/result` | Search candidates with scores |
-| `reranker_start/result` | Reranked documents with relevance scores |
-| `alpha_refinement` | Whether alpha was adjusted due to low relevance |
-| `content_type_classification` | Content type detected (social_post, blog_post, technical_article, tutorial, comprehensive_docs) with confidence, target length, tone, retrieval depth, temperature |
-| `social_post_progress` / `blog_post_progress` / `article_progress` / `tutorial_progress` | Progress events per content type (retrieval, outline, generation stages) |
-| `llm_response_start` | LLM streaming started (creates placeholder message) |
-| `llm_response_chunk` | LLM token chunk (real-time content display) |
-| `content_complete` | Content generation complete with word/char counts |
-| `doc_outline` | Documentation outline with sections |
-| `doc_section_progress` | Section gathering progress |
-| `doc_complete` | Completed documentation stats |
-| `agent_complete` | Final response with citations (if relevant) |
-
-### Query Evaluation & Alpha Refinement
-
-Intelligent query optimization:
-
-1. **Query Evaluator**: Dynamically determines optimal alpha value (0.0-1.0) for hybrid search using e-commerce-tuned guide
-   - `0.0-0.15`: Pure lexical (exact model numbers, ASINs, UPCs, brand+model combos)
-   - `0.15-0.40`: Lexical-heavy (brand + category, specific features, color/size combos)
-   - `0.4-0.6`: Balanced (feature comparisons, activity-based product queries)
-   - `0.60-0.75`: Semantic-heavy (conceptual needs, occasion-based queries)
-   - `0.75-1.0`: Pure semantic (gift ideas, mood/style queries, open-ended exploration)
-
-2. **Alpha Refiner**: Automatically retries with opposite strategy if max relevance score < 0.5
-   - Low semantic score → retry with lexical-heavy search
-   - Low lexical score → retry with semantic-heavy search
-
-3. **Reranker**: LLM-based relevance scoring (Gemini) refines retrieved documents
-
----
-
-## Development
-
-### Update Data
-
-```bash
-# Ingest ESCI product data
-python ingest_esci_products.py
-
-# Show ingestion stats
-python ingest_esci_products.py --stats
-
-# Or full re-initialization
-python setup.py
-```
-
-### Add Custom Tool
-
-```python
-# In main.py
-from langchain_core.tools import tool
-
-@tool
-def my_tool(query: str) -> str:
-    """Tool description"""
-    return "result"
-
-tools = [knowledge_base, my_tool]
-```
-
-### Change Models
-
-```python
-# In config.py
-LLM_MODEL = "llama2:13b"  # Any Ollama model
-RERANKER_MODEL = "BAAI/bge-reranker-v2-large"  # Larger, more accurate
-ENABLE_RERANKING = False  # Disable for speed
-```
-
-### Debug Search
-
-```python
-from main import SimplePostgresVectorStore
-from config import EMBEDDINGS_MODEL
-
-embeddings = ...  # Initialize embeddings
-vector_store = SimplePostgresVectorStore(embeddings)
-
-results = vector_store.hybrid_search("your query", k=4, alpha=0.25)
-for doc in results:
-    print(f"{doc.metadata['score']:.3f}: {doc.page_content[:100]}")
-```
-
-### Database Inspection
-
-```bash
-# Connect to DB
-psql -h localhost -U postgres -d langchain_agent
-
-# Check tables
-\dt  # list tables
-\di  # list indexes
-
-# Sample data
-SELECT * FROM documents LIMIT 1;
-SELECT COUNT(*) FROM document_chunks;
-```
-
-### Testing
-
-```bash
-python verify_changes.py       # Pipeline optimization verification
-python benchmark_search.py     # Search performance benchmarks
-```
-
----
-
-## Performance
-
-| Operation | Typical Time |
-| --------- | ------------ |
-| Hybrid search (lexical + semantic) | ~2-3s |
-| LLM-based reranking (40→10 docs) | ~2-3s |
-| Query evaluation (alpha detection) | ~1-2s |
-| Alpha refinement (if needed) | ~2-3s |
-| LLM response generation | ~5-15s (depends on length) |
-| **Total per query** | 10-30s (Cloud Run, GCP) |
-| **Link verification** | ~50ms per URL (cached) |
-
-**Optimizations**:
-
-- OpenSearch hybrid search (BM25 + knn_vector)
-- Min-max normalization for score fusion
-- Gemini batch API for embeddings
-- Link cache with 60-minute TTL
-- Thread-safe concurrent URL verification
-
----
-
-## Files
-
-```text
-langchain_agent/
-├── scripts/
-│   ├── setup.sh           # One-time setup
-│   ├── start.sh           # Start all services
-│   ├── stop.sh            # Stop all services
-│   └── logs.sh            # View logs
-├── api/                   # FastAPI backend
-│   ├── main.py            # Entry point (lifespan-based)
-│   ├── routes/            # API endpoints
-│   ├── middleware/        # Authentication (constant-time compare)
-│   └── schemas/           # Pydantic event models
-├── web/                   # React frontend
-│   ├── src/
-│   │   ├── components/
-│   │   ├── stores/
-│   │   └── App.tsx
-│   └── package.json
-├── main.py                # CLI agent + core graph nodes
-├── setup.py               # Database + OpenSearch initialization
-├── config.py              # Configuration constants (OpenSearch, PostgreSQL, LLM)
-├── agent_state.py         # LangGraph state schema (TypedDict)
-├── vector_store.py        # OpenSearch hybrid search + metadata queries
-├── reranker.py            # Gemini LLM-based reranker
-├── content_generators.py  # Product comparison writer pipeline (5 content types)
-├── exceptions.py          # Custom exception hierarchy
-├── retry_utils.py         # Retry decorators (tenacity)
-├── link_verifier.py       # URL validation with TTL cache (httpx)
-├── doc_replacer.py        # Broken link detection + replacement
-├── embedding_cache.py     # Thread-safe embedding cache
-├── logging_config.py      # Structured logging (JSON format)
-├── ingest_esci_products.py # ESCI product data ingestion (Amazon Shopping Queries Dataset)
-├── observable_agent.py    # SSE streaming + event emission
-├── verify_changes.py      # Pipeline integration tests
-├── benchmark_search.py    # Search performance benchmarks
-└── README.md              # This file
-```
-
 ## Security
 
-- **API Key**: Required for all endpoints (X-API-Key header)
-- **Timing Attack Prevention**: Uses `hmac.compare_digest` for key comparison
-- **Input Validation**: Thread ID validated with regex pattern
-- **Thread Safety**: All caches use `threading.Lock`
-- **Rate Limiting**: Configurable via slowapi
+- **API key** required on all endpoints (`X-API-Key` header)
+- **Timing-attack resistant** comparison via `hmac.compare_digest`
+- **Input validation** — thread IDs validated by regex
+- **Thread safety** — all caches use `threading.Lock`
+- **Rate limiting** — configurable via `slowapi`
 
 ---
 
 ## External References
 
-- **Amazon ESCI Dataset**: <https://github.com/amazon-science/esci-data>
-- **LangGraph**: <https://langchain-ai.github.io/langgraph/>
-- **LangChain**: <https://python.langchain.com/>
-- **OpenSearch**: <https://opensearch.org/docs/latest/>
-- **OpenSearch Python Client**: <https://opensearch-project.github.io/opensearch-py/>
-- **Google Gemini AI**: <https://ai.google.dev/>
-- **Google AI Studio**: <https://aistudio.google.com/>
-- **Google Cloud Run**: <https://cloud.google.com/run/docs>
+- Amazon ESCI dataset: <https://github.com/amazon-science/esci-data>
+- LangGraph: <https://langchain-ai.github.io/langgraph/>
+- LangChain: <https://python.langchain.com/>
+- OpenSearch: <https://opensearch.org/docs/latest/>
+- OpenSearch Python client: <https://opensearch-project.github.io/opensearch-py/>
+- Google Gemini: <https://ai.google.dev/>
+- Google AI Studio: <https://aistudio.google.com/>
+- Google Cloud Run: <https://cloud.google.com/run/docs>
