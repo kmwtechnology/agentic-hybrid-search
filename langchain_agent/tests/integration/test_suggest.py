@@ -121,27 +121,6 @@ def test_spell_correction_detected_for_misspelled_query(mock_client_factory, cli
 
 
 @patch("api.routes.suggest.create_opensearch_client")
-def test_zero_score_hits_are_dropped(mock_client_factory, client):
-    """Hits with _score=0 must not surface — they imply no should-clause match,
-    which happens when the title_suggest field is missing from the mapping."""
-    mock_os = MagicMock()
-    mock_os.search.return_value = _mk_response(
-        [
-            _mk_hit("Mud Pie Wedding Canvas Tote Bag", score=0.0),
-            _mk_hit("Gartful Hot Glue Sticks", score=0.0),
-            _mk_hit("Sony WH-1000XM5", score=5.0),
-        ],
-        max_score=5.0,
-    )
-    mock_client_factory.return_value = mock_os
-
-    r = client.get("/api/suggest?q=son")
-    assert r.status_code == 200
-    titles = [s["title"] for s in r.json()["suggestions"]]
-    assert titles == ["Sony WH-1000XM5"]
-
-
-@patch("api.routes.suggest.create_opensearch_client")
 def test_query_body_enforces_minimum_should_match(mock_client_factory, client):
     """The bool query must enforce minimum_should_match=1 so the collection
     filter alone cannot fall through as a match."""

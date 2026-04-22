@@ -151,6 +151,60 @@ async def trigger_reindex(
     )
 
 
+@router.get("/diagnose")
+async def diagnose(q: str = "sony") -> dict:
+    """
+    Probe the live index for a query across multiple fields.
+
+    Diagnostic-only: answers "is there Sony data in the index, and which fields
+    index it?" Compares hit counts for the suggest fields (title_suggest /
+    brand_suggest) against the primary lexical fields (title / product_brand).
+    If primary fields return hits while suggest fields don't, the mapping
+    pre-dates the suggest fields and a re-index with reset_index=true is
+    required.
+
+    Also returns whether the mapping includes the suggest fields at all.
+    """
+    try:
+        from config import OPENSEARCH_INDEX_NAME
+        from vector_store import create_opensearch_client
+
+        client = create_opensearch_client()
+
+        def count(field: str) -> dict:
+            try:
+                body = {"query": {"match": {field: q}}}
+                res = client.count(index=OPENSEARCH_INDEX_NAME, body=body)
+                return {"count": res.get("count", 0)}
+            except Exception as exc:  # noqa: BLE001
+                return {"error": f"{type(exc).__name__}: {exc}"}
+
+        # Inspect mapping for suggest fields.
+        mapping_fields: dict = {}
+        try:
+            mapping = client.indices.get_mapping(index=OPENSEARCH_INDEX_NAME)
+            index_key = next(iter(mapping))
+            properties = mapping[index_key].get("mappings", {}).get("properties", {})
+            for f in ("title", "product_brand", "title_suggest", "brand_suggest"):
+                mapping_fields[f] = f in properties
+        except Exception as exc:  # noqa: BLE001
+            mapping_fields = {"error": f"{type(exc).__name__}: {exc}"}
+
+        return {
+            "query": q,
+            "index": OPENSEARCH_INDEX_NAME,
+            "field_counts": {
+                "title": count("title"),
+                "product_brand": count("product_brand"),
+                "title_suggest": count("title_suggest"),
+                "brand_suggest": count("brand_suggest"),
+            },
+            "mapping_has_field": mapping_fields,
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 @router.get("/health")
 async def admin_health() -> dict:
     """Admin health check - verify system components."""

@@ -173,12 +173,8 @@ async def suggest(
             title = (source.get("title") or "").strip()
             if not title or title in seen_titles:
                 continue
-            raw_score = hit.get("_score") or 0.0
-            # Defense-in-depth: drop hits that somehow scored exactly zero
-            # (implies the should clauses didn't contribute to ranking).
-            if raw_score <= 0:
-                continue
             seen_titles.add(title)
+            raw_score = hit.get("_score") or 0.0
             hl = hit.get("highlight") or {}
             fragments = (hl.get("title_suggest") or []) + (hl.get("brand_suggest") or [])
 
