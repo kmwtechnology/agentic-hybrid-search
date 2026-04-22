@@ -60,7 +60,7 @@ const OPTIMIZATIONS: SearchOptimization[] = [
 ]
 
 export function SearchOptimizationDetails() {
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   return (
     <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
