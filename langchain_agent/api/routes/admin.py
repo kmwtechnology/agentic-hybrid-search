@@ -87,10 +87,10 @@ async def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -
 
 @router.get("/reindex", response_model=ReindexResponse)
 async def trigger_reindex(
+    background_tasks: BackgroundTasks,
     limit: int = 10000,
     reset_index: bool = True,
     force_resample: bool = False,
-    background_tasks: BackgroundTasks,
 ) -> ReindexResponse:
     """
     Trigger re-indexing of OpenSearch index.
