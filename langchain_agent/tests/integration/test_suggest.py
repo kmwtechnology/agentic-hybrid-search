@@ -121,6 +121,42 @@ def test_spell_correction_detected_for_misspelled_query(mock_client_factory, cli
 
 
 @patch("api.routes.suggest.create_opensearch_client")
+def test_prefix_of_candidate_skips_spell_correction(mock_client_factory, client):
+    """Query 'charg' against a title containing 'Charger' should NOT offer a
+    correction — the query is an in-progress prefix of the candidate token,
+    not a misspelling. The Suggestions section already surfaces the product."""
+    mock_os = MagicMock()
+    mock_os.search.return_value = _mk_response(
+        [_mk_hit("Star Wars R2-D2 USB Wall Charger", score=8.0)],
+        max_score=10.0,
+    )
+    mock_client_factory.return_value = mock_os
+
+    r = client.get("/api/suggest?q=charg")
+    assert r.status_code == 200
+    assert r.json()["spell_correction"] is None
+
+
+@patch("api.routes.suggest.create_opensearch_client")
+def test_completed_word_variant_still_surfaces_spell_correction(mock_client_factory, client):
+    """Query 'charging' (not a prefix of 'Charger') should still surface the
+    corpus-present related form — the prefix-skip guard must not regress
+    this case."""
+    mock_os = MagicMock()
+    mock_os.search.return_value = _mk_response(
+        [_mk_hit("USB Wall Charger", score=8.0)],
+        max_score=10.0,
+    )
+    mock_client_factory.return_value = mock_os
+
+    r = client.get("/api/suggest?q=charging")
+    assert r.status_code == 200
+    correction = r.json()["spell_correction"]
+    assert correction is not None
+    assert correction["title"].lower() == "charger"
+
+
+@patch("api.routes.suggest.create_opensearch_client")
 def test_query_body_enforces_minimum_should_match(mock_client_factory, client):
     """The bool query must enforce minimum_should_match=1 so the collection
     filter alone cannot fall through as a match."""

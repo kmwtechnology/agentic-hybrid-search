@@ -91,6 +91,12 @@ def _detect_spell_correction(
             token = match.group(0)
             if len(token) < 4:
                 continue
+            # Skip when the query is an in-progress prefix of this token.
+            # e.g. query "charg" with candidate "charger" — the Suggestions
+            # section already surfaces products containing "charger", so a
+            # "Did you mean: charger" banner is noise rather than correction.
+            if token.startswith(q):
+                continue
             if _levenshtein(q, token) < 2:
                 continue
             ratio = SequenceMatcher(None, q, token).ratio()
