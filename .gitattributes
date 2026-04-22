@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Track 10K ESCI sample normally in git (not LFS) - it's 64MB which is manageable
+esci/shopping_queries_dataset/esci_products_sample_10000.parquet binary
