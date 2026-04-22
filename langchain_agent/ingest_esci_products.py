@@ -152,18 +152,37 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
 def ensure_index_exists(client, reset_index: bool = False):
     """Create the OpenSearch index if it doesn't exist. Optionally delete existing first."""
     try:
-        if reset_index and client.indices.exists(index=OPENSEARCH_INDEX_NAME):
-            client.indices.delete(index=OPENSEARCH_INDEX_NAME)
-            logger.info(f"Deleted existing index '{OPENSEARCH_INDEX_NAME}'")
-            print(f"   Deleted existing index '{OPENSEARCH_INDEX_NAME}'", flush=True)
+        index_exists_before = client.indices.exists(index=OPENSEARCH_INDEX_NAME)
+        logger.info(f"[ensure_index_exists] reset_index={reset_index}, index_exists_before={index_exists_before}")
+        print(f"   [Index state] exists={index_exists_before}, reset_index={reset_index}", flush=True)
 
-        if not client.indices.exists(index=OPENSEARCH_INDEX_NAME):
-            client.indices.create(index=OPENSEARCH_INDEX_NAME, body=INDEX_MAPPING)
-            logger.info(f"Created index '{OPENSEARCH_INDEX_NAME}'")
-            print(f"   Created index '{OPENSEARCH_INDEX_NAME}'", flush=True)
+        if reset_index and index_exists_before:
+            logger.info(f"[ensure_index_exists] Attempting to delete index '{OPENSEARCH_INDEX_NAME}'...")
+            print(f"   Deleting existing index '{OPENSEARCH_INDEX_NAME}'...", flush=True)
+            client.indices.delete(index=OPENSEARCH_INDEX_NAME)
+            logger.info(f"[ensure_index_exists] ✓ Successfully deleted index '{OPENSEARCH_INDEX_NAME}'")
+            print(f"   ✓ Deleted existing index '{OPENSEARCH_INDEX_NAME}'", flush=True)
+
+            # Verify deletion
+            index_exists_after_delete = client.indices.exists(index=OPENSEARCH_INDEX_NAME)
+            logger.info(f"[ensure_index_exists] Verification: index_exists_after_delete={index_exists_after_delete}")
+            print(f"   [Verification] Index exists after delete: {index_exists_after_delete}", flush=True)
         else:
-            logger.info(f"Index '{OPENSEARCH_INDEX_NAME}' already exists")
-            print(f"   Index '{OPENSEARCH_INDEX_NAME}' already exists", flush=True)
+            if reset_index:
+                logger.info(f"[ensure_index_exists] reset_index=true but index doesn't exist (already deleted?)")
+                print(f"   [Note] reset_index=true but index doesn't exist", flush=True)
+
+        # Now create if needed
+        index_exists_now = client.indices.exists(index=OPENSEARCH_INDEX_NAME)
+        if not index_exists_now:
+            logger.info(f"[ensure_index_exists] Creating new index '{OPENSEARCH_INDEX_NAME}'...")
+            print(f"   Creating new index '{OPENSEARCH_INDEX_NAME}'...", flush=True)
+            client.indices.create(index=OPENSEARCH_INDEX_NAME, body=INDEX_MAPPING)
+            logger.info(f"[ensure_index_exists] ✓ Created index '{OPENSEARCH_INDEX_NAME}'")
+            print(f"   ✓ Created index '{OPENSEARCH_INDEX_NAME}'", flush=True)
+        else:
+            logger.info(f"[ensure_index_exists] Index '{OPENSEARCH_INDEX_NAME}' already exists (not recreated)")
+            print(f"   [Note] Index '{OPENSEARCH_INDEX_NAME}' already exists", flush=True)
 
         # Create search pipeline
         try:
@@ -418,14 +437,23 @@ def ingest_esci_products(
 
     # Initialize OpenSearch client
     client = create_opensearch_client()
+    logger.info(f"[ingest_esci_products] Initializing index with reset_index={reset_index}")
     ensure_index_exists(client, reset_index=reset_index)
 
     # Check which products are already indexed
+    logger.info(f"[ingest_esci_products] Checking indexed product IDs...")
     indexed_ids = get_indexed_product_ids(client)
+    logger.info(f"[ingest_esci_products] Found {len(indexed_ids)} products already indexed")
+    print(f"   Found {len(indexed_ids)} products already in index", flush=True)
+
     products_to_ingest = [idx for idx, row in df.iterrows()
                           if str(row.get("product_id", "")) not in indexed_ids]
 
+    logger.info(f"[ingest_esci_products] Products to ingest: {len(products_to_ingest)}/{len(df)}")
+    print(f"   Products to ingest: {len(products_to_ingest)}/{len(df)}", flush=True)
+
     if not products_to_ingest:
+        logger.warning(f"[ingest_esci_products] All {len(df)} products already indexed - skipping ingestion")
         print(f"   ✓ All {len(df)} products already indexed in OpenSearch")
         return 0, 0
 
