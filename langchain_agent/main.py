@@ -146,13 +146,110 @@ from config import (
 
 class EcommerceSearchAgent:
     """
-    Main agent class that manages the LLM, tools, and conversation state.
+    Production-grade LangGraph RAG agent for e-commerce product discovery.
 
-    Handles:
-    - Real-time streaming of agent thinking and responses
-    - Integration with local product knowledge base (OpenSearch + Embeddings)
-    - Persistent conversation memory (PostgreSQL)
-    - Interactive multi-turn conversations
+    This is the main orchestrator for a conversational product search system powered by
+    Google Gemini, OpenSearch hybrid search, and LangGraph. It implements a sophisticated
+    6-intent classifier, dynamic alpha weighting for semantic/lexical balance, LLM-based
+    reranking, and real-time WebSocket streaming with full observability.
+
+    ## Architecture
+
+    The agent executes a stateful pipeline:
+
+        intent_classifier (6 intents)
+          ├→ search / comparison / attribute_filter / refinement / follow_up
+          │   → query_evaluator (dynamic alpha) → retriever (hybrid search)
+          │   → reranker (LLM scoring) → quality_gate (retry if needed) → agent (response)
+          ├→ summary → agent (conversation recap)
+          └→ clarify (low confidence) → agent (ask user to disambiguate)
+
+    ## Key Capabilities
+
+    **Intent Classification (6 types)**:
+    - `search`: General product discovery ("Find wireless headphones")
+    - `comparison`: Compare products ("Compare Sony vs Bose")
+    - `attribute_filter`: Filter by attributes ("Show me boots in blue under $100")
+    - `refinement`: Narrow prior results ("Make them waterproof") — with context validation
+    - `follow_up`: Vague expansion ("Tell me more") — uses conversation history
+    - `summary`: Recap previous results
+
+    **Hybrid Search**:
+    - Vector search (768-dim Gemini embeddings) + BM25 lexical search
+    - Reciprocal Rank Fusion (k=60) for score fusion
+    - Dynamic alpha (0.0–1.0) per query: lexical-heavy for exact matches, semantic-heavy for conceptual needs
+
+    **Quality Gate**:
+    - Reranker scores products on 0.0–1.0 scale
+    - If max score < threshold, adjusts alpha ±0.3 and retries once
+    - Prevents low-quality responses
+
+    **Observable Events**:
+    - Real-time WebSocket streaming with typed Pydantic events
+    - 15+ event types: IntentClassification, QueryEvaluation, HybridSearchResult, RerankerProgress, QualityGateDecision, etc.
+    - Enables live visualization in frontend ObservabilityPanel
+
+    **Conversational Context**:
+    - PostgreSQL checkpoints for multi-turn memory
+    - Query expansion: resolves pronouns/comparatives from history
+    - Refinement context validation: category + document overlap scoring
+
+    ## Usage Example
+
+        agent = EcommerceSearchAgent()
+        agent.verify_prerequisites()  # Check Postgres, OpenSearch, Google API
+        agent.initialize_components()  # Load LLM, embeddings, reranker
+
+        # Build the LangGraph pipeline
+        compiled_graph = agent.build_graph()
+
+        # Execute a query
+        result = compiled_graph.invoke(
+            {"messages": [HumanMessage(content="Find wireless headphones under $100")]},
+            config={"configurable": {"thread_id": "user-123"}}
+        )
+
+        # Result contains assistant response and metadata
+        for msg in result["messages"]:
+            if isinstance(msg, AIMessage):
+                print(msg.content)
+
+    ## Extension Points
+
+    **Add a new intent**:
+        1. Add intent string to `_build_intent_prompt()` available intents list
+        2. Add classification logic in `_build_intent_prompt()`
+        3. Add fast-path alpha in `query_evaluator_node()` if deterministic
+        4. Add conditional edge in `build_graph()` routing to correct node
+        5. Add test in `tests/unit/intent/test_intent_classifier.py`
+
+    **Add a new pipeline node**:
+        1. Implement `def my_node(self, state: CustomAgentState) -> Dict[str, Any]:`
+        2. Add any required fields to `CustomAgentState` (agent_state.py)
+        3. Add node to graph in `build_graph()` using `workflow.add_node("my_node", self.my_node)`
+        4. Add edges: `workflow.add_edge("prior_node", "my_node")`
+        5. Add test in `tests/integration/` covering state transitions
+
+    **Observe a new event**:
+        1. Create Pydantic model in `api/schemas/events.py` inheriting BaseEvent
+        2. Create matching TypeScript type in `web/src/types/events.ts`
+        3. Emit from node: `self._emit_event_from_sync(MyEvent(...))`
+        4. Update `observabilityStore.ts` and `StepCard.tsx` to render the event
+
+    **Swap the LLM provider** (e.g., Claude instead of Gemini):
+        1. Update `LLM_MODEL` in `config.py`
+        2. Update `EMBEDDINGS_MODEL` if switching embedding provider
+        3. Update LLM instantiation in `initialize_components()` (line 240)
+        4. Update alpha_estimator_llm if using different classification model (line 250)
+        5. Update reranker initialization (line 313) for new provider's structured output syntax
+
+    ## Implementation Notes
+
+    - All node methods follow the signature: `(self, state: CustomAgentState) -> Dict[str, Any]`
+    - State fields are optional (`total=False`); always use `state.get(key, default)` for safe access
+    - The graph is built lazily in `build_graph()` and stored in `self.app`
+    - Streaming is handled by `_stream_llm_response_simple()` and WebSocket callback
+    - Link verification (404 detection) prevents dead citations in responses
     """
 
     def __init__(self):
@@ -339,13 +436,53 @@ class EcommerceSearchAgent:
         """
         Classify the latest user message to determine intent for e-commerce product search.
 
-        Intents: search, comparison, attribute_filter, follow_up, summary, clarify
-        - search: General product discovery queries (DEFAULT)
-        - comparison: Comparing two or more products ("Compare X vs Y")
-        - attribute_filter: Requests with specific attributes ("Show me X in [color] under [price]")
-        - follow_up: Vague expansions needing context ("Tell me more", "Any alternatives?")
-        - summary: Conversation recap ("Summarize what we discussed")
-        - clarify: Low-confidence queries requiring disambiguation
+        Uses keyword fast-path (deterministic, <100ms) for high-confidence classification,
+        falls back to LLM for ambiguous queries. If confidence < 0.7, returns intent=clarify
+        with clarifying questions for user confirmation.
+
+        Intents (6 types):
+        - `search`: General product discovery queries (DEFAULT)
+        - `comparison`: Comparing two or more products ("Compare X vs Y")
+        - `attribute_filter`: Requests with specific attributes ("Show me X in [color] under [price]")
+        - `refinement`: Narrowing prior search with new constraints ("Make them waterproof")
+        - `follow_up`: Vague expansions needing context ("Tell me more", "Any alternatives?")
+        - `summary`: Conversation recap ("Summarize what we discussed")
+        - `clarify`: Low-confidence queries requiring disambiguation
+
+        Args:
+            state: CustomAgentState with 'messages' required. Other fields set by prior nodes.
+
+        Returns:
+            Dict with keys:
+            - intent: str, one of the 6 intent types above
+            - user_query: str, extracted user message
+            - intent_confidence: float, 0.0–1.0 confidence in classification
+            - reasoning: str, explanation for classification decision
+            - clarifying_questions: list[str], questions if confidence < 0.7
+
+        Examples:
+            Query: "Find me wireless headphones under $100"
+            Output: {
+                "intent": "search",
+                "intent_confidence": 0.95,
+                "reasoning": "General product discovery query",
+                "clarifying_questions": []
+            }
+
+            Query: "Hmm, maybe cheaper ones?"
+            Output: {
+                "intent": "follow_up",
+                "intent_confidence": 0.68,
+                "reasoning": "Vague price refinement, low confidence",
+                "clarifying_questions": ["Price range? e.g., under $50", "Any other constraints?"]
+            }
+
+        LangSmith Observability:
+            This node emits structured logs with metadata that LangSmith picks up:
+            - node: "intent_classifier"
+            - intent: detected intent class
+            - confidence: classification confidence (0.0–1.0)
+            - path: "keyword" or "llm" (fast-path or fallback)
         """
         messages = state["messages"]
         user_query = ""
@@ -389,19 +526,48 @@ class EcommerceSearchAgent:
 
     def query_evaluator_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        Evaluate the query type and determine optimal alpha for hybrid search.
+        Evaluate query type and determine optimal alpha for hybrid search balance.
 
-        Intent-aware guidance:
-        - "comparison": Balanced to semantic-heavy (0.4-0.7) to highlight differences
-        - "attribute_filter": Lexical-heavy (0.15-0.4) to match specific attributes
-        - "search", "follow_up": Dynamic based on query semantics (0.0-1.0)
+        Sets the alpha parameter (0.0=pure lexical/BM25, 1.0=pure semantic/vector) based on:
+        - Intent fast-path: deterministic alpha for comparison (0.60), attribute_filter (0.25), refinement (0.35)
+        - LLM path: semantic analysis for search/follow_up intents, prompt-guided selection
 
-        Alpha interpretation (0.0=lexical/BM25, 1.0=semantic/vector):
-        - 0.0-0.2: Pure lexical (exact model numbers, ASINs, brand+model)
-        - 0.2-0.4: Lexical-heavy (specific features, color/size, attributes)
-        - 0.4-0.6: Balanced (feature comparisons, activity-based queries)
-        - 0.6-0.8: Semantic-heavy (conceptual needs, occasion-based)
-        - 0.8-1.0: Pure semantic (gift ideas, mood/style, exploration)
+        Also expands vague queries using conversation history (pronouns, comparatives).
+
+        Alpha Interpretation:
+        - 0.0–0.15: Pure lexical (exact model numbers, ASINs, brand+model)
+        - 0.15–0.40: Lexical-heavy (specific features, color/size, brand combos)
+        - 0.40–0.60: Balanced (feature comparisons, activity-based queries)
+        - 0.60–0.75: Semantic-heavy (conceptual needs, occasion-based)
+        - 0.75–1.0: Pure semantic (gift ideas, mood/style, open-ended exploration)
+
+        Args:
+            state: CustomAgentState with 'messages' (required) and 'intent' (set by classifier).
+                   May contain 'prior_search_documents' for refinement context.
+
+        Returns:
+            Dict with keys:
+            - alpha: float, 0.0–1.0 hybrid search weight
+            - query_analysis: str, reasoning for alpha choice
+            - search_strategy: str, human-readable strategy (e.g., "Semantic-Heavy")
+            - intent_optimized: bool, True if fast-path, False if LLM-driven
+
+        Examples:
+            Intent: "comparison", Query: "Compare Sony vs Bose headphones"
+            Output: {
+                "alpha": 0.60,
+                "query_analysis": "Comparison query: prioritizing semantic search for quality differences",
+                "search_strategy": "Semantic-Heavy (Vector dominant)",
+                "intent_optimized": True
+            }
+
+            Intent: "search", Query: "best headphones for long flights"
+            Output: {
+                "alpha": 0.72,
+                "query_analysis": "Activity-based query requiring semantic understanding",
+                "search_strategy": "Semantic-Heavy (Vector dominant)",
+                "intent_optimized": False
+            }
         """
         start_time = time.time()
         messages = state["messages"]
@@ -1983,17 +2149,70 @@ Respond with JSON only. No other text."""
 
     def quality_gate_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
-        Intent-aware quality gate - checks reranker scores and triggers adaptive retry if needed.
+        Adaptive quality gate — checks reranker scores and triggers retry if results are low-quality.
 
-        Logic:
-        - If reranker_max_score >= intent_threshold: continue to agent (PASS)
-        - If reranker_max_score < intent_threshold AND not yet retried: adjust alpha ±0.3, retry retriever (RETRY)
-        - If already retried: continue to agent with best results (ACCEPT)
+        Prevents passing poor-quality search results to the agent. If the highest reranker score
+        is below the intent-specific threshold, adjusts alpha in the opposite direction and retries
+        the retriever once to try a different search strategy.
 
-        Intent-aware thresholds:
-        - "comparison": 0.55 (higher - need quality comparisons)
-        - "attribute_filter": 0.45 (standard - exact attributes)
-        - "search", "follow_up": 0.50 (standard)
+        Decision Logic:
+        - **PASS**: `reranker_max_score >= threshold` → continue to agent with current results
+        - **RETRY**: `reranker_max_score < threshold` AND not yet retried → adjust alpha, loop back to retriever
+        - **ACCEPT**: already retried once → continue to agent regardless of score (accept best-effort results)
+
+        Intent-Specific Thresholds:
+        - `comparison`: 0.55 (highest — comparison needs quality feature analysis)
+        - `attribute_filter`: 0.45 (attribute matches can be fuzzy)
+        - `refinement`: 0.45 (feature keyword matching is specific)
+        - `search`, `follow_up`: 0.50 (standard quality bar)
+
+        Alpha Adjustment (retry strategy):
+        - If current alpha >= 0.5: lower by 0.3 (shift to more lexical matching)
+        - If current alpha < 0.5: raise by 0.3 (shift to more semantic matching)
+
+        Args:
+            state: CustomAgentState with:
+                - reranker_max_score: float, highest relevance score from reranker (0.0–1.0)
+                - alpha: float, current search weight
+                - quality_gate_retried: bool, whether already retried once
+                - intent: str, for threshold selection
+                - retrieved_documents: list, documents to evaluate
+
+        Returns:
+            Dict with keys:
+            - quality_gate_status: str, "pass" | "retry" (only when retrying)
+            - quality_gate_retried: bool, True if retry triggered
+            - quality_gate_reason: str, explanation of decision
+            - alpha: float, NEW alpha if retrying, otherwise omitted
+            - reranker_max_score: float, the score that was evaluated
+
+        Examples:
+            Scenario 1 (PASS):
+            Input: max_score=0.72, threshold=0.50, intent="search"
+            Output: {
+                "quality_gate_status": "pass",
+                "quality_gate_reason": "PASS: max_score 0.72 >= threshold 0.50",
+                "quality_gate_retried": False
+            }
+            → Continues to agent_node
+
+            Scenario 2 (RETRY):
+            Input: max_score=0.35, threshold=0.50, intent="search", alpha=0.65 (semantic-heavy)
+            Output: {
+                "quality_gate_status": "retry",
+                "quality_gate_reason": "RETRY (search): score 0.35 < 0.50, alpha → 0.35",
+                "quality_gate_retried": True,
+                "alpha": 0.35  # Shift to more lexical search
+            }
+            → Loops back to retriever_node with adjusted alpha
+
+            Scenario 3 (ACCEPT — already retried):
+            Input: quality_gate_retried=True (from prior attempt)
+            Output: {
+                "quality_gate_reason": "Accepted after retry (max_score=0.42)",
+                "quality_gate_retried": False  # No further retries
+            }
+            → Continues to agent_node with current best results
         """
         from config import ENABLE_QUALITY_GATE, QUALITY_GATE_THRESHOLD
 

@@ -2,18 +2,32 @@
 Content generation nodes for multi-capability LangGraph agent.
 
 This module provides lightweight content generators for different output formats:
-- social_post: LinkedIn/Twitter posts (100-300 words)
-- blog_post: Narrative articles (1000-2000 words)
-- technical_article: Technical deep-dives (800-1500 words)
-- tutorial: Step-by-step guides (1000 words)
+- social_post: LinkedIn/Twitter posts (100-300 words) — shallow retrieval, high temperature
+- blog_post: Narrative articles (1000-2000 words) — moderate depth, engaging tone
+- technical_article: Technical deep-dives (800-1500 words) — code examples, low temperature
+- tutorial: Step-by-step guides (1000 words) — instructional, precise language
+- comprehensive_docs: Complete reference documentation (2000+ words) — full pipeline
 
-The comprehensive_docs mode routes to the existing doc_writer pipeline.
+Each generator:
+1. Classifies content type via LLM (ContentTypeClassification)
+2. Routes to format-specific generation with context-aware parameters
+3. Retrieves relevant documents (depth varies by format)
+4. Generates content with appropriate tone, temperature, and length
+5. Emits progress events (SocialPostProgressEvent, etc.) for real-time UI streaming
 
-All generators follow the same pattern:
-1. Classify content type
-2. Retrieve relevant documents
-3. Generate content with appropriate tone/length
-4. Emit progress events for UI streaming
+All generators run in the LangGraph pipeline and emit observable events for the
+frontend Observability Panel to visualize progress stage-by-stage.
+
+## Extension: Adding a New Content Format
+
+To add "whitepaper" format:
+1. Add entry to `get_content_params()` with target_length, tone, temperature
+2. Add WhitepaperProgressEvent to api/schemas/events.py with content_type="whitepaper"
+3. Add TypeScript type to web/src/types/events.ts
+4. Implement generate_whitepaper() function in this module
+5. Add case to content_type routing in the main content generation node
+6. Update web/src/stores/observabilityStore.ts to accumulate WhitepaperProgressEvent
+7. Update ObservabilityPanel to render the progress visualization
 """
 
 from typing import Any, Dict, TYPE_CHECKING
@@ -25,6 +39,38 @@ from pydantic import BaseModel
 
 from agent_state import CustomAgentState
 
+try:
+    from api.schemas.events import (
+        ContentTypeClassificationEvent,
+        ClarificationRequestedEvent,
+        ClarificationResolvedEvent,
+        SocialPostProgressEvent,
+        BlogPostProgressEvent,
+        ArticleProgressEvent,
+        TutorialProgressEvent,
+        ContentCompleteEvent,
+    )
+    _EVENTS_AVAILABLE = True
+except ImportError:
+    _EVENTS_AVAILABLE = False
+    # Provide stub classes for testing without API service
+    class ContentTypeClassificationEvent:  # type: ignore
+        pass
+    class ClarificationRequestedEvent:  # type: ignore
+        pass
+    class ClarificationResolvedEvent:  # type: ignore
+        pass
+    class SocialPostProgressEvent:  # type: ignore
+        pass
+    class BlogPostProgressEvent:  # type: ignore
+        pass
+    class ArticleProgressEvent:  # type: ignore
+        pass
+    class TutorialProgressEvent:  # type: ignore
+        pass
+    class ContentCompleteEvent:  # type: ignore
+        pass
+
 
 class ContentTypeClassification(BaseModel):
     content_type: str
@@ -34,16 +80,6 @@ class ContentTypeClassification(BaseModel):
     suggested_formats: list[str] | None = None
     suggested_topics: list[str] | None = None
     reasoning: str = ""
-from api.schemas.events import (
-    ContentTypeClassificationEvent,
-    ClarificationRequestedEvent,
-    ClarificationResolvedEvent,
-    SocialPostProgressEvent,
-    BlogPostProgressEvent,
-    ArticleProgressEvent,
-    TutorialProgressEvent,
-    ContentCompleteEvent,
-)
 
 if TYPE_CHECKING:
     from main import EcommerceSearchAgent

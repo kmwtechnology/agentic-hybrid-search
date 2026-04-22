@@ -23,37 +23,37 @@ interface StepCardProps {
   index: number
 }
 
-// Node display configuration
+// Node display configuration — PROJECTOR OPTIMIZED
 const nodeConfig: Record<string, { label: string; color: string; bgColor: string }> = {
   query_evaluator: {
     label: 'Query Evaluator',
-    color: 'text-blue-400',
-    bgColor: 'bg-blue-500/10 border-blue-500/30',
+    color: 'text-blue-300',
+    bgColor: 'bg-blue-500/20 border-blue-500/50',
   },
   agent: {
     label: 'LLM Agent',
-    color: 'text-cyan-400',
-    bgColor: 'bg-cyan-500/10 border-cyan-500/30',
+    color: 'text-cyan-300',
+    bgColor: 'bg-cyan-500/20 border-cyan-500/50',
   },
   retriever: {
     label: 'Knowledge Search',
-    color: 'text-violet-400',
-    bgColor: 'bg-violet-500/10 border-violet-500/30',
+    color: 'text-violet-300',
+    bgColor: 'bg-violet-500/20 border-violet-500/50',
   },
   reranker: {
     label: 'LLM Reranker',
-    color: 'text-indigo-400',
-    bgColor: 'bg-indigo-500/10 border-indigo-500/30',
+    color: 'text-indigo-300',
+    bgColor: 'bg-indigo-500/20 border-indigo-500/50',
   },
   quality_gate: {
     label: 'Quality Gate',
-    color: 'text-orange-400',
-    bgColor: 'bg-orange-500/10 border-orange-500/30',
+    color: 'text-orange-300',
+    bgColor: 'bg-orange-500/20 border-orange-500/50',
   },
   intent_classifier: {
     label: 'Intent Classifier',
-    color: 'text-emerald-400',
-    bgColor: 'bg-emerald-500/10 border-emerald-500/30',
+    color: 'text-emerald-300',
+    bgColor: 'bg-emerald-500/20 border-emerald-500/50',
   },
 }
 
@@ -82,35 +82,35 @@ export function StepCard({ step, index }: StepCardProps) {
         step.status === 'running' && 'ring-2 ring-blue-500/50'
       )}
     >
-      {/* Header - always visible */}
+      {/* Header - always visible — PROJECTOR OPTIMIZED */}
       <button
         onClick={() => toggleStepExpanded(step.id)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left"
+        className="w-full flex items-center gap-3 px-4 py-4 text-left"
       >
         {/* Expand icon */}
         <div className="flex-shrink-0 text-gray-500">
           {isExpanded ? (
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-5 h-5" />
           ) : (
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-5 h-5" />
           )}
         </div>
 
         {/* Step number */}
-        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-xs text-gray-300">
+        <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-700 flex items-center justify-center text-sm font-medium text-gray-200">
           {index + 1}
         </div>
 
         {/* Status indicator */}
-        <div className={clsx('w-2 h-2 rounded-full', statusColors[step.status])} />
+        <div className={clsx('w-3 h-3 rounded-full', statusColors[step.status])} />
 
         {/* Node name + summary */}
         <div className="flex-1 min-w-0 truncate">
-          <span className={clsx('font-medium text-sm', config.color)}>
+          <span className={clsx('font-medium text-base', config.color)}>
             {config.label}
           </span>
           {step.node !== 'intent_classifier' && step.summary && (
-            <span className="ml-2 text-xs text-gray-500">
+            <span className="ml-2 text-sm text-gray-300">
               {step.summary}
             </span>
           )}
@@ -118,8 +118,8 @@ export function StepCard({ step, index }: StepCardProps) {
 
         {/* Duration */}
         {step.durationMs !== undefined && (
-          <div className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-500">
-            <Clock className="w-3 h-3" />
+          <div className="flex-shrink-0 flex items-center gap-1 text-sm text-gray-300">
+            <Clock className="w-4 h-4" />
             {step.durationMs < 1000
               ? `${Math.round(step.durationMs)}ms`
               : `${(step.durationMs / 1000).toFixed(1)}s`}

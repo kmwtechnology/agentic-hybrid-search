@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, Presentation } from 'lucide-react'
 import { ConversationsSidebar } from './ConversationsSidebar'
 import { ChatPanel } from './ChatPanel'
 import { ObservabilityPanel } from './ObservabilityPanel'
@@ -23,6 +23,7 @@ export function Layout() {
   const [observabilityWidth, setObservabilityWidth] = useState(450)
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
   const [isResizingObservability, setIsResizingObservability] = useState(false)
+  const [presentationMode, setPresentationMode] = useState(false)
 
   const closeSidebar = () => setSidebarOpen(false)
 
@@ -98,6 +99,16 @@ export function Layout() {
         )}
       </button>
 
+      {/* Presentation mode toggle button */}
+      <button
+        onClick={() => setPresentationMode(!presentationMode)}
+        title={presentationMode ? 'Exit presentation mode' : 'Enter presentation mode (hides sidebar for demo)'}
+        className="fixed top-4 right-4 z-40 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+        aria-label={presentationMode ? 'Exit presentation mode' : 'Enter presentation mode'}
+      >
+        <Presentation className={`w-6 h-6 ${presentationMode ? 'text-blue-400' : 'text-gray-400'}`} />
+      </button>
+
       {/* Mobile overlay backdrop */}
       {sidebarOpen && (
         <div
@@ -107,26 +118,30 @@ export function Layout() {
         />
       )}
 
-      {/* Sidebar - desktop visible, mobile in drawer */}
-      <div
-        className={`${
-          sidebarOpen
-            ? 'fixed inset-y-0 left-0 z-40 h-full'
-            : 'hidden md:block md:flex-shrink-0 h-full'
-        }`}
-        style={{ width: `${sidebarWidth}px`, maxWidth: 'calc(100vw - 1rem)' }}
-      >
-        <ConversationsSidebar onConversationSelect={closeSidebar} />
-      </div>
+      {/* Sidebar - desktop visible, mobile in drawer (hidden in presentation mode) */}
+      {!presentationMode && (
+        <>
+          <div
+            className={`${
+              sidebarOpen
+                ? 'fixed inset-y-0 left-0 z-40 h-full'
+                : 'hidden md:block md:flex-shrink-0 h-full'
+            }`}
+            style={{ width: `${sidebarWidth}px`, maxWidth: 'calc(100vw - 1rem)' }}
+          >
+            <ConversationsSidebar onConversationSelect={closeSidebar} />
+          </div>
 
-      {/* Resizer handle */}
-      <div
-        className="hidden md:flex w-4 cursor-col-resize select-none"
-        onMouseDown={handleSidebarMouseDown}
-        aria-hidden="true"
-      >
-        <div className="mx-auto h-full w-px bg-gray-800 hover:bg-gray-600 transition-colors" />
-      </div>
+          {/* Resizer handle */}
+          <div
+            className="hidden md:flex w-4 cursor-col-resize select-none"
+            onMouseDown={handleSidebarMouseDown}
+            aria-hidden="true"
+          >
+            <div className="mx-auto h-full w-px bg-gray-800 hover:bg-gray-600 transition-colors" />
+          </div>
+        </>
+      )}
 
       {/* Main content area */}
       <div className="flex-1 flex min-w-0 overflow-hidden">
@@ -135,8 +150,8 @@ export function Layout() {
           <ChatPanel />
         </div>
 
-        {/* Observability resizer & panel */}
-        <div className="hidden lg:flex items-stretch flex-shrink-0">
+        {/* Observability resizer & panel (always visible, especially in presentation mode for demo) */}
+        <div className="flex lg:flex items-stretch flex-shrink-0">
           <div
             className="flex items-stretch w-4 cursor-col-resize select-none"
             onMouseDown={handleObservabilityMouseDown}

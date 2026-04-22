@@ -502,7 +502,83 @@ class OpenSearchVectorStore:
         return Document(page_content=src.get("chunk_text", ""), metadata=metadata)
 
 class OpenSearchRetriever:
-    """Retriever interface for OpenSearch vector store."""
+    """
+    LangChain-compatible retriever for hybrid vector/BM25 search in OpenSearch.
+
+    Bridges OpenSearchVectorStore and LangGraph/LangChain's BaseRetriever interface.
+    Supports pure vector similarity search or hybrid search combining vector + lexical
+    (BM25) via Reciprocal Rank Fusion (RRF).
+
+    ## Hybrid Search Strategy
+
+    Hybrid mode (`search_type="hybrid"`) merges two ranking lists:
+    1. **Vector Search**: kNN (HNSW) on 768-dim embeddings → scored by cosine similarity
+    2. **Lexical Search**: BM25 on English analyzer tokenization → term frequency scoring
+
+    **Reciprocal Rank Fusion (RRF)**:
+    - Formula: `score = Σ 1/(rank + k)` where k=60 (RRF constant)
+    - Normalizes ranks from both search methods and blends them
+    - Robust to outliers; doesn't require probability calibration
+
+    **Alpha Parameter** (0.0 to 1.0):
+    - 0.0 = Pure lexical (BM25): exact term matching, no semantic understanding
+    - 0.5 = Balanced: keyword + meaning
+    - 1.0 = Pure semantic (vector): conceptual matching, ignores exact terms
+
+    The `fetch_k` parameter is key: fetch more candidates before deduplication and
+    reranking. `k` is the final count returned to the agent.
+
+    ## Product Deduplication
+
+    ESCI products (the default collection) may have multiple index chunks from a single
+    product (if chunked). `collapse_by_document()` deduplicates to one result per product.
+    This is automatically applied when `collection_id="esci_products"`.
+
+    ## Parameters
+
+    Args:
+        vector_store: OpenSearchVectorStore instance to query
+        search_type: "similarity" (kNN only) or "hybrid" (kNN + BM25 via RRF)
+        k: Number of final documents to return after filtering/dedup/reranking
+        fetch_k: Number of candidates to fetch before deduplication/reranking.
+                 Should be >= k. Larger fetch_k = more thorough but slower.
+        alpha: Hybrid search weighting (0.0–1.0). Controls semantic/lexical balance.
+               Only used if search_type="hybrid".
+        filters: Optional list of OpenSearch filter clauses (AND'd together).
+                 Example: [{"match": {"product_brand": {"query": "Sony"}}}]
+
+    ## Usage Example
+
+        # Create retriever with hybrid search, alpha=0.35 (lexical-heavy)
+        retriever = vector_store.as_retriever(
+            search_type="hybrid",
+            search_kwargs={
+                "k": 10,
+                "fetch_k": 40,
+                "alpha": 0.35,
+                "filters": [{"match": {"product_color": {"query": "blue"}}}]
+            }
+        )
+
+        # Retrieve documents
+        docs = retriever.invoke("wireless headphones")
+        for doc in docs:
+            print(f"{doc.metadata['title']}: {doc.page_content[:100]}")
+
+    ## Extension Points
+
+    **Modify the search algorithm**:
+    - Subclass OpenSearchRetriever and override `invoke()` for custom fusion logic
+    - Replace RRF with other rank fusion methods (Borda count, Condorcet fusion, etc.)
+
+    **Add custom scoring**:
+    - Extend `invoke()` to apply post-search rescoring (e.g., popularity boost, recency)
+    - Modify `collapse_by_document()` to use custom aggregation (e.g., max score vs first chunk)
+
+    **Use different vector DB**:
+    - Replace OpenSearchVectorStore with Pinecone, Milvus, Weaviate, etc.
+    - Implement same `similarity_search()` and `hybrid_search()` interface
+    """
 
     def __init__(
         self,

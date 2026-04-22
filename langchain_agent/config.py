@@ -1,5 +1,72 @@
 """
-Configuration constants for E-Commerce Search Agent (ESCI Products)
+Configuration constants for Agentic Hybrid Search RAG Agent.
+
+All configuration values are loaded from the `.env` file via python-dotenv.
+Copy `.env.example` to `.env` and customize as needed.
+
+## Configuration Sections
+
+### LLM & Embeddings (`GOOGLE_API_KEY`, `LLM_*`, `EMBEDDINGS_*`)
+Google Gemini models for generation, classification, and embeddings.
+- `LLM_MODEL`: Main generation model (e.g., gemini-3-flash-preview)
+- `LLM_TEMPERATURE`: Controls output creativity (0.0=deterministic, 1.0=creative)
+- `EMBEDDINGS_MODEL`: Embedding model (e.g., text-embedding-005, 768-dim)
+- `RERANKER_MODEL`: Reranking model (e.g., gemini-3.1-flash-lite-preview)
+- `QUERY_EVAL_MODEL`: Query evaluation model (lightweight, fast)
+
+### Database & Checkpoints (`POSTGRES_*`, `DATABASE_URL`, `DB_POOL_MAX_SIZE`)
+PostgreSQL stores LangGraph checkpoints for conversation memory and state persistence.
+All fields optional (defaults provided); only `DATABASE_URL` is used if set.
+
+### Vector Database (`OPENSEARCH_*`, `VECTOR_*`)
+OpenSearch cluster for hybrid search (HNSW knn_vector + BM25 lexical).
+- `OPENSEARCH_HOST/PORT`: Server location (local: localhost:9200, Cloud: external IP)
+- `OPENSEARCH_INDEX_NAME`: Index containing ESCI products (agentic_hybrid_search_docs)
+- `VECTOR_DIMENSION`: Embedding dimension (768 for Gemini)
+
+### Retrieval & Reranking (`RETRIEVER_*`, `RERANKER_*`, `ENABLE_RERANKING`)
+Controls hybrid search balance and LLM-based relevance scoring.
+- `RETRIEVER_K`: Final documents returned to agent
+- `RETRIEVER_FETCH_K`: Candidates fetched before reranking
+- `RETRIEVER_ALPHA`: Default semantic/lexical weighting (0.0-1.0) — usually overridden by query evaluator
+
+### Query Evaluation & Alpha (`ENABLE_QUERY_EVALUATION`, `QUERY_EVAL_*`)
+Dynamic alpha selection based on query intent.
+- `QUERY_EVAL_MODEL`: Fast classifier (gemini-3.1-flash-lite-preview)
+- `QUERY_EVAL_TIMEOUT_MS`: Max wait for alpha decision
+- Alpha table: 0.0 (pure lexical) ← intent categories → 1.0 (pure semantic)
+
+### Quality Gate (`ENABLE_QUALITY_GATE`, `QUALITY_GATE_THRESHOLD`)
+Retry retrieval with adjusted alpha if max reranker score < threshold (default 0.50).
+Catches cases where initial alpha was poorly calibrated.
+
+### Link Verification & Caching (`ENABLE_LINK_VERIFICATION`, `LINK_CACHE_TTL_MINUTES`)
+Validates product URLs before including in citations. 60-minute TTL cache reduces API calls.
+
+### ESCI Dataset (`ESCI_*`, `CHUNKING_STRATEGY`)
+Amazon Shopping Queries Dataset configuration.
+- `ESCI_DATASET_DIR`: Path to parquet files (~1.8M products, ~1GB)
+- `ESCI_PRODUCT_LOCALE`: Filter by region (default: "us")
+- `ESCI_INGEST_LIMIT`: Sample size for ingestion (default: 10000)
+- `CHUNKING_STRATEGY`: "none" for whole products (default), "fixed" for chunks
+
+### Context Management (`ENABLE_COMPACTION`, `MAX_CONTEXT_TOKENS`)
+Conversation memory management for long chat sessions.
+- Compaction trims older messages when context exceeds `MAX_CONTEXT_TOKENS`
+- Conservative estimate (3000 tokens) leaves room for retrieval + agent output
+
+### Embedding Cache (`ENABLE_EMBEDDING_CACHE`, `EMBEDDING_CACHE_MAX_SIZE`)
+In-memory cache for query embeddings (60-minute TTL). Reduces API calls for repeated queries.
+
+## Getting Started
+
+1. Copy `.env.example` to `.env`
+2. Get a Google API key from https://aistudio.google.com/apikey
+3. Set `GOOGLE_API_KEY=your-key-here`
+4. For local dev: `docker compose up -d` starts PostgreSQL + OpenSearch
+5. Run `python3 setup.py` to validate config, create tables, ingest ESCI products
+
+All other variables have sensible defaults in this file.
 """
 
 import os

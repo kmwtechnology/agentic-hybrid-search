@@ -32,12 +32,12 @@ export function StepsList() {
 
   if (steps.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-500 px-4">
+      <div className="flex flex-col items-center justify-center h-full text-gray-400 px-4">
         <div className="text-center max-w-sm">
-          <p className="text-sm">
+          <p className="text-base font-medium text-gray-300">
             Send a message to see the agent's execution steps in real-time.
           </p>
-          <p className="text-xs mt-2 text-gray-600">
+          <p className="text-sm mt-2 text-gray-300">
             Each step shows what the agent is doing and why.
           </p>
         </div>
@@ -52,11 +52,11 @@ export function StepsList() {
         onScroll={handleScroll}
         className="h-full w-full overflow-y-auto px-4 py-4 space-y-3"
       >
-        {/* Conversation context banner */}
+        {/* Conversation context banner — PROJECTOR OPTIMIZED */}
         {conversationContext && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-700/50 border border-slate-600/30 text-sm">
-            <MessageSquare className="w-4 h-4 text-slate-400 flex-shrink-0" />
-            <span className="text-slate-300">
+          <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-slate-700/50 border border-slate-600/50 text-base">
+            <MessageSquare className="w-5 h-5 text-slate-300 flex-shrink-0" />
+            <span className="text-slate-200">
               {conversationContext.is_new_conversation
                 ? 'Starting new conversation'
                 : `Continuing conversation (${conversationContext.previous_message_count} previous messages)`}

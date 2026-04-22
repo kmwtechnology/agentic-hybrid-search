@@ -17,26 +17,75 @@ from langgraph.graph import add_messages
 
 class CustomAgentState(TypedDict, total=False):
     """
-    State schema for custom agent graph with dynamic alpha.
+    State schema for LangGraph agent with dynamic alpha weighting.
 
     Uses a custom TypedDict instead of MessagesState to enable independent
-    control of vector/full-text search weighting (alpha) based on query
-    classification.
+    control of vector/full-text search weighting (alpha) based on query intent.
+    This allows the Query Evaluator to set optimal α (0.0–1.0) per query type:
+    - 0.0 (pure lexical): exact product IDs, model numbers, UPCs
+    - 0.25 (lexical-heavy): brand + category, specific attributes
+    - 0.5 (balanced): feature combinations, activity-based queries
+    - 0.75 (semantic-heavy): conceptual needs, occasion-based
+    - 1.0 (pure semantic): gift ideas, mood/style, open-ended
 
-    Flow: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent
+    ## Pipeline Flow
 
-    IMPORTANT: Not all fields are guaranteed to exist at runtime.
-    Use state.get(key, default) for safe access:
-        - state.get("alpha", 0.25) instead of state["alpha"]
-        - state.get("quality_gate_retried", False) instead of state["quality_gate_retried"]
+        intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent
 
-    Required fields (always exist after first node):
-        - messages: Conversation history
+    Each node reads certain fields and writes others. For example:
+    - intent_classifier: reads messages, writes intent, intent_confidence, user_query
+    - query_evaluator: reads user_query, writes alpha, query_analysis
+    - retriever: reads alpha, user_query, writes retrieved_documents
+    - reranker: reads retrieved_documents, user_query, writes reranker_max_score
+    - quality_gate: reads reranker_max_score, optionally retries with adjusted alpha
 
-    Optional fields (may not exist until set by a node):
-        - alpha, query_analysis, intent, summary_text
-        - retrieved_documents, reranker_max_score
-        - quality_gate_retried, quality_gate_reason
+    ## Field Lifetime
+
+    **Required** (always exist after first node):
+    - `messages`: Conversation history (BaseMessage list)
+
+    **Optional** (may not exist until set by respective node):
+    - Intent Classifier sets: intent, intent_confidence, user_query, reasoning
+    - Query Evaluator sets: alpha, query_analysis
+    - Retriever sets: retrieved_documents
+    - Reranker sets: reranker_max_score
+    - Quality Gate sets: quality_gate_retried, quality_gate_reason
+
+    ## Safe Access Pattern
+
+    IMPORTANT: Since `total=False`, optional fields are not guaranteed to exist at runtime.
+    Always use `state.get(key, default)` instead of direct indexing:
+
+        # ✓ CORRECT — safe default fallback
+        alpha = state.get("alpha", 0.25)
+        intent = state.get("intent", "question")
+        retried = state.get("quality_gate_retried", False)
+
+        # ✗ WRONG — raises KeyError if field not yet set
+        alpha = state["alpha"]  # KeyError before query_evaluator runs
+        retried = state["quality_gate_retried"]  # KeyError before quality_gate runs
+
+    Exception: `messages` is guaranteed to exist from the start, but you can still
+    use `.get("messages", [])` for defensive programming.
+
+    ## Example: Implementing a Custom Node
+
+        def my_custom_node(state: CustomAgentState) -> Dict[str, Any]:
+            # Safe field access
+            user_query = state.get("user_query", "")
+            alpha = state.get("alpha", 0.5)
+            prior_docs = state.get("retrieved_documents", [])
+
+            # Process without KeyError risk
+            if alpha > 0.6:
+                # Favor semantic search
+                ...
+            else:
+                # Favor lexical search
+                ...
+
+            # Return updates (only modified fields)
+            return {"custom_field": value}
     """
     # Core message state (required - managed by add_messages reducer)
     messages: Annotated[Sequence[BaseMessage], add_messages]

@@ -74,8 +74,80 @@ class GeminiReranker:
     """
     LLM-based reranker using Google Gemini for semantic relevance scoring.
 
-    Scores all candidate documents in a single (or batched) API call by
-    prompting gemini-3.1-flash-lite-preview to return JSON relevance scores.
+    Scores documents by query relevance on a 0.0–1.0 scale using Gemini's structured
+    output mode. Designed for integration with OpenSearchRetriever in a LangGraph
+    pipeline: retriever fetches candidates, reranker scores and ranks them.
+
+    ## Why Rerank?
+
+    Vector similarity alone misses nuances. BM25 alone misses semantic meaning. After
+    hybrid search merges both signals via RRF, the top-K candidates may include
+    noise or off-topic products. An LLM reranker reads the full query and each product
+    text, outputs a relevance score (0.0–1.0), and allows the Quality Gate to decide
+    if results are good enough (threshold: typically 0.5).
+
+    ## Scoring Approach
+
+    Sends a batch of (query, documents) to Gemini with a structured prompt:
+    - "Score each document's relevance to the query on a 0.0–1.0 scale"
+    - Gemini returns JSON: `[0.85, 0.92, 0.12, ...]` via Pydantic structured output
+    - Pydantic validator ensures all scores are floats in [0.0, 1.0]
+    - Documents are returned sorted by score (highest first)
+
+    Batching allows scoring dozens of documents in a single LLM call (faster than
+    per-document scoring). Batch size is configurable (`RERANKER_BATCH_SIZE` in config).
+
+    ## Score Interpretation
+
+    - 0.0–0.2 — Off-topic, unrelated to query
+    - 0.2–0.5 — Partial match, some relevance but weak
+    - 0.5–0.7 — Good match, clearly relevant
+    - 0.7–1.0 — Excellent match, high confidence in relevance
+
+    The Quality Gate typically uses 0.5 as the threshold: if `max_score < 0.5` and
+    not yet retried, it adjusts α (lexical/semantic balance) ±0.3 and retries
+    retrieval. This catches cases where the initial alpha was poorly calibrated.
+
+    ## Parameters
+
+    Args:
+        model_name: Gemini model to use (default: gemini-3.1-flash-lite-preview).
+                    Must support structured output via Pydantic.
+                    Alternatives: gemini-3-flash-preview, gemini-2.0-flash
+
+    ## Usage Example
+
+        reranker = GeminiReranker()
+        reranker.warmup()  # Prime the API connection
+
+        documents = [
+            Document(page_content="Sony wireless headphones...", metadata={...}),
+            Document(page_content="Apple AirPods Pro...", metadata={...}),
+        ]
+        query = "best wireless headphones under 200 dollars"
+
+        scored = reranker.score_documents(query, documents)
+        for doc, score in scored:
+            print(f"{score:.2f}: {doc.metadata['title']}")
+
+    ## Extension Points
+
+    **Replace with cross-encoder**: Swap for a sentence-transformers cross-encoder
+    (e.g., `cross-encoder/ms-marco-MiniLM-L-6-v2`) for 10x faster scoring:
+
+        class CrossEncoderReranker(GeminiReranker):
+            def __init__(self, model_name="cross-encoder/qnli-distilroberta-base"):
+                self.model = CrossEncoder(model_name)
+            def score_documents(self, query, documents):
+                scores = self.model.predict([[query, doc.page_content] for doc in documents])
+                return sorted(zip(documents, scores), key=lambda x: x[1], reverse=True)
+
+    **Add domain-specific scoring**: Subclass and override `score_documents()` to apply
+    custom logic before/after LLM scoring (e.g., popularity boost, recency penalty).
+
+    **Use a different LLM provider**: Replace `ChatGoogleGenerativeAI` with OpenAI,
+    Anthropic, or Llama via LangChain's LLM interface. Must support structured output
+    mode.
     """
 
     def __init__(self, model_name: str = "gemini-3.1-flash-lite-preview"):
