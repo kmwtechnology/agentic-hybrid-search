@@ -39,6 +39,9 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
 - **Conversational query rewriting** — resolves pronouns, comparatives, and short attribute questions using conversation history
 - **Refinement with context validation** — "make them waterproof" narrows the prior result set; category/document-overlap scoring resets context when the user pivots
 - **Product Comparison Writer** — 5 content formats (social, blog, technical article, tutorial, comprehensive docs)
+- **Typeahead autocomplete** — `GET /api/suggest` edge-ngram prefix matching on product titles + brands with spell correction (Levenshtein + SequenceMatcher), fuzzy fallback for single-character typos, and a three-section UI (Did you mean? / Suggestions / Recent Searches)
+- **Admin reindex API** — `GET /api/admin/reindex` triggers a background ESCI re-ingestion; `GET /api/admin/reindex/status` polls progress; `GET /api/admin/health` reports index health and doc count
+- **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase boosting, field boosting, and phonetic matching (double_metaphone via the `analysis-phonetic` plugin), displayed in the observability panel's "Search Optimizations" card
 - **Real-time streaming** — token-by-token WebSocket output with cancellation
 - **Observability panel** — live visualization of every pipeline stage
 
@@ -341,11 +344,19 @@ Manager as `agentic-hybrid-search-opensearch-user` / `…-password`.
 
 ### CI/CD (GitHub Actions)
 
-- `.github/workflows/test.yml` — PR tests, linting, type checks
-- `.github/workflows/build-deploy.yml` — on merge to `main`: Docker build → Artifact Registry → Cloud Run deploy + smoke test
+- `.github/workflows/build-deploy.yml` — unified pipeline on PRs and merges to `main`. Runs unit + integration tests (with ephemeral Postgres + OpenSearch), lint (black/isort/flake8/mypy), Docker build, push to Artifact Registry (main only), Cloud Run deploy, and smoke tests. Strict linting is enforced — lint failures block the pipeline.
+- `.github/workflows/reindex.yml` — separate manual-dispatch workflow that runs the ESCI reindex against a deployed Cloud Run instance (calls `POST /api/admin/reindex` and polls `GET /api/admin/reindex/status`).
 
-Authentication uses Workload Identity Federation (no long-lived keys). See
-[CLAUDE.md](CLAUDE.md) for one-time WIF setup.
+Runners use Node.js 24. Authentication uses Workload Identity Federation
+(no long-lived keys). See [CLAUDE.md](CLAUDE.md) for one-time WIF setup.
+
+### Docker image bundles a sample ESCI parquet
+
+The Docker image includes a pre-sampled 10 k ESCI parquet with pre-computed
+embeddings at `/esci/` so the container can run `ingest_esci_products.py`
+without downloading the full ~1 GB dataset. The file is committed directly
+to the repo (no Git LFS) and copied into the image during the multi-stage
+build.
 
 ### Local Development
 

@@ -303,6 +303,100 @@ If the two schemas diverge, WebSocket serialization will fail or frontend won't 
 
 ---
 
+## Typeahead Autocomplete (`GET /api/suggest`)
+
+The typeahead surface lives outside the LangGraph pipeline — it's a
+synchronous FastAPI route backed directly by OpenSearch.
+
+```
+User keystroke (debounced)
+   │
+   ▼
+GET /api/suggest?q=<prefix>&limit=8      (api/routes/suggest.py)
+   │
+   ├─► OpenSearch prefix query
+   │     - edge-ngram analyzer on title_suggest + brand_suggest subfields
+   │     - returns top-N product and brand suggestions
+   │
+   ├─► No results? → fuzzy fallback
+   │     - distance-1 match for single-character typos (e.g. "nikey" → "nike")
+   │
+   └─► Spell correction pass
+         - Levenshtein distance on the corpus vocabulary
+         - SequenceMatcher ratio ≥ 0.6, confidence ≥ 0.5
+         - Skipped if the query is already a corpus token
+         - Skipped if the query is a prefix of the candidate
+         - Returns {"spell_correction": {"title": "...", "brand": "...", "score": 0.xx}}
+```
+
+Frontend rendering:
+
+- `web/src/hooks/useRecentSearches.ts` — localStorage history (max 8,
+  case-insensitive dedup, clear button)
+- `web/src/components/ChatPanel/TypeaheadSuggestions.tsx` — three-section
+  dropdown (Did you mean? / Suggestions / Recent Searches), ARIA combobox
+  semantics, `ArrowDown`/`ArrowUp`/`Enter`/`Tab`/`Esc` handling, and
+  `AbortController` cancellation of stale fetches
+
+The typeahead does not emit observable pipeline events — it's purely a
+UI-assist path.
+
+---
+
+## Admin Reindex API (`/api/admin/*`)
+
+Admin routes (`api/routes/admin.py`) provide operational control over the
+ESCI index without redeploying:
+
+```
+GET /api/admin/reindex?reset_index=true&limit=10000
+   │
+   ├─► spawns background task (FastAPI BackgroundTasks)
+   │     1. optional index reset
+   │     2. run ingest_esci_products logic
+   │     3. update in-memory job state
+   │
+   └─► returns 200 with {"status":"started", "message":"..."} immediately
+
+GET /api/admin/reindex/status
+   └─► returns {"status": "queued"|"running"|"success"|"error",
+                 "started_at": "...", "finished_at": "...",
+                 "documents_ingested": N, "chunks_created": N,
+                 "limit": N, "reset_index": bool, "error": "..." | null}
+
+GET /api/admin/health
+   └─► returns {"status": "healthy", "opensearch": {"connected": bool,
+                 "index": "...", "documents": N}}
+```
+
+A dedicated GitHub Actions workflow (`.github/workflows/reindex.yml`)
+exposes the flow as a manual dispatch — it calls `GET /api/admin/reindex`
+on the deployed Cloud Run instance and polls `/api/admin/reindex/status`
+until the job reaches a terminal state (`success` or `error`).
+
+---
+
+## BM25 Lexical Optimizations
+
+The lexical side of hybrid search layers several relevance boosters on top
+of vanilla BM25:
+
+| Optimization | Effect |
+|--------------|--------|
+| **Synonym expansion** | Search-time synonym mapping broadens recall |
+| **Fuzzy matching** | Auto-edit-distance on longer tokens catches typos |
+| **Phrase boosting** | Exact multi-word matches outrank loose token matches |
+| **Field boosting** | Title/brand fields weighted above generic content |
+| **Phonetic matching** | `double_metaphone` analyzer (from the `analysis-phonetic` OpenSearch plugin) matches "fone" to "phone" |
+
+These are surfaced in the observability panel via the
+`SearchOptimizationDetails` component
+(`web/src/components/ObservabilityPanel/SearchOptimizationDetails.tsx`)
+as a collapsible "Search Optimizations" card, alongside the existing
+`OpenSearchQueryEvent` rendering.
+
+---
+
 ## Hybrid Search Deep-Dive
 
 ### Why Hybrid (Vector + BM25)?

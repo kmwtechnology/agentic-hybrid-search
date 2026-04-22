@@ -99,8 +99,84 @@ curl -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
 ```
 
 The primary surface is the WebSocket endpoint under `/api/chat` — see
-`api/routes/chat.py`. REST routes cover health (`/api/health`) and
-conversation CRUD (`/api/conversations`).
+`api/routes/chat.py`. REST routes cover health (`/api/health`),
+conversation CRUD (`/api/conversations`), typeahead suggestions
+(`/api/suggest` — see `api/routes/suggest.py`), and admin reindex
+operations (`/api/admin/*` — see `api/routes/admin.py`).
+
+#### Typeahead autocomplete — `GET /api/suggest`
+
+```bash
+curl -H "X-API-Key: $API_KEY" \
+  "http://localhost:8000/api/suggest?q=nik&limit=8"
+```
+
+Response:
+
+```json
+{
+  "suggestions": [
+    {
+      "title": "Nike Air Max 90",
+      "brand": "Nike",
+      "score": 1.0,
+      "highlight": ["<mark data-th>Nike</mark> Air Max 90"]
+    }
+  ],
+  "spell_correction": null
+}
+```
+
+Misspelled queries populate `spell_correction` instead of (or alongside)
+`suggestions`:
+
+```bash
+curl "http://localhost:8000/api/suggest?q=nikey"
+# {"suggestions":[], "spell_correction":{"title":"nike","brand":"Nike","score":0.889}}
+```
+
+Behavior:
+
+- Edge-ngram prefix matching on `title_suggest` and `brand_suggest` subfields
+- Spell correction via Levenshtein distance + `SequenceMatcher` ratio
+  (ratio ≥ 0.6, confidence ≥ 0.5). Returns a `spell_correction` payload
+  (`{"title": "...", "brand": "...", "score": 0.xx}`) rendered as "Did you
+  mean?" in the UI
+- Fuzzy fallback for distance-1 typos (e.g., `"nikey"` → `"nike"`) when the
+  primary prefix query returns no results
+- Correction is skipped when the query is already a corpus token, or when
+  it is a prefix of the candidate (prevents "charg" → "charger" suggestions)
+
+Frontend UI (`web/src/components/ChatPanel/TypeaheadSuggestions.tsx`):
+
+- Three sections: **Did you mean?** (spell correction) → **Suggestions**
+  (API results) → **Recent Searches** (localStorage via
+  `web/src/hooks/useRecentSearches.ts`, capped at 8, case-insensitive dedup,
+  clear button)
+- ARIA combobox semantics with `role="combobox"`, `aria-expanded`,
+  `aria-activedescendant`
+- Keyboard navigation: `ArrowDown`/`ArrowUp` to move, `Enter`/`Tab` to
+  accept and submit, `Esc` to close
+- Requests use `AbortController` to cancel stale responses
+
+#### Admin API — `/api/admin/*`
+
+```bash
+# Kick off a background reindex (optionally resetting the index)
+curl "http://localhost:8000/api/admin/reindex?reset_index=true&limit=10000"
+
+# Poll job status: running | success | error
+curl http://localhost:8000/api/admin/reindex/status
+
+# Inspect current index health + document count
+curl http://localhost:8000/api/admin/health
+```
+
+The reindex runs in a background task so the HTTP request returns
+immediately. The status endpoint is the source of truth for progress
+(`running` → `success` / `error`). A separate GitHub Actions workflow
+(`.github/workflows/reindex.yml`) exposes this as a manual-dispatch job for
+rebuilding production indexes without redeploying.
 
 ### Example Queries
 
@@ -279,6 +355,42 @@ Every citation URL is validated before reaching the LLM. Results cached
 for 60 minutes (thread-safe); URLs timing out above 2 s are marked
 invalid. Broken links are replaced with valid alternatives via
 `doc_replacer.py`.
+
+### Typeahead autocomplete
+
+Edge-ngram prefix search over ESCI product titles and brands, with spell
+correction (Levenshtein + `SequenceMatcher` ratio ≥ 0.6, confidence ≥ 0.5)
+and a distance-1 fuzzy fallback for typos like `"nikey"` → `"nike"`.
+Correction is skipped when the query is already a corpus token or a prefix
+of the candidate, avoiding over-correction of in-progress words. The
+frontend (`TypeaheadSuggestions.tsx` + `useRecentSearches.ts`) renders a
+three-section dropdown (Did you mean? / Suggestions / Recent Searches),
+uses ARIA combobox semantics with full keyboard navigation, and cancels
+stale in-flight requests via `AbortController`.
+
+### BM25 lexical optimizations
+
+Beyond vanilla BM25, the lexical side of hybrid search applies:
+
+- **Synonym expansion** (search-time)
+- **Fuzzy matching** (auto-edit-distance on longer tokens)
+- **Phrase boosting** (exact multi-word matches score higher)
+- **Field boosting** (title/brand weighted above generic content)
+- **Phonetic matching** via `double_metaphone` analyzer (requires the
+  `analysis-phonetic` OpenSearch plugin)
+
+These are surfaced in the frontend observability panel as a collapsible
+"Search Optimizations" card — see
+`web/src/components/ObservabilityPanel/SearchOptimizationDetails.tsx`.
+
+### Admin reindex API
+
+`POST /api/admin/reindex?reset_index=true&limit=10000` kicks off a
+background ESCI re-ingestion. `GET /api/admin/reindex/status` returns
+`running` / `success` / `error` with detail. `GET /api/admin/health`
+returns index health and document count. A dedicated GitHub Actions
+workflow (`.github/workflows/reindex.yml`) exposes the flow as a manual
+dispatch against a deployed Cloud Run instance.
 
 ### Observable events
 
@@ -472,11 +584,17 @@ langchain_agent/
 │   └── smoke_test.sh      # Post-deploy smoke test
 ├── api/
 │   ├── main.py            # FastAPI lifespan
-│   ├── routes/            # chat (WebSocket), conversations, health
+│   ├── routes/            # chat (WebSocket), conversations, health,
+│   │                      #   suggest (typeahead), admin (reindex + health)
 │   ├── middleware/auth.py # Constant-time API key check
 │   ├── schemas/events.py  # Pydantic event models
 │   └── services/          # Observable agent wrapper
 ├── web/                   # React frontend (Zustand, WebSocket, ObservabilityPanel)
+│   └── src/
+│       ├── hooks/useRecentSearches.ts              # localStorage-backed recent-search history
+│       └── components/
+│           ├── ChatPanel/TypeaheadSuggestions.tsx  # Did you mean? / Suggestions / Recent Searches
+│           └── ObservabilityPanel/SearchOptimizationDetails.tsx  # BM25 optimization card
 ├── tests/                 # unit / integration / e2e (see tests/README.md)
 ├── main.py                # LangGraph agent core (~2,600 lines)
 ├── agent_state.py         # CustomAgentState TypedDict

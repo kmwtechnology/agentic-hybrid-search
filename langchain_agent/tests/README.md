@@ -20,6 +20,7 @@ tests/
 │   └── test_model_compatibility.py
 │
 ├── integration/                   # Multi-component; requires services
+│   ├── test_admin_reindex.py
 │   ├── test_agent_response.py
 │   ├── test_content_generation_e2e.py
 │   ├── test_content_generators.py
@@ -27,6 +28,7 @@ tests/
 │   ├── test_pipeline_flow.py
 │   ├── test_quality_gate_retry.py
 │   ├── test_retriever_reranker.py
+│   ├── test_suggest.py
 │   ├── test_websocket_content_streaming.py
 │   └── test_websocket_integration.py
 │
@@ -124,6 +126,8 @@ services — everything is mocked through `conftest.py`.
 | `test_content_generation_e2e.py` | End-to-end content generation with streaming |
 | `test_websocket_integration.py` | WebSocket lifecycle, auth, event ordering |
 | `test_websocket_content_streaming.py` | Token-by-token streaming contract |
+| `test_suggest.py` | `/api/suggest` typeahead: prefix matches, spell correction (Levenshtein + ratio), fuzzy distance-1 fallback, corpus-token and prefix guards |
+| `test_admin_reindex.py` | `/api/admin/reindex` background job, `/api/admin/reindex/status` polling, `/api/admin/health` index status |
 | `test_edge_cases.py` | Empty retrievals, malformed input, low-confidence intents |
 
 **Run time:** ~5–60 s. **Requires:** PostgreSQL + OpenSearch running
@@ -183,8 +187,14 @@ PYTHONPATH=. pytest tests/ -v
 
 ### CI (GitHub Actions)
 
-`.github/workflows/test.yml` runs on PRs and pushes — unit + integration
-with ephemeral Postgres and OpenSearch services.
+`.github/workflows/build-deploy.yml` runs on PRs and pushes — unit +
+integration tests (ephemeral Postgres + OpenSearch), strict lint
+(black/isort/flake8/mypy), Docker build, and (on `main`) push + Cloud Run
+deploy + smoke test. Runners use Node.js 24.
+
+`.github/workflows/reindex.yml` is a separate manual-dispatch workflow
+that calls `POST /api/admin/reindex` against the deployed Cloud Run
+service — not invoked by the regular test/deploy flow.
 
 ## Common Issues
 

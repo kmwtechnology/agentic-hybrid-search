@@ -39,6 +39,48 @@ Open browser to **http://localhost:5173** and keep DevTools hidden (press `F12` 
 
 ---
 
+## Part 1.5: Typeahead Autocomplete (1–2 min)
+
+**Narration**:
+
+> "Before we even submit a query, the search bar itself is intelligent.
+> Watch the dropdown as I type."
+
+### Demo: prefix matches
+
+**Type** (but don't submit): `wire`
+
+**Observe**: Dropdown opens with a **Suggestions** section showing
+wireless headphones, wireless mice, etc. — these come from a
+`GET /api/suggest` request that edge-ngram prefix-matches against product
+titles and brands.
+
+### Demo: spell correction
+
+**Type**: `nikey` (intentional typo)
+
+**Observe**: Top of the dropdown shows a **Did you mean? nike** row — the
+backend ran Levenshtein + SequenceMatcher ratio checks and returned a
+correction. Distance-1 typos also benefit from a fuzzy fallback when the
+prefix query returns nothing.
+
+### Demo: recent searches + keyboard nav
+
+**Observe**: After a few submitted queries, the dropdown shows a **Recent
+Searches** section (localStorage, max 8, case-insensitive dedup, clear
+button). Use `ArrowDown`/`ArrowUp` to navigate, `Enter` or `Tab` to accept
+and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
+
+**Narration**:
+
+> "Three sections — Did you mean?, Suggestions, Recent Searches — all
+> backed by `/api/suggest`. Stale requests are cancelled via
+> `AbortController`, and correction is intentionally skipped when the
+> query is already a corpus token or a prefix of a word, so in-progress
+> typing like 'adi' isn't corrected to 'addi'."
+
+---
+
 ## Part 2: Intent Classification (2 min)
 
 **Narration**:
@@ -231,6 +273,10 @@ Then immediately: `Make them waterproof` (refinement)
 4. **Reranker Event**: Per-document scores
 5. **Quality Gate Event**: Pass / retry / accept decision
 6. **LLM Response Chunk Event**: Token-by-token generation (streaming)
+7. **Search Optimizations card**: expandable panel showing BM25
+   enhancements applied to this query — synonyms, fuzzy matching, phrase
+   boosting, field boosting, and phonetic matching (`double_metaphone`
+   via the `analysis-phonetic` OpenSearch plugin)
 
 **Narration**:
 
