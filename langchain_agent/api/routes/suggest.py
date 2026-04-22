@@ -142,6 +142,11 @@ async def suggest(
                         {"match": {"title_suggest": {"query": q, "boost": 2.0}}},
                         {"match": {"brand_suggest": {"query": q, "boost": 1.5}}},
                     ],
+                    # Require at least one should clause to actually match.
+                    # Without this, the filter alone returns every ESCI product
+                    # with score=0 when the suggest fields are missing from
+                    # the mapping — the UI renders random products as "Match: 0%".
+                    "minimum_should_match": 1,
                     "filter": [{"term": {"collection_id": "esci_products"}}],
                 }
             },
@@ -168,9 +173,12 @@ async def suggest(
             title = (source.get("title") or "").strip()
             if not title or title in seen_titles:
                 continue
-            seen_titles.add(title)
-
             raw_score = hit.get("_score") or 0.0
+            # Defense-in-depth: drop hits that somehow scored exactly zero
+            # (implies the should clauses didn't contribute to ranking).
+            if raw_score <= 0:
+                continue
+            seen_titles.add(title)
             hl = hit.get("highlight") or {}
             fragments = (hl.get("title_suggest") or []) + (hl.get("brand_suggest") or [])
 
