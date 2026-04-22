@@ -34,25 +34,71 @@ jobs:
       - name: Trigger re-index
         id: reindex
         run: |
-          echo "🔄 Triggering re-index..."
-          RESPONSE=$(curl -s "${{ env.SERVICE_URL }}/api/admin/reindex?reset_index=${{ steps.params.outputs.reset_index }}&limit=${{ steps.params.outputs.limit }}")
-          echo "Response: $RESPONSE"
-          echo "response=$RESPONSE" >> $GITHUB_OUTPUT
+          echo "🔄 Triggering re-index with reset_index=${{ steps.params.outputs.reset_index }}, limit=${{ steps.params.outputs.limit }}"
+          echo ""
+
+          RESPONSE=$(curl -v "${{ env.SERVICE_URL }}/api/admin/reindex?reset_index=${{ steps.params.outputs.reset_index }}&limit=${{ steps.params.outputs.limit }}" 2>&1)
+          echo "Full response:"
+          echo "$RESPONSE"
+          echo ""
+
+          HTTP_CODE=$(echo "$RESPONSE" | grep "< HTTP" | awk '{print $3}')
+          echo "HTTP Status: $HTTP_CODE"
+
+          # Extract just the JSON body
+          JSON=$(echo "$RESPONSE" | tail -1)
+          echo "JSON Response:"
+          echo "$JSON" | jq '.' 2>/dev/null || echo "$JSON"
+          echo ""
+          echo "response=$JSON" >> $GITHUB_OUTPUT
 
       - name: Monitor re-index progress
         run: |
-          echo "⏳ Monitoring re-index progress..."
+          echo "⏳ Monitoring re-index progress (checking every 10s for 5 minutes)..."
+          echo ""
+
+          PREV_COUNT=0
+          STUCK_COUNTER=0
+
           for i in {1..30}; do
             sleep 10
-            HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq -r '.opensearch.documents')
-            echo "[$((i*10))s] Document count: $HEALTH"
 
-            if [ "$HEALTH" = "10000" ]; then
-              echo "✅ Re-index complete! Index now has 10,000 documents."
+            HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health")
+            DOC_COUNT=$(echo "$HEALTH" | jq -r '.opensearch.documents // "error"')
+            STATUS=$(echo "$HEALTH" | jq -r '.status // "unknown"')
+
+            echo "[$((i*10))s] Documents: $DOC_COUNT | Status: $STATUS"
+
+            # Check if stuck (no progress for 2+ checks)
+            if [ "$DOC_COUNT" = "$PREV_COUNT" ] && [ "$DOC_COUNT" != "error" ]; then
+              STUCK_COUNTER=$((STUCK_COUNTER + 1))
+              if [ $STUCK_COUNTER -ge 2 ]; then
+                echo "⚠️  WARNING: Document count stuck at $DOC_COUNT for 20+ seconds"
+              fi
+            else
+              STUCK_COUNTER=0
+            fi
+
+            PREV_COUNT=$DOC_COUNT
+
+            if [ "$DOC_COUNT" = "10000" ]; then
+              echo ""
+              echo "✅ RE-INDEX COMPLETE! Index now has 10,000 documents."
+              echo "Full health status:"
+              echo "$HEALTH" | jq '.'
               exit 0
             fi
+
+            if [ "$DOC_COUNT" = "error" ]; then
+              echo "❌ ERROR: Could not retrieve document count"
+              echo "Full health response:"
+              echo "$HEALTH" | jq '.'
+            fi
           done
-          echo "⏳ Re-index still in progress (will continue in background)"
+          echo ""
+          echo "⏳ Re-index still in progress after 5 minutes (will continue in background)"
+          echo "Final health check:"
+          curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
 
       - name: Verify index health
         run: |
