@@ -31,31 +31,32 @@ export function MessageInput() {
     }
   }, [inputFocusTrigger])
 
-  const handleSuggestionSelect = useCallback(
-    (suggestion: Suggestion) => {
-      if (suggestion.type === 'spelling' || suggestion.type === 'recent') {
-        setMessage(suggestion.title)
-      } else {
-        const trimmed = message.trim()
-        setMessage(trimmed ? `${trimmed} ${suggestion.title}` : suggestion.title)
-      }
+  const submitQuery = useCallback(
+    (query: string) => {
+      const trimmed = query.trim()
+      if (!trimmed || !isConnected) return
+
       setShowTypeahead(false)
       setTypeaheadIndex(-1)
-      textareaRef.current?.focus()
+      addRecent(trimmed)
+      sendMessage(trimmed)
+      setMessage('')
     },
-    [message]
+    [isConnected, addRecent, sendMessage]
   )
 
-  const handleSubmit = useCallback(() => {
-    const trimmed = message.trim()
-    if (!trimmed || !isConnected) return
+  const handleSubmit = useCallback(() => submitQuery(message), [message, submitQuery])
 
-    setShowTypeahead(false)
-    setTypeaheadIndex(-1)
-    addRecent(trimmed)
-    sendMessage(trimmed)
-    setMessage('')
-  }, [message, sendMessage, isConnected, addRecent])
+  // Accepting any suggestion (product, spelling, or recent) runs the search
+  // using the suggestion's title verbatim — the original typed query is
+  // discarded. Replaces an earlier behavior that appended products onto the
+  // typed text and required the user to press Enter again.
+  const handleSuggestionSelect = useCallback(
+    (suggestion: Suggestion) => {
+      submitQuery(suggestion.title)
+    },
+    [submitQuery]
+  )
 
   // Dropdown is eligible to open when input is long enough OR input is empty
   // and we have recent searches to show.

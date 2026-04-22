@@ -67,9 +67,13 @@ def _detect_spell_correction(
     Detect a likely spell correction for a single-token query.
 
     Strategy: for each of the top hits, tokenize the title; keep any token
-    that sounds similar to the query (SequenceMatcher ratio >= 0.6) but
-    is spelled differently (Levenshtein >= 2). Pick the token with the
-    highest ratio. If the resulting confidence is >= 0.5, surface it.
+    that looks similar to the query (SequenceMatcher ratio >= 0.6) but is
+    spelled differently (Levenshtein >= 1). Pick the token with the highest
+    ratio. If the resulting confidence is >= 0.5, surface it.
+
+    The distance-1 threshold catches real typos like nikey→nike and
+    samsong→samsung; shorter/weaker matches are filtered by the 0.6
+    ratio floor and the 0.5 confidence cutoff.
 
     Multi-word queries are skipped — phrase-level correction needs more
     machinery (n-gram indexes, edit graphs) than this endpoint warrants.
@@ -112,7 +116,7 @@ def _detect_spell_correction(
             # "Did you mean: charger" banner is noise rather than correction.
             if token.startswith(q):
                 continue
-            if _levenshtein(q, token) < 2:
+            if _levenshtein(q, token) < 1:
                 continue
             ratio = SequenceMatcher(None, q, token).ratio()
             if ratio >= 0.6 and ratio > best_ratio:
@@ -209,6 +213,42 @@ async def suggest(
             )
 
         spell_correction = _detect_spell_correction(q, hits, max_score)
+
+        # Fuzzy fallback: if the primary edge-ngram query found nothing AND
+        # the correction heuristic had no hits to mine, do a second search
+        # against the standard `title`/`product_brand` fields with
+        # fuzziness=AUTO. This only runs on genuine misspellings (like
+        # "nikey" / "samsong") where the edge-ngram index can't tolerate
+        # the extra/wrong character. Fuzzy hits are used ONLY for correction
+        # mining — they are not surfaced as suggestions.
+        if not spell_correction and not hits and " " not in q and len(q) >= 4:
+            try:
+                fuzzy_response = client.search(
+                    index=OPENSEARCH_INDEX_NAME,
+                    body={
+                        "size": 3,
+                        "_source": ["title", "product_brand"],
+                        "query": {
+                            "bool": {
+                                "should": [
+                                    {"match": {"title": {"query": q, "fuzziness": "AUTO"}}},
+                                    {
+                                        "match": {
+                                            "product_brand": {"query": q, "fuzziness": "AUTO"}
+                                        }
+                                    },
+                                ],
+                                "minimum_should_match": 1,
+                                "filter": [{"term": {"collection_id": "esci_products"}}],
+                            }
+                        },
+                    },
+                )
+                fuzzy_hits = fuzzy_response["hits"]["hits"]
+                fuzzy_max = fuzzy_response["hits"].get("max_score") or 1.0
+                spell_correction = _detect_spell_correction(q, fuzzy_hits, fuzzy_max)
+            except Exception as fallback_exc:  # noqa: BLE001
+                logger.warning("Fuzzy fallback search failed: %s", fallback_exc)
 
         logger.info(
             "Suggest query=%r returned %d suggestions (correction=%s)",

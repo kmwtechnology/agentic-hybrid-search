@@ -159,6 +159,53 @@ def test_query_present_as_corpus_token_skips_spell_correction(mock_client_factor
 
 
 @patch("api.routes.suggest.create_opensearch_client")
+def test_fuzzy_fallback_catches_distance_one_typo(mock_client_factory, client):
+    """Edge-ngram can't match 'nikey' against 'Nike' (the extra 'y' breaks
+    the prefix path), so the primary search returns 0 hits. The endpoint
+    must then run a fuzzy fallback search that finds the Nike title and
+    mine it for a correction candidate."""
+    mock_os = MagicMock()
+    # First call (primary edge-ngram): empty. Second call (fuzzy fallback):
+    # finds the Nike product.
+    mock_os.search.side_effect = [
+        _mk_response([], max_score=None),
+        _mk_response(
+            [_mk_hit("Nike Infant Boys Blue Bodysuit", brand="Nike", score=7.0)],
+            max_score=7.0,
+        ),
+    ]
+    mock_client_factory.return_value = mock_os
+
+    r = client.get("/api/suggest?q=nikey")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["suggestions"] == []  # fuzzy hits must NOT surface as suggestions
+    correction = body["spell_correction"]
+    assert correction is not None
+    assert correction["title"].lower() == "nike"
+    # Two searches ran: primary + fuzzy fallback.
+    assert mock_os.search.call_count == 2
+
+
+@patch("api.routes.suggest.create_opensearch_client")
+def test_fuzzy_fallback_skipped_when_primary_has_hits(mock_client_factory, client):
+    """Fuzzy fallback must not run when the primary search returned any hits,
+    even if no correction was surfaced. Keeps the common case to a single
+    OpenSearch round-trip."""
+    mock_os = MagicMock()
+    mock_os.search.return_value = _mk_response(
+        [_mk_hit("Samsung Galaxy S9 Case", brand="SAMSUNG", score=8.0)],
+        max_score=8.0,
+    )
+    mock_client_factory.return_value = mock_os
+
+    r = client.get("/api/suggest?q=sam")
+    assert r.status_code == 200
+    # Exactly one search call — no fuzzy fallback.
+    assert mock_os.search.call_count == 1
+
+
+@patch("api.routes.suggest.create_opensearch_client")
 def test_non_corpus_misspelling_still_surfaces_spell_correction(mock_client_factory, client):
     """Misspellings that are NOT corpus tokens must still trigger a correction
     (e.g. 'sonie' against a 'Sony ...' title). This is the case the endpoint
