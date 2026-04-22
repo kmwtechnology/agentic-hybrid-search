@@ -1,79 +1,122 @@
 /**
- * MessageInput - Chat input form with send button, typeahead, and spell check.
+ * MessageInput - Chat input form with send button and typeahead combobox.
  */
 
-import { useState, useRef, useCallback, useLayoutEffect, useEffect, KeyboardEvent } from 'react'
+import clsx from 'clsx'
 import { Send } from 'lucide-react'
+import { KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useRecentSearches } from '../../hooks/useRecentSearches'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useChatStore } from '../../stores/chatStore'
 import { TypeaheadSuggestions, type Suggestion } from './TypeaheadSuggestions'
-import clsx from 'clsx'
+
+const TYPEAHEAD_MIN_CHARS = 3
+const LISTBOX_ID = 'typeahead-listbox'
 
 export function MessageInput() {
   const [message, setMessage] = useState('')
   const [showTypeahead, setShowTypeahead] = useState(false)
-  const [typeaheadIndex, setTypeaheadIndex] = useState(0)
+  const [typeaheadIndex, setTypeaheadIndex] = useState(-1)
+  const [rowCount, setRowCount] = useState(0)
   const { sendMessage } = useWebSocket()
   const { isConnected, connectionError, inputFocusTrigger } = useChatStore()
+  const { add: addRecent, recent } = useRecentSearches()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [textareaHeight, setTextareaHeight] = useState<number>(0)
 
-  // Focus input when triggered (after streaming completes)
   useEffect(() => {
     if (inputFocusTrigger > 0 && textareaRef.current) {
       textareaRef.current.focus()
     }
   }, [inputFocusTrigger])
 
-  const handleSuggestionSelect = useCallback((suggestion: Suggestion) => {
-    // When user selects a product from typeahead, insert it into the message
-    const trimmed = message.trim()
-    const newMessage = trimmed ? `${trimmed} ${suggestion.title}` : suggestion.title
-    setMessage(newMessage)
-    setShowTypeahead(false)
-    setTypeaheadIndex(0)
-  }, [message])
+  const handleSuggestionSelect = useCallback(
+    (suggestion: Suggestion) => {
+      if (suggestion.type === 'spelling' || suggestion.type === 'recent') {
+        setMessage(suggestion.title)
+      } else {
+        const trimmed = message.trim()
+        setMessage(trimmed ? `${trimmed} ${suggestion.title}` : suggestion.title)
+      }
+      setShowTypeahead(false)
+      setTypeaheadIndex(-1)
+      textareaRef.current?.focus()
+    },
+    [message]
+  )
 
   const handleSubmit = useCallback(() => {
     const trimmed = message.trim()
     if (!trimmed || !isConnected) return
 
-    // Close typeahead when submitting
     setShowTypeahead(false)
+    setTypeaheadIndex(-1)
+    addRecent(trimmed)
     sendMessage(trimmed)
     setMessage('')
-  }, [message, sendMessage, isConnected])
+  }, [message, sendMessage, isConnected, addRecent])
+
+  // Dropdown is eligible to open when input is long enough OR input is empty
+  // and we have recent searches to show.
+  const typeaheadEligible = useCallback(
+    (value: string) => {
+      const trimmed = value.trim()
+      if (trimmed.length >= TYPEAHEAD_MIN_CHARS) return true
+      if (trimmed.length === 0 && recent.length > 0) return true
+      return false
+    },
+    [recent.length]
+  )
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      // Handle typeahead navigation
-      if (showTypeahead) {
+      if (showTypeahead && rowCount > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault()
-          setTypeaheadIndex((i) => i + 1)
+          setTypeaheadIndex((i) => Math.min(rowCount - 1, i + 1))
           return
-        } else if (e.key === 'ArrowUp') {
+        }
+        if (e.key === 'ArrowUp') {
           e.preventDefault()
-          setTypeaheadIndex((i) => Math.max(0, i - 1))
+          setTypeaheadIndex((i) => Math.max(-1, i - 1))
           return
-        } else if (e.key === 'Escape') {
+        }
+        if (e.key === 'Escape') {
           e.preventDefault()
           setShowTypeahead(false)
+          setTypeaheadIndex(-1)
+          return
+        }
+        if (e.key === 'Tab' && typeaheadIndex >= 0) {
+          // Tab accepts highlighted suggestion without moving focus.
+          e.preventDefault()
+          // Selection is handled by clicking; emit a synthetic keyboard trigger
+          // via document.getElementById to keep the logic in one place.
+          const el = document.getElementById(`typeahead-option-${typeaheadIndex}`)
+          ;(el as HTMLButtonElement | null)?.click()
+          return
+        }
+        if (e.key === 'Enter' && !e.shiftKey && typeaheadIndex >= 0) {
+          // Enter on a highlighted suggestion: accept, don't submit.
+          e.preventDefault()
+          const el = document.getElementById(`typeahead-option-${typeaheadIndex}`)
+          ;(el as HTMLButtonElement | null)?.click()
           return
         }
       }
 
-      // Handle submit
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         handleSubmit()
       }
     },
-    [handleSubmit, showTypeahead]
+    [handleSubmit, rowCount, showTypeahead, typeaheadIndex]
   )
 
-  const canSend = message.trim() && isConnected
+  const canSend = message.trim().length > 0 && isConnected
+  const activeDescendant =
+    showTypeahead && typeaheadIndex >= 0 ? `typeahead-option-${typeaheadIndex}` : undefined
 
   useLayoutEffect(() => {
     if (!textareaRef.current) return
@@ -116,23 +159,27 @@ export function MessageInput() {
             value={message}
             onChange={(e) => {
               setMessage(e.target.value)
-              // Show typeahead when user has typed at least 2 characters
-              setShowTypeahead(e.target.value.trim().length >= 2)
-              setTypeaheadIndex(0)
+              setShowTypeahead(typeaheadEligible(e.target.value))
+              setTypeaheadIndex(-1)
             }}
             onKeyDown={handleKeyDown}
-            onFocus={() => message.trim().length >= 2 && setShowTypeahead(true)}
+            onFocus={() => setShowTypeahead(typeaheadEligible(message))}
             onBlur={() => {
-              // Delay closing to allow click selection
+              // Delay closing to allow click selection (handled by onMouseDown preventDefault too).
               setTimeout(() => setShowTypeahead(false), 200)
             }}
             placeholder={
               isConnected
-                ? "Search for products, compare brands, or ask questions... (type to see suggestions)"
-                : "Connecting..."
+                ? 'Search for products, compare brands, or ask questions...'
+                : 'Connecting...'
             }
             disabled={!isConnected}
             rows={1}
+            role="combobox"
+            aria-expanded={showTypeahead}
+            aria-controls={LISTBOX_ID}
+            aria-autocomplete="list"
+            aria-activedescendant={activeDescendant}
             aria-label="Chat message"
             aria-invalid={!isConnected ? 'true' : 'false'}
             aria-describedby={!isConnected ? 'connection-status' : undefined}
@@ -148,12 +195,13 @@ export function MessageInput() {
               maxHeight: '200px',
             }}
           />
-          {/* Typeahead suggestions dropdown */}
           <TypeaheadSuggestions
             query={message}
             isOpen={showTypeahead && isConnected}
             selectedIndex={typeaheadIndex}
+            listboxId={LISTBOX_ID}
             onSelect={handleSuggestionSelect}
+            onRowCountChange={setRowCount}
           />
         </div>
 
@@ -175,15 +223,12 @@ export function MessageInput() {
         </button>
       </div>
 
-      {/* Connection status */}
       {!isConnected && (
         <div
           id="connection-status"
           className={clsx(
             'mt-2 text-xs font-medium',
-            connectionError
-              ? 'text-red-400'
-              : 'text-yellow-500'
+            connectionError ? 'text-red-400' : 'text-yellow-500'
           )}
         >
           {connectionError ? (

@@ -49,8 +49,11 @@ export async function apiFetch(
 /**
  * GET request with authentication.
  */
-export async function apiGet(endpoint: string): Promise<Response> {
-  return apiFetch(endpoint, { method: 'GET' })
+export async function apiGet(
+  endpoint: string,
+  options: Omit<RequestInit, 'method' | 'body'> = {}
+): Promise<Response> {
+  return apiFetch(endpoint, { ...options, method: 'GET' })
 }
 
 /**
