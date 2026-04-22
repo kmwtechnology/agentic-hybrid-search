@@ -90,7 +90,7 @@ async def trigger_reindex(
     limit: int = 10000,
     reset_index: bool = True,
     force_resample: bool = False,
-    background_tasks: BackgroundTasks = None,
+    background_tasks: BackgroundTasks,
 ) -> ReindexResponse:
     """
     Trigger re-indexing of OpenSearch index.
@@ -127,27 +127,19 @@ async def trigger_reindex(
         f"force_resample={force_resample}"
     )
 
-    # Run re-indexing in background and return immediately
-    if background_tasks:
-        background_tasks.add_task(
-            perform_reindex,
-            limit=limit,
-            force_resample=force_resample,
-            reset_index=reset_index,
-        )
+    # Add task to background queue (FastAPI handles execution)
+    background_tasks.add_task(
+        perform_reindex,
+        limit=limit,
+        force_resample=force_resample,
+        reset_index=reset_index,
+    )
 
-        return ReindexResponse(
-            status="started",
-            message=f"Re-index job started (limit={limit}, reset_index={reset_index}). "
-            "Check logs for progress.",
-        )
-    else:
-        # Fall back to synchronous execution if no background task support
-        return await perform_reindex(
-            limit=limit,
-            force_resample=force_resample,
-            reset_index=reset_index,
-        )
+    return ReindexResponse(
+        status="started",
+        message=f"Re-index job started (limit={limit}, reset_index={reset_index}). "
+        "Check logs for progress.",
+    )
 
 
 @router.get("/health")
