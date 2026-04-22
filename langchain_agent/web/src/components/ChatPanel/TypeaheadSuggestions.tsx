@@ -3,7 +3,7 @@
  * Integrates with /api/suggest endpoint for autocomplete functionality.
  */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { Search, Lightbulb } from 'lucide-react'
 import { apiGet } from '../../utils/api'
 import clsx from 'clsx'
@@ -20,7 +20,6 @@ interface TypeaheadSuggestionsProps {
   isOpen: boolean
   selectedIndex: number
   onSelect: (suggestion: Suggestion) => void
-  onClose: () => void
 }
 
 export function TypeaheadSuggestions({
@@ -28,7 +27,6 @@ export function TypeaheadSuggestions({
   isOpen,
   selectedIndex,
   onSelect,
-  onClose,
 }: TypeaheadSuggestionsProps) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [isLoading, setIsLoading] = useState(false)
