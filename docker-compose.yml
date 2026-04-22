@@ -17,7 +17,9 @@ services:
       retries: 5
 
   opensearch:
-    image: opensearchproject/opensearch:2.19.1
+    build:
+      context: .
+      dockerfile: docker/opensearch/Dockerfile
     container_name: langchain-opensearch
     environment:
       - discovery.type=single-node

@@ -15,6 +15,7 @@ Usage:
     python ingest_esci_products.py --resample   # Force re-sample
     python ingest_esci_products.py --all        # Ingest all EN products
     python ingest_esci_products.py --stats      # Show index stats only
+    python ingest_esci_products.py --reset-index # Delete and recreate index (for mapping changes)
 """
 
 import argparse
@@ -146,14 +147,21 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
     return df_sample
 
 
-def ensure_index_exists(client):
-    """Create the OpenSearch index if it doesn't exist."""
+def ensure_index_exists(client, reset_index: bool = False):
+    """Create the OpenSearch index if it doesn't exist. Optionally delete existing first."""
     try:
+        if reset_index and client.indices.exists(index=OPENSEARCH_INDEX_NAME):
+            client.indices.delete(index=OPENSEARCH_INDEX_NAME)
+            logger.info(f"Deleted existing index '{OPENSEARCH_INDEX_NAME}'")
+            print(f"   Deleted existing index '{OPENSEARCH_INDEX_NAME}'", flush=True)
+
         if not client.indices.exists(index=OPENSEARCH_INDEX_NAME):
             client.indices.create(index=OPENSEARCH_INDEX_NAME, body=INDEX_MAPPING)
             logger.info(f"Created index '{OPENSEARCH_INDEX_NAME}'")
+            print(f"   Created index '{OPENSEARCH_INDEX_NAME}'", flush=True)
         else:
             logger.info(f"Index '{OPENSEARCH_INDEX_NAME}' already exists")
+            print(f"   Index '{OPENSEARCH_INDEX_NAME}' already exists", flush=True)
 
         # Create search pipeline
         try:
@@ -299,6 +307,11 @@ def _ingest_batch(
                     "chunk_index": chunk_idx,
                     "chunk_text": chunk,
                     "embedding": item["cached_embedding"],
+                    "title_suggest": item["title"],
+                    "brand_suggest": item["brand"],
+                    "title_phrase": item["title"],
+                    "title_phonetic": item["title"],
+                    "brand_phonetic": item["brand"],
                 },
             })
 
@@ -323,6 +336,11 @@ def _ingest_batch(
                     "chunk_index": chunk_idx,
                     "chunk_text": chunk,
                     "embedding": emb,
+                    "title_suggest": item["title"],
+                    "brand_suggest": item["brand"],
+                    "title_phrase": item["title"],
+                    "title_phonetic": item["title"],
+                    "brand_phonetic": item["brand"],
                 },
             })
 
@@ -357,18 +375,20 @@ def ingest_esci_products(
     limit: int = DEFAULT_LIMIT,
     force_resample: bool = False,
     all_products: bool = False,
+    reset_index: bool = False,
 ) -> Tuple[int, int]:
     """
     Ingest ESCI products into OpenSearch with batched embedding and verbose progress.
 
     Embeddings are generated in batches via embed_documents() (one API call per batch).
     Embeddings are cached in the sample parquet file to avoid regeneration.
-    Products already indexed in OpenSearch are skipped.
+    Products already indexed in OpenSearch are skipped (unless reset_index=True).
 
     Args:
         limit: Number of products to sample (ignored if all_products=True)
         force_resample: If True, force re-sampling even if cached
         all_products: If True, ingest all US products (no sampling)
+        reset_index: If True, delete existing index before creating new one
 
     Returns:
         Tuple of (total_products_ingested, total_chunks_created)
@@ -396,7 +416,7 @@ def ingest_esci_products(
 
     # Initialize OpenSearch client
     client = create_opensearch_client()
-    ensure_index_exists(client)
+    ensure_index_exists(client, reset_index=reset_index)
 
     # Check which products are already indexed
     indexed_ids = get_indexed_product_ids(client)
@@ -615,6 +635,11 @@ Examples:
         action="store_true",
         help="Show current index statistics only",
     )
+    parser.add_argument(
+        "--reset-index",
+        action="store_true",
+        help="Delete the existing index before creating a new one (forces re-index with new mapping)",
+    )
     args = parser.parse_args()
 
     # Configure logging
@@ -631,6 +656,7 @@ Examples:
                 limit=args.limit,
                 force_resample=args.resample,
                 all_products=args.all,
+                reset_index=args.reset_index,
             )
             print(f"\n✅ Successfully ingested {docs} ESCI products ({chunks} chunks)")
             show_stats()

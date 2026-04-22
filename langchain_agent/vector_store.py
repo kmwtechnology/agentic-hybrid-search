@@ -48,11 +48,63 @@ INDEX_MAPPING = {
             "knn.algo_param.ef_search": 100,
         },
         "analysis": {
+            "filter": {
+                "edge_ngram_filter": {
+                    "type": "edge_ngram",
+                    "min_gram": 2,
+                    "max_gram": 20,
+                },
+                "shingle_filter": {
+                    "type": "shingle",
+                    "min_shingle_size": 2,
+                    "max_shingle_size": 3,
+                },
+                "synonym_filter": {
+                    "type": "synonym",
+                    "synonyms": [
+                        "headphones, earphones, earbuds, headset",
+                        "laptop, notebook, chromebook",
+                        "wireless, bluetooth",
+                        "tv, television",
+                        "phone, smartphone, mobile",
+                        "smartwatch, smart watch",
+                        "shoes, sneakers, trainers, footwear",
+                        "charger, adapter, power adapter",
+                        "monitor, display, screen",
+                        "tablet, e-reader",
+                        "camera, dslr, camcorder",
+                        "speaker, speakers, soundbar",
+                        "keyboard, mechanical keyboard",
+                        "mouse, mice, trackpad",
+                    ]
+                },
+                "phonetic_filter": {
+                    "type": "phonetic",
+                    "encoder": "double_metaphone",
+                    "replace": False,
+                },
+            },
             "analyzer": {
                 "english_analyzer": {
                     "tokenizer": "standard",
-                    "filter": ["lowercase", "stop", "snowball"],
-                }
+                    "filter": ["lowercase", "synonym_filter", "stop", "snowball"],
+                },
+                "english_shingle_analyzer": {
+                    "tokenizer": "standard",
+                    "filter": ["lowercase", "stop", "shingle_filter"],
+                },
+                "english_phonetic_analyzer": {
+                    "tokenizer": "standard",
+                    "filter": ["lowercase", "phonetic_filter"],
+                },
+                "autocomplete_analyzer": {
+                    "tokenizer": "standard",
+                    "filter": ["lowercase", "edge_ngram_filter"],
+                },
+                "autocomplete_search_analyzer": {
+                    "tokenizer": "standard",
+                    "filter": ["lowercase"],
+                },
             }
         },
     },
@@ -94,6 +146,31 @@ INDEX_MAPPING = {
             "product_locale": {"type": "keyword"},
             "esci_labels": {"type": "keyword"},
             "collection": {"type": "keyword"},
+            # Autocomplete suggest fields
+            "title_suggest": {
+                "type": "text",
+                "analyzer": "autocomplete_analyzer",
+                "search_analyzer": "autocomplete_search_analyzer",
+            },
+            "brand_suggest": {
+                "type": "text",
+                "analyzer": "autocomplete_analyzer",
+                "search_analyzer": "autocomplete_search_analyzer",
+            },
+            # Phrase matching field (boosts multi-word phrase matches in titles)
+            "title_phrase": {
+                "type": "text",
+                "analyzer": "english_shingle_analyzer",
+            },
+            # Phonetic matching fields (handles sound-alike typos in brand/title)
+            "title_phonetic": {
+                "type": "text",
+                "analyzer": "english_phonetic_analyzer",
+            },
+            "brand_phonetic": {
+                "type": "text",
+                "analyzer": "english_phonetic_analyzer",
+            },
         }
     },
 }
@@ -311,7 +388,7 @@ class OpenSearchVectorStore:
             raise SearchValidationError(f"fetch_k ({fetch_k}) must be >= k ({k})")
 
         if alpha == 0.0:
-            return self._text_search(query, k)
+            return self._text_search(query, k, filters)
 
         if alpha == 1.0:
             return self.similarity_search(query, k)
@@ -376,10 +453,20 @@ class OpenSearchVectorStore:
                             "bool": {
                                 "must": [
                                     {
-                                        "match": {
-                                            "chunk_text": {
-                                                "query": query,
-                                            }
+                                        "multi_match": {
+                                            "query": query,
+                                            "fields": [
+                                                "chunk_text",
+                                                "title^3",
+                                                "title_phrase^2.5",
+                                                "product_brand^2",
+                                                "product_color^1.5",
+                                                "title_phonetic^1.5",
+                                                "brand_phonetic^1.5",
+                                            ],
+                                            "type": "best_fields",
+                                            "fuzziness": "AUTO",
+                                            "tie_breaker": 0.3,
                                         }
                                     }
                                 ],
@@ -432,7 +519,25 @@ class OpenSearchVectorStore:
             "_source": {"excludes": ["embedding"]},
             "query": {
                 "bool": {
-                    "must": [{"match": {"chunk_text": {"query": query}}}],
+                    "must": [
+                        {
+                            "multi_match": {
+                                "query": query,
+                                "fields": [
+                                    "chunk_text",
+                                    "title^3",
+                                    "title_phrase^2.5",
+                                    "product_brand^2",
+                                    "product_color^1.5",
+                                    "title_phonetic^1.5",
+                                    "brand_phonetic^1.5",
+                                ],
+                                "type": "best_fields",
+                                "fuzziness": "AUTO",
+                                "tie_breaker": 0.3,
+                            }
+                        }
+                    ],
                     "filter": filter_list,
                 }
             },
@@ -464,16 +569,43 @@ class OpenSearchVectorStore:
         scored.sort(key=lambda x: x[0], reverse=True)
         return [self._hit_to_document(hit) for _, hit in scored[:k]]
 
-    def _text_search(self, query: str, k: int = 4) -> List[Document]:
+    def _text_search(
+        self,
+        query: str,
+        k: int = 4,
+        filters: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Document]:
         """Pure BM25 text search for alpha=0.0."""
         try:
+            filter_list = [{"term": {"collection_id": self.collection_id}}]
+            if filters:
+                filter_list.extend(filters)
+
             body = {
                 "size": k,
                 "_source": {"excludes": ["embedding"]},
                 "query": {
                     "bool": {
-                        "must": [{"match": {"chunk_text": {"query": query}}}],
-                        "filter": [{"term": {"collection_id": self.collection_id}}],
+                        "must": [
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": [
+                                        "chunk_text",
+                                        "title^3",
+                                        "title_phrase^2.5",
+                                        "product_brand^2",
+                                        "product_color^1.5",
+                                        "title_phonetic^1.5",
+                                        "brand_phonetic^1.5",
+                                    ],
+                                    "type": "best_fields",
+                                    "fuzziness": "AUTO",
+                                    "tie_breaker": 0.3,
+                                }
+                            }
+                        ],
+                        "filter": filter_list,
                     }
                 },
             }

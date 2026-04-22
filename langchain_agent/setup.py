@@ -295,6 +295,11 @@ def main():
         action="store_true",
         help="Skip Google AI API validation"
     )
+    parser.add_argument(
+        "--reset-index",
+        action="store_true",
+        help="Delete the existing OpenSearch index before creating a new one (forces re-index with new mapping)"
+    )
     args = parser.parse_args()
 
     print("\n" + "=" * 70)
@@ -332,7 +337,7 @@ def main():
             print("      Embeddings are batched (100/call) — progress shown per batch.", flush=True)
             try:
                 from ingest_esci_products import ingest_esci_products
-                docs_loaded, chunks_loaded = ingest_esci_products()
+                docs_loaded, chunks_loaded = ingest_esci_products(reset_index=args.reset_index)
                 print(f"      ✓ Loaded {docs_loaded:,} products ({chunks_loaded:,} chunks)")
             except Exception as e:
                 print(f"      ⚠ Error loading ESCI products: {e}")

@@ -1391,22 +1391,22 @@ Return ONLY a JSON object (use null for missing attributes):
                     }
                 })
 
-            # material_or_feature → multi_match against title + description
+            # material_or_feature → multi_match against title + content
             if attributes.get("material_or_feature"):
                 filters.append({
                     "multi_match": {
                         "query": attributes["material_or_feature"],
-                        "fields": ["product_title", "product_description"],
+                        "fields": ["title", "chunk_text"],
                         "type": "best_fields"
                     }
                 })
 
-            # size → multi_match against title + description
+            # size → multi_match against title + content
             if attributes.get("size"):
                 filters.append({
                     "multi_match": {
                         "query": attributes["size"],
-                        "fields": ["product_title", "product_description"],
+                        "fields": ["title", "chunk_text"],
                         "type": "best_fields"
                     }
                 })
@@ -1464,7 +1464,7 @@ Return ONLY a JSON object (use null for missing attributes):
                     mm = f["multi_match"]
                     query_text = mm.get("query", "")
                     fields = mm.get("fields", [])
-                    if "product_description" in fields or "product_title" in fields:
+                    if "chunk_text" in fields or "title" in fields:
                         parts.append(f"feature: {query_text}")
                 elif "range" in f:
                     range_obj = f["range"]
