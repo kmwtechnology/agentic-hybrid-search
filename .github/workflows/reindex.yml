@@ -58,21 +58,33 @@ jobs:
             echo "::warning::Unexpected status: $STATUS"
           fi
 
-      - name: Monitor progress (emit only on change)
+      - name: Monitor progress (stability-based completion)
+        id: monitor
         run: |
           TARGET=${{ github.event.inputs.limit }}
           BASELINE=${{ steps.baseline.outputs.baseline }}
           RESET="${{ github.event.inputs.reset_index }}"
-          PREV=$BASELINE
-          RESET_SEEN=false
-          START=$(date +%s)
-          DEADLINE=$((START + 25 * 60))  # 25 min
 
-          # Initial line so logs aren't empty for the first poll interval.
-          echo "[t+0s] docs=$BASELINE (baseline) | polling every 20s until ingest_completes or deadline"
+          # Completion tuning
+          POLL_INTERVAL=10            # seconds between health checks
+          STABILITY_WINDOW=90         # count must be unchanged this long to be considered "done"
+          MIN_GROWTH=100              # require at least this many new docs vs. the post-reset floor
+          GRACE_BEFORE_STABILITY=60   # ignore stability for the first minute (ingest takes a moment to start)
+
+          PREV=$BASELINE
+          FLOOR=$BASELINE             # lowest observed count; resets to 0 after reset_index
+          RESET_SEEN=false
+          LAST_CHANGE_TS=$(date +%s)
+          START=$(date +%s)
+          DEADLINE=$((START + 25 * 60))  # 25 min upper bound
+
+          COMPLETION_REASON=""
+          FINAL_COUNT=$BASELINE
+
+          echo "[t+0s] docs=$BASELINE (baseline) | polling every ${POLL_INTERVAL}s; stability window=${STABILITY_WINDOW}s"
 
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-            sleep 20
+            sleep "$POLL_INTERVAL"
             NOW=$(date +%s)
             ELAPSED=$((NOW - START))
 
@@ -84,32 +96,70 @@ jobs:
               continue
             fi
 
-            # Detect the reset moment: count drops to 0 or below baseline with reset_index=true.
+            FINAL_COUNT=$COUNT
+
+            # Detect the reset moment: count drops below baseline with reset_index=true.
             if [ "$RESET" = "true" ] && [ "$RESET_SEEN" = "false" ] && [ "$COUNT" -lt "$BASELINE" ]; then
-              echo "[t+${ELAPSED}s] 🔄 index reset detected (docs dropped $BASELINE -> $COUNT); ingesting up to $TARGET"
+              echo "[t+${ELAPSED}s] index reset detected (docs dropped $BASELINE -> $COUNT); ingesting up to $TARGET"
               RESET_SEEN=true
+              FLOOR=$COUNT
               PREV=$COUNT
+              LAST_CHANGE_TS=$NOW
               continue
+            fi
+
+            # Track the lowest post-reset value as our growth baseline.
+            if [ "$COUNT" -lt "$FLOOR" ]; then
+              FLOOR=$COUNT
             fi
 
             if [ "$COUNT" != "$PREV" ]; then
               DELTA=$((COUNT - PREV))
               SIGN=$([ $DELTA -ge 0 ] && echo "+" || echo "")
               PCT=$(awk "BEGIN {printf \"%.0f\", ($COUNT * 100.0) / $TARGET}")
-              echo "[t+${ELAPSED}s] docs=$COUNT (${SIGN}${DELTA}) ${PCT}%"
+              echo "[t+${ELAPSED}s] docs=$COUNT (${SIGN}${DELTA}) ${PCT}% of target"
               PREV=$COUNT
+              LAST_CHANGE_TS=$NOW
             fi
 
-            # Success criteria: reached target, or (when not resetting) grew past baseline by at least target.
+            GROWTH=$((COUNT - FLOOR))
+            SINCE_CHANGE=$((NOW - LAST_CHANGE_TS))
+
+            # Success path 1: genuinely reached the target.
             if [ "$COUNT" -ge "$TARGET" ]; then
-              echo "[t+${ELAPSED}s] ✅ reached target of $TARGET documents"
+              COMPLETION_REASON="reached target of $TARGET documents"
+              echo "[t+${ELAPSED}s] complete: $COMPLETION_REASON"
+              break
+            fi
+
+            # Success path 2: count has been stable long enough and we grew meaningfully.
+            # Skip the stability check during the initial grace period so we don't false-positive
+            # before ingest actually starts writing.
+            if [ "$ELAPSED" -ge "$GRACE_BEFORE_STABILITY" ] \
+               && [ "$SINCE_CHANGE" -ge "$STABILITY_WINDOW" ] \
+               && [ "$GROWTH" -ge "$MIN_GROWTH" ]; then
+              PCT=$(awk "BEGIN {printf \"%.1f\", ($COUNT * 100.0) / $TARGET}")
+              COMPLETION_REASON="count stable at $COUNT for ${SINCE_CHANGE}s (grew +${GROWTH} from floor ${FLOOR}, ${PCT}% of target ${TARGET})"
+              echo "[t+${ELAPSED}s] complete: $COMPLETION_REASON"
               break
             fi
           done
 
-          if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-            echo "::warning::25-minute deadline reached; ingestion may still be running in the background."
+          if [ -z "$COMPLETION_REASON" ]; then
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              GROWTH=$((FINAL_COUNT - FLOOR))
+              if [ "$GROWTH" -ge "$MIN_GROWTH" ]; then
+                COMPLETION_REASON="25-min deadline hit; treating as complete (docs=$FINAL_COUNT, grew +${GROWTH} from floor ${FLOOR})"
+                echo "::warning::${COMPLETION_REASON}"
+              else
+                echo "::error::25-minute deadline reached with insufficient growth (docs=$FINAL_COUNT, floor=$FLOOR, growth=+${GROWTH}). Ingest may have failed to start."
+                exit 1
+              fi
+            fi
           fi
+
+          echo "completion_reason=$COMPLETION_REASON" >> $GITHUB_OUTPUT
+          echo "final_count=$FINAL_COUNT" >> $GITHUB_OUTPUT
 
       - name: Typeahead smoke check
         run: |
@@ -132,7 +182,13 @@ jobs:
         run: |
           HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health")
           DOCS=$(echo "$HEALTH" | jq -r '.opensearch.documents // 0')
+          REASON="${{ steps.monitor.outputs.completion_reason }}"
           echo "════════════════════════════════════════════════════════"
-          echo "Final doc count: $DOCS"
-          echo "Service:         ${{ env.SERVICE_URL }}"
+          echo "Final doc count:  $DOCS"
+          echo "Service:          ${{ env.SERVICE_URL }}"
+          if [ -n "$REASON" ]; then
+            echo "Completion:       $REASON"
+          else
+            echo "Completion:       (monitor step did not run to completion)"
+          fi
           echo "════════════════════════════════════════════════════════"
