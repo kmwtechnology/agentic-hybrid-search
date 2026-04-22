@@ -100,8 +100,37 @@ jobs:
           echo "Final health check:"
           curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
 
+      - name: Diagnose re-index failure
+        run: |
+          echo "🔍 Attempting to diagnose re-index issue..."
+          echo ""
+
+          # Check if API is responding
+          echo "1️⃣  Testing API connectivity..."
+          curl -s -I "${{ env.SERVICE_URL }}/api/admin/health" | head -3
+          echo ""
+
+          # Check current index state
+          echo "2️⃣  Current index state:"
+          curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
+          echo ""
+
+          # Attempt a fresh re-index call to see if there's an error in the response
+          echo "3️⃣  Testing re-index endpoint (fresh call):"
+          FRESH_RESPONSE=$(curl -s "${{ env.SERVICE_URL }}/api/admin/reindex?reset_index=false&limit=100")
+          echo "$FRESH_RESPONSE" | jq '.'
+          echo ""
+
+          # Check for error in response
+          ERROR=$(echo "$FRESH_RESPONSE" | jq -r '.error // empty')
+          if [ -n "$ERROR" ]; then
+            echo "❌ ERROR DETECTED:"
+            echo "$ERROR"
+          fi
+
       - name: Verify index health
         run: |
+          echo ""
           echo "🏥 Final health check:"
           curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
 

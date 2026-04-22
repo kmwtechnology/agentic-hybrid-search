@@ -45,17 +45,22 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
     Returns:
         ReindexResponse with status and document counts
     """
+    logger.info(f"[perform_reindex] Starting re-index: limit={limit}, force_resample={force_resample}, reset_index={reset_index}")
+
     try:
         from ingest_esci_products import ingest_esci_products
 
-        logger.info(f"Starting re-index: limit={limit}, reset_index={reset_index}")
+        logger.info(f"[perform_reindex] Imported ingest_esci_products successfully")
+        logger.info(f"[perform_reindex] Calling ingest_esci_products with parameters...")
+
         docs, chunks = ingest_esci_products(
             limit=limit,
             force_resample=force_resample,
             reset_index=reset_index,
         )
 
-        logger.info(f"Re-index complete: {docs} documents, {chunks} chunks")
+        logger.info(f"[perform_reindex] ingest_esci_products completed successfully")
+        logger.info(f"[perform_reindex] Results: {docs} documents ingested, {chunks} chunks created")
 
         return ReindexResponse(
             status="success",
@@ -66,7 +71,7 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
 
     except FileNotFoundError as e:
         error_msg = f"Dataset file not found: {e}"
-        logger.error(error_msg, exc_info=True)
+        logger.error(f"[perform_reindex] FileNotFoundError: {error_msg}", exc_info=True)
         return ReindexResponse(
             status="error",
             message="Re-index failed",
@@ -74,7 +79,7 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
         )
     except Exception as e:
         error_msg = f"Re-index failed: {type(e).__name__}: {e}"
-        logger.error(error_msg, exc_info=True)
+        logger.error(f"[perform_reindex] Unexpected error: {error_msg}", exc_info=True)
         return ReindexResponse(
             status="error",
             message="Re-index failed",
