@@ -30,9 +30,9 @@ To add "whitepaper" format:
 7. Update ObservabilityPanel to render the progress visualization
 """
 
-from typing import Any, Dict, TYPE_CHECKING
 import logging
 import re
+from typing import TYPE_CHECKING, Any, Dict
 
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
@@ -41,33 +41,42 @@ from agent_state import CustomAgentState
 
 try:
     from api.schemas.events import (
-        ContentTypeClassificationEvent,
+        ArticleProgressEvent,
+        BlogPostProgressEvent,
         ClarificationRequestedEvent,
         ClarificationResolvedEvent,
-        SocialPostProgressEvent,
-        BlogPostProgressEvent,
-        ArticleProgressEvent,
-        TutorialProgressEvent,
         ContentCompleteEvent,
+        ContentTypeClassificationEvent,
+        SocialPostProgressEvent,
+        TutorialProgressEvent,
     )
+
     _EVENTS_AVAILABLE = True
 except ImportError:
     _EVENTS_AVAILABLE = False
+
     # Provide stub classes for testing without API service
     class ContentTypeClassificationEvent:  # type: ignore
         pass
+
     class ClarificationRequestedEvent:  # type: ignore
         pass
+
     class ClarificationResolvedEvent:  # type: ignore
         pass
+
     class SocialPostProgressEvent:  # type: ignore
         pass
+
     class BlogPostProgressEvent:  # type: ignore
         pass
+
     class ArticleProgressEvent:  # type: ignore
         pass
+
     class TutorialProgressEvent:  # type: ignore
         pass
+
     class ContentCompleteEvent:  # type: ignore
         pass
 
@@ -80,6 +89,7 @@ class ContentTypeClassification(BaseModel):
     suggested_formats: list[str] | None = None
     suggested_topics: list[str] | None = None
     reasoning: str = ""
+
 
 if TYPE_CHECKING:
     from main import EcommerceSearchAgent
@@ -172,7 +182,16 @@ def _is_vague_documentation_request(query: str, content_type: str) -> bool:
 
     # Content type keywords that might appear alone
     content_keywords = {
-        "social_post": ["linkedin", "twitter", "tweet", "social media", "social post", "facebook", "instagram", "post"],
+        "social_post": [
+            "linkedin",
+            "twitter",
+            "tweet",
+            "social media",
+            "social post",
+            "facebook",
+            "instagram",
+            "post",
+        ],
         "blog_post": ["blog", "blog post", "article"],
         "technical_article": ["technical article", "deep dive", "deep-dive", "analysis"],
         "tutorial": ["tutorial", "guide", "walkthrough", "how to", "how-to"],
@@ -220,16 +239,26 @@ def _is_vague_documentation_request(query: str, content_type: str) -> bool:
 
     # Check if query matches bare patterns (with minimal surrounding words)
     for pattern in bare_patterns:
-        if query_lower == pattern or query_lower in [f"write {pattern}", f"create {pattern}", f"draft {pattern}",
-                                                       f"make {pattern}", f"write a {pattern}", f"create a {pattern}",
-                                                       f"draft a {pattern}", f"make a {pattern}", f"write me {pattern}",
-                                                       f"write me a {pattern}"]:
+        if query_lower == pattern or query_lower in [
+            f"write {pattern}",
+            f"create {pattern}",
+            f"draft {pattern}",
+            f"make {pattern}",
+            f"write a {pattern}",
+            f"create a {pattern}",
+            f"draft a {pattern}",
+            f"make a {pattern}",
+            f"write me {pattern}",
+            f"write me a {pattern}",
+        ]:
             return True
 
     return False
 
 
-def content_type_classifier_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
+def content_type_classifier_node(
+    state: CustomAgentState, agent: "EcommerceSearchAgent"
+) -> Dict[str, Any]:
     """
     Classify the user's documentation request into one of 5 content types.
 
@@ -286,7 +315,9 @@ def content_type_classifier_node(state: CustomAgentState, agent: "EcommerceSearc
             # Expand vague queries with conversation context (e.g., "Write a Facebook post" → "Write a Facebook post about SpecBuilder API")
             expanded = agent._expand_vague_query(user_query, messages)
             if expanded != user_query:
-                logger.info(f"Content type classifier: Expanded query '{user_query}' → '{expanded}'")
+                logger.info(
+                    f"Content type classifier: Expanded query '{user_query}' → '{expanded}'"
+                )
                 expanded_query = expanded  # Store for state updates
                 user_query = expanded  # Use expanded query for classification
 
@@ -314,7 +345,9 @@ JSON response:
             try:
                 # Use structured output for content type classification
                 # For Google Gemini, use invoke() for structured output (it handles streaming internally)
-                structured_llm = agent.alpha_estimator_llm.with_structured_output(ContentTypeClassification)
+                structured_llm = agent.alpha_estimator_llm.with_structured_output(
+                    ContentTypeClassification
+                )
                 result = structured_llm.invoke(classification_prompt)
 
                 content_type = result.content_type
@@ -322,19 +355,30 @@ JSON response:
                 reasoning = result.reasoning
 
                 # Validate content type
-                valid_types = ["social_post", "blog_post", "technical_article", "tutorial", "comprehensive_docs"]
+                valid_types = [
+                    "social_post",
+                    "blog_post",
+                    "technical_article",
+                    "tutorial",
+                    "comprehensive_docs",
+                ]
                 if content_type not in valid_types:
-                    logger.warning(f"Invalid content type '{content_type}', defaulting to comprehensive_docs")
+                    logger.warning(
+                        f"Invalid content type '{content_type}', defaulting to comprehensive_docs"
+                    )
                     content_type = "comprehensive_docs"
                     confidence = 0.5
                     reasoning = f"Invalid type returned, defaulting to comprehensive_docs"
 
             except Exception as e:
-                logger.error(f"Error during content type classification: {e}", extra={
-                    "error_type": type(e).__name__,
-                    "query": user_query,
-                    "model": str(agent.alpha_estimator_llm)
-                })
+                logger.error(
+                    f"Error during content type classification: {e}",
+                    extra={
+                        "error_type": type(e).__name__,
+                        "query": user_query,
+                        "model": str(agent.alpha_estimator_llm),
+                    },
+                )
                 content_type = "comprehensive_docs"
                 confidence = 0.5
                 reasoning = f"Classification error: {str(e)}"
@@ -344,12 +388,27 @@ JSON response:
             # Code-based vagueness detection (LLM is unreliable for this)
             query_lower = user_query.lower()
             format_keywords = {
-                "linkedin", "twitter", "facebook", "social", "blog", "article",
-                "tutorial", "guide", "document", "documentation", "docs", "reference", "post",
-                "how to", "how-to", "step by step", "step-by-step", "write",
+                "linkedin",
+                "twitter",
+                "facebook",
+                "social",
+                "blog",
+                "article",
+                "tutorial",
+                "guide",
+                "document",
+                "documentation",
+                "docs",
+                "reference",
+                "post",
+                "how to",
+                "how-to",
+                "step by step",
+                "step-by-step",
+                "write",
             }
             topic_indicators = re.compile(
-                r'\b(?:about|for|on|regarding|covering|explaining|the)\s+\S+', re.IGNORECASE
+                r"\b(?:about|for|on|regarding|covering|explaining|the)\s+\S+", re.IGNORECASE
             )
             has_format = any(kw in query_lower for kw in format_keywords)
             has_topic = bool(topic_indicators.search(user_query))
@@ -363,7 +422,9 @@ JSON response:
             else:
                 query_vagueness = "missing_both"
 
-            logger.info(f"Code-based vagueness: {query_vagueness} (has_format={has_format}, has_topic={has_topic})")
+            logger.info(
+                f"Code-based vagueness: {query_vagueness} (has_format={has_format}, has_topic={has_topic})"
+            )
 
             # Handle vagueness
             if query_vagueness == "missing_format":
@@ -371,7 +432,13 @@ JSON response:
                 logger.info(f"Query missing format specification: '{user_query}'")
 
                 # Provide all formats as options
-                all_formats = ["social_post", "blog_post", "technical_article", "tutorial", "comprehensive_docs"]
+                all_formats = [
+                    "social_post",
+                    "blog_post",
+                    "technical_article",
+                    "tutorial",
+                    "comprehensive_docs",
+                ]
                 format_options = []
                 for idx, fmt in enumerate(all_formats, 1):
                     params = get_content_params(fmt)
@@ -395,7 +462,7 @@ Reply with the number or describe the format you want."""
                             {
                                 "type": fmt,
                                 "confidence": 0.0,
-                                "description": get_content_params(fmt)['description'],
+                                "description": get_content_params(fmt)["description"],
                             }
                             for fmt in all_formats
                         ],
@@ -419,7 +486,7 @@ Reply with the number or describe the format you want."""
                 topic_examples = [
                     "product search features",
                     "e-commerce best practices",
-                    "customer experience optimization"
+                    "customer experience optimization",
                 ]
 
                 clarification_text = f"""What topic would you like me to write about?
@@ -454,7 +521,13 @@ Please provide the topic. Examples:
                 logger.info(f"Query missing both format and topic: '{user_query}'")
 
                 # Build clarification message for format first
-                all_formats = ["social_post", "blog_post", "technical_article", "tutorial", "comprehensive_docs"]
+                all_formats = [
+                    "social_post",
+                    "blog_post",
+                    "technical_article",
+                    "tutorial",
+                    "comprehensive_docs",
+                ]
                 format_options = []
                 for idx, fmt in enumerate(all_formats, 1):
                     params = get_content_params(fmt)
@@ -477,7 +550,7 @@ Reply with the number or describe the format you want. I'll ask about the topic 
                             {
                                 "type": fmt,
                                 "confidence": 0.0,
-                                "description": get_content_params(fmt)['description'],
+                                "description": get_content_params(fmt)["description"],
                             }
                             for fmt in all_formats
                         ],
@@ -530,7 +603,9 @@ Reply with the number or describe the format you want. I'll ask about the topic 
     return state_updates
 
 
-def format_clarification_resolver_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
+def format_clarification_resolver_node(
+    state: CustomAgentState, agent: "EcommerceSearchAgent"
+) -> Dict[str, Any]:
     """
     Parse user's clarification response and resolve content format.
 
@@ -584,7 +659,7 @@ def format_clarification_resolver_node(state: CustomAgentState, agent: "Ecommerc
         else:
             # Check for content type keywords in response
             for candidate_type, _ in candidates:
-                type_label = candidate_type.replace('_', ' ')
+                type_label = candidate_type.replace("_", " ")
                 if type_label in user_response_lower or candidate_type in user_response_lower:
                     content_type = candidate_type
                     logger.info(f"User mentioned '{candidate_type}' in response")
@@ -599,8 +674,12 @@ def format_clarification_resolver_node(state: CustomAgentState, agent: "Ecommerc
     params = get_content_params(content_type)
 
     # Get original classification from state (before user clarification)
-    original_classification = state.get("content_type", candidates[0][0] if candidates else "comprehensive_docs")
-    confidence_before = state.get("content_type_confidence", candidates[0][1] if candidates else 0.5)
+    original_classification = state.get(
+        "content_type", candidates[0][0] if candidates else "comprehensive_docs"
+    )
+    confidence_before = state.get(
+        "content_type_confidence", candidates[0][1] if candidates else 0.5
+    )
 
     # Emit clarification resolved event
     agent._emit_event_from_sync(
@@ -611,7 +690,7 @@ def format_clarification_resolver_node(state: CustomAgentState, agent: "Ecommerc
             user_selected=content_type,
             confidence_before=confidence_before,
             confidence_after=1.0,  # User-confirmed
-            user_response=user_response if 'user_response' in locals() else "",
+            user_response=user_response if "user_response" in locals() else "",
         )
     )
 
@@ -640,7 +719,9 @@ def format_clarification_resolver_node(state: CustomAgentState, agent: "Ecommerc
     }
 
 
-def topic_clarification_resolver_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
+def topic_clarification_resolver_node(
+    state: CustomAgentState, agent: "EcommerceSearchAgent"
+) -> Dict[str, Any]:
     """
     Parse user's topic response and combine with content type.
 
@@ -670,7 +751,7 @@ def topic_clarification_resolver_node(state: CustomAgentState, agent: "Ecommerce
     logger.info(f"User provided topic: '{user_topic}'")
 
     # Build complete query by combining content type with topic
-    content_type_label = content_type.replace('_', ' ')
+    content_type_label = content_type.replace("_", " ")
     complete_query = f"Write a {content_type_label} about {user_topic}"
 
     # Get content parameters
@@ -715,7 +796,9 @@ def topic_clarification_resolver_node(state: CustomAgentState, agent: "Ecommerce
     }
 
 
-def social_content_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
+def social_content_generator_node(
+    state: CustomAgentState, agent: "EcommerceSearchAgent"
+) -> Dict[str, Any]:
     """
     Generate a social media post (100-300 words).
 
@@ -759,7 +842,9 @@ def social_content_generator_node(state: CustomAgentState, agent: "EcommerceSear
             "content_output": error_msg,
         }
 
-    logger.info(f"Social post generation: Using query '{user_query[:100]}...'")  # Log what query we're using
+    logger.info(
+        f"Social post generation: Using query '{user_query[:100]}...'"
+    )  # Log what query we're using
 
     # Get content parameters
     params = get_content_params("social_post")
@@ -772,7 +857,7 @@ def social_content_generator_node(state: CustomAgentState, agent: "EcommerceSear
     agent._emit_event_from_sync(
         SocialPostProgressEvent(
             stage="retrieval",
-            message=f"Retrieving relevant information (semantic search, k={retrieval_k})..."
+            message=f"Retrieving relevant information (semantic search, k={retrieval_k})...",
         )
     )
 
@@ -807,7 +892,7 @@ def social_content_generator_node(state: CustomAgentState, agent: "EcommerceSear
     agent._emit_event_from_sync(
         SocialPostProgressEvent(
             stage="generation",
-            message=f"Generating engaging social post (~{target_length} words)..."
+            message=f"Generating engaging social post (~{target_length} words)...",
         )
     )
 
@@ -867,7 +952,9 @@ Generate the social post now:"""
         }
 
 
-def blog_content_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
+def blog_content_generator_node(
+    state: CustomAgentState, agent: "EcommerceSearchAgent"
+) -> Dict[str, Any]:
     """
     Generate a blog post (1000-2000 words).
 
@@ -903,7 +990,9 @@ def blog_content_generator_node(state: CustomAgentState, agent: "EcommerceSearch
                 user_query = msg.content if hasattr(msg, "content") else ""
                 break
 
-    logger.info(f"Blog post generation: Using query '{user_query[:100] if user_query else 'NONE'}...'")  # Log what query we're using
+    logger.info(
+        f"Blog post generation: Using query '{user_query[:100] if user_query else 'NONE'}...'"
+    )  # Log what query we're using
 
     if not user_query:
         logger.error("No user query found")
@@ -923,10 +1012,7 @@ def blog_content_generator_node(state: CustomAgentState, agent: "EcommerceSearch
     try:
         # Stage 1: Create outline
         agent._emit_event_from_sync(
-            BlogPostProgressEvent(
-                stage="outline",
-                message="Creating blog post outline..."
-            )
+            BlogPostProgressEvent(stage="outline", message="Creating blog post outline...")
         )
 
         outline_prompt = f"""Create a brief outline for a blog post based on this request:
@@ -945,7 +1031,11 @@ Example format:
 Your outline:"""
 
         outline_response = agent.alpha_estimator_llm.invoke(outline_prompt)
-        outline = outline_response.content if hasattr(outline_response, "content") else str(outline_response)
+        outline = (
+            outline_response.content
+            if hasattr(outline_response, "content")
+            else str(outline_response)
+        )
         outline = outline.strip()
 
         logger.info(f"Generated outline: {outline[:100]}...")
@@ -954,7 +1044,7 @@ Your outline:"""
         agent._emit_event_from_sync(
             BlogPostProgressEvent(
                 stage="retrieval_pass_1",
-                message=f"Retrieving conceptual information (α=0.7, k={retrieval_k})..."
+                message=f"Retrieving conceptual information (α=0.7, k={retrieval_k})...",
             )
         )
 
@@ -969,7 +1059,7 @@ Your outline:"""
         agent._emit_event_from_sync(
             BlogPostProgressEvent(
                 stage="retrieval_pass_2",
-                message=f"Retrieving examples and use cases (α=0.3, k={retrieval_k})..."
+                message=f"Retrieving examples and use cases (α=0.3, k={retrieval_k})...",
             )
         )
 
@@ -990,7 +1080,9 @@ Your outline:"""
                 seen_content.add(content_hash)
                 unique_docs.append(doc)
 
-        logger.info(f"Retrieved {len(unique_docs)} unique documents ({len(concepts_docs)} concepts, {len(examples_docs)} examples)")
+        logger.info(
+            f"Retrieved {len(unique_docs)} unique documents ({len(concepts_docs)} concepts, {len(examples_docs)} examples)"
+        )
 
         # Format context
         context_parts = []
@@ -1005,7 +1097,7 @@ Your outline:"""
         agent._emit_event_from_sync(
             BlogPostProgressEvent(
                 stage="generation",
-                message=f"Generating narrative blog post (~{target_length} words)..."
+                message=f"Generating narrative blog post (~{target_length} words)...",
             )
         )
 
@@ -1065,7 +1157,9 @@ Write the complete blog post now:"""
         }
 
 
-def article_content_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
+def article_content_generator_node(
+    state: CustomAgentState, agent: "EcommerceSearchAgent"
+) -> Dict[str, Any]:
     """
     Generate a technical article (800-1500 words).
 
@@ -1110,7 +1204,9 @@ def article_content_generator_node(state: CustomAgentState, agent: "EcommerceSea
             "content_output": error_msg,
         }
 
-    logger.info(f"Technical article generation: Using query '{user_query[:100]}...'")  # Log what query we're using
+    logger.info(
+        f"Technical article generation: Using query '{user_query[:100]}...'"
+    )  # Log what query we're using
 
     # Get content parameters
     params = get_content_params("technical_article")
@@ -1124,7 +1220,7 @@ def article_content_generator_node(state: CustomAgentState, agent: "EcommerceSea
         agent._emit_event_from_sync(
             ArticleProgressEvent(
                 stage="outline",
-                message="Creating technical article outline (problem → solution → implementation)..."
+                message="Creating technical article outline (problem → solution → implementation)...",
             )
         )
 
@@ -1147,7 +1243,11 @@ Example format:
 Your outline:"""
 
         outline_response = agent.alpha_estimator_llm.invoke(outline_prompt)
-        outline = outline_response.content if hasattr(outline_response, "content") else str(outline_response)
+        outline = (
+            outline_response.content
+            if hasattr(outline_response, "content")
+            else str(outline_response)
+        )
         outline = outline.strip()
 
         logger.info(f"Generated outline: {outline[:100]}...")
@@ -1156,7 +1256,7 @@ Your outline:"""
         agent._emit_event_from_sync(
             ArticleProgressEvent(
                 stage="retrieval_pass_1",
-                message=f"Retrieving problem space and context (α=0.5, k={retrieval_k})..."
+                message=f"Retrieving problem space and context (α=0.5, k={retrieval_k})...",
             )
         )
 
@@ -1171,7 +1271,7 @@ Your outline:"""
         agent._emit_event_from_sync(
             ArticleProgressEvent(
                 stage="retrieval_pass_2",
-                message=f"Retrieving solution patterns and architecture (α=0.4, k={retrieval_k})..."
+                message=f"Retrieving solution patterns and architecture (α=0.4, k={retrieval_k})...",
             )
         )
 
@@ -1186,7 +1286,7 @@ Your outline:"""
         agent._emit_event_from_sync(
             ArticleProgressEvent(
                 stage="retrieval_pass_3",
-                message=f"Retrieving implementation details and code (α=0.3, k={retrieval_k})..."
+                message=f"Retrieving implementation details and code (α=0.3, k={retrieval_k})...",
             )
         )
 
@@ -1207,7 +1307,9 @@ Your outline:"""
                 seen_content.add(content_hash)
                 unique_docs.append(doc)
 
-        logger.info(f"Retrieved {len(unique_docs)} unique documents ({len(problem_docs)} problem, {len(solution_docs)} solution, {len(implementation_docs)} implementation)")
+        logger.info(
+            f"Retrieved {len(unique_docs)} unique documents ({len(problem_docs)} problem, {len(solution_docs)} solution, {len(implementation_docs)} implementation)"
+        )
 
         # Format context - keep it concise to leave room for generation
         context_parts = []
@@ -1222,7 +1324,7 @@ Your outline:"""
         agent._emit_event_from_sync(
             ArticleProgressEvent(
                 stage="generation",
-                message=f"Generating technical deep-dive article (~{target_length} words)..."
+                message=f"Generating technical deep-dive article (~{target_length} words)...",
             )
         )
 
@@ -1284,7 +1386,9 @@ Write the complete technical article now. Remember: at least {target_length} wor
         }
 
 
-def tutorial_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgent") -> Dict[str, Any]:
+def tutorial_generator_node(
+    state: CustomAgentState, agent: "EcommerceSearchAgent"
+) -> Dict[str, Any]:
     """
     Generate a step-by-step tutorial (~1000 words).
 
@@ -1328,7 +1432,9 @@ def tutorial_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgen
             "content_output": error_msg,
         }
 
-    logger.info(f"Tutorial generation: Using query '{user_query[:100]}...'")  # Log what query we're using
+    logger.info(
+        f"Tutorial generation: Using query '{user_query[:100]}...'"
+    )  # Log what query we're using
 
     # Get content parameters
     params = get_content_params("tutorial")
@@ -1341,8 +1447,7 @@ def tutorial_generator_node(state: CustomAgentState, agent: "EcommerceSearchAgen
         # Stage 1: Create outline
         agent._emit_event_from_sync(
             TutorialProgressEvent(
-                stage="outline",
-                message="Creating tutorial outline with steps..."
+                stage="outline", message="Creating tutorial outline with steps..."
             )
         )
 
@@ -1363,7 +1468,11 @@ Example format:
 Your tutorial steps:"""
 
         outline_response = agent.alpha_estimator_llm.invoke(outline_prompt)
-        outline = outline_response.content if hasattr(outline_response, "content") else str(outline_response)
+        outline = (
+            outline_response.content
+            if hasattr(outline_response, "content")
+            else str(outline_response)
+        )
         outline = outline.strip()
 
         logger.info(f"Generated tutorial outline: {outline[:100]}...")
@@ -1372,7 +1481,7 @@ Your tutorial steps:"""
         agent._emit_event_from_sync(
             TutorialProgressEvent(
                 stage="concept_retrieval",
-                message=f"Retrieving conceptual background (α=0.6, k={retrieval_k})..."
+                message=f"Retrieving conceptual background (α=0.6, k={retrieval_k})...",
             )
         )
 
@@ -1387,7 +1496,7 @@ Your tutorial steps:"""
         agent._emit_event_from_sync(
             TutorialProgressEvent(
                 stage="example_retrieval",
-                message=f"Retrieving code examples (α=0.3, k={retrieval_k})..."
+                message=f"Retrieving code examples (α=0.3, k={retrieval_k})...",
             )
         )
 
@@ -1408,7 +1517,9 @@ Your tutorial steps:"""
                 seen_content.add(content_hash)
                 unique_docs.append(doc)
 
-        logger.info(f"Retrieved {len(unique_docs)} unique documents ({len(concepts_docs)} concepts, {len(examples_docs)} examples)")
+        logger.info(
+            f"Retrieved {len(unique_docs)} unique documents ({len(concepts_docs)} concepts, {len(examples_docs)} examples)"
+        )
 
         # Format context
         context_parts = []
@@ -1423,7 +1534,7 @@ Your tutorial steps:"""
         agent._emit_event_from_sync(
             TutorialProgressEvent(
                 stage="generation",
-                message=f"Generating step-by-step tutorial (~{target_length} words)..."
+                message=f"Generating step-by-step tutorial (~{target_length} words)...",
             )
         )
 

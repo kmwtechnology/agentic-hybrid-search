@@ -18,30 +18,30 @@ Tests cover:
 - Real Gemini API integration (not mocked in integration tests)
 """
 
-import pytest
 import json
-from unittest.mock import Mock, AsyncMock, MagicMock, patch
-from typing import List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
-from langchain_core.messages import HumanMessage, AIMessage
+import pytest
 from langchain_core.documents import Document
+from langchain_core.messages import AIMessage, HumanMessage
 
 from agent_state import CustomAgentState
-from content_generators import (
-    content_type_classifier_node,
-    get_content_params,
-    _is_vague_documentation_request,
-    format_clarification_resolver_node,
-)
 from api.schemas.events import (
-    ContentTypeClassificationEvent,
-    ClarificationRequestedEvent,
-    SocialPostProgressEvent,
-    BlogPostProgressEvent,
     ArticleProgressEvent,
-    TutorialProgressEvent,
+    BlogPostProgressEvent,
+    ClarificationRequestedEvent,
     ContentCompleteEvent,
+    ContentTypeClassificationEvent,
+    SocialPostProgressEvent,
+    TutorialProgressEvent,
+)
+from content_generators import (
+    _is_vague_documentation_request,
+    content_type_classifier_node,
+    format_clarification_resolver_node,
+    get_content_params,
 )
 
 
@@ -111,9 +111,7 @@ class TestContentTypeClassifier:
         """Test classification of technical article request."""
         state = CustomAgentState(
             messages=[
-                HumanMessage(
-                    content="Create a technical deep-dive on implementing hybrid search"
-                )
+                HumanMessage(content="Create a technical deep-dive on implementing hybrid search")
             ]
         )
 
@@ -389,9 +387,7 @@ class TestContentGenerationEventEmission:
 
     def test_clarification_event_emitted_for_vague_query(self, mock_agent):
         """Test ClarificationRequestedEvent is emitted for vague queries."""
-        state = CustomAgentState(
-            messages=[HumanMessage(content="Write a blog post")]
-        )
+        state = CustomAgentState(messages=[HumanMessage(content="Write a blog post")])
 
         classification = MagicMock()
         classification.content_type = "blog_post"
@@ -534,9 +530,7 @@ class TestContentClassificationErrorHandling:
 
     def test_classification_defaults_on_invalid_type(self, mock_agent):
         """Test classifier defaults to comprehensive_docs for invalid type."""
-        state = CustomAgentState(
-            messages=[HumanMessage(content="Create something")]
-        )
+        state = CustomAgentState(messages=[HumanMessage(content="Create something")])
 
         classification = MagicMock()
         classification.content_type = "invalid_format"
@@ -557,14 +551,10 @@ class TestContentClassificationErrorHandling:
 
     def test_classification_handles_llm_exception(self, mock_agent):
         """Test classifier handles LLM exceptions gracefully."""
-        state = CustomAgentState(
-            messages=[HumanMessage(content="Write a post")]
-        )
+        state = CustomAgentState(messages=[HumanMessage(content="Write a post")])
 
         structured_llm = MagicMock()
-        structured_llm.invoke = MagicMock(
-            side_effect=Exception("LLM API error")
-        )
+        structured_llm.invoke = MagicMock(side_effect=Exception("LLM API error"))
         mock_agent.alpha_estimator_llm.with_structured_output = MagicMock(
             return_value=structured_llm
         )
@@ -573,7 +563,9 @@ class TestContentClassificationErrorHandling:
 
         # Should gracefully default and continue
         assert result["content_type"] == "comprehensive_docs"
-        assert "error" in result["content_type_confidence"] or result["content_type_confidence"] <= 0.5
+        assert (
+            "error" in result["content_type_confidence"] or result["content_type_confidence"] <= 0.5
+        )
 
     def test_classification_handles_empty_messages(self, mock_agent):
         """Test classifier handles empty message list."""
@@ -598,9 +590,9 @@ class TestContentTypeQueryExpansion:
         agent._emit_event_from_sync = MagicMock()
         # Mock expansion of "Write a post" → "Write a post about headphones"
         agent._expand_vague_query = MagicMock(
-            side_effect=lambda q, m: "Write a post about wireless headphones"
-            if "post" in q.lower()
-            else q
+            side_effect=lambda q, m: (
+                "Write a post about wireless headphones" if "post" in q.lower() else q
+            )
         )
         return agent
 

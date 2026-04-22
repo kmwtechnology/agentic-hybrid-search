@@ -11,9 +11,10 @@ Tests the final Agent node's ability to generate intent-specific responses:
 Verifies response format, content, and intent alignment.
 """
 
+from unittest.mock import MagicMock, Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 
 @pytest.mark.integration
@@ -143,7 +144,9 @@ class TestAgentResponseFormatByIntent:
         ]
 
         # Simulate agent response for follow_up
-        response = "Based on your search for wireless headphones, here are cheaper alternatives:\n\n"
+        response = (
+            "Based on your search for wireless headphones, here are cheaper alternatives:\n\n"
+        )
         response += "Budget options (under $100):\n"
         response += "- Various brands available in the $50-$100 range\n"
         response += "- May have fewer features than premium models\n"
@@ -255,9 +258,10 @@ class TestIntentSpecificResponseContent:
         )
 
         # Should explicitly mention differences
-        assert "difference" in response.lower() or ("vs" in response and any(
-            x in response.lower() for x in ["better", "more", "less", "higher", "lower"]
-        ))
+        assert "difference" in response.lower() or (
+            "vs" in response
+            and any(x in response.lower() for x in ["better", "more", "less", "higher", "lower"])
+        )
 
     def test_attribute_filter_lists_specifications(self):
         """Test attribute filter responses list specific product specifications."""
@@ -287,9 +291,10 @@ class TestIntentSpecificResponseContent:
         )
 
         # Should reference context
-        assert any(ref in response.lower() for ref in [
-            "previous", "based on", "your search", "also", "similar"
-        ])
+        assert any(
+            ref in response.lower()
+            for ref in ["previous", "based on", "your search", "also", "similar"]
+        )
 
     def test_summary_reviews_key_decisions(self):
         """Test summary responses review key decisions made."""
@@ -322,9 +327,7 @@ class TestResponseErrorHandling:
         )
 
         assert len(response) > 0
-        assert any(x in response.lower() for x in [
-            "couldn't find", "no results", "try", "adjust"
-        ])
+        assert any(x in response.lower() for x in ["couldn't find", "no results", "try", "adjust"])
 
     def test_response_with_low_quality_score(self):
         """Test agent response when reranker score is very low (0.0-0.3)."""
@@ -353,17 +356,16 @@ class TestResponseErrorHandling:
         )
 
         assert len(response) > 0
-        assert any(x in response.lower() for x in [
-            "ambiguous", "clarify", "did you mean", "unclear"
-        ])
+        assert any(
+            x in response.lower() for x in ["ambiguous", "clarify", "did you mean", "unclear"]
+        )
 
     def test_response_graceful_degradation_missing_metadata(self):
         """Test response handles documents with incomplete metadata gracefully."""
         from langchain_core.documents import Document
 
         doc_missing_brand = Document(
-            page_content="Some product",
-            metadata={"source": "unknown"}  # Missing product_brand
+            page_content="Some product", metadata={"source": "unknown"}  # Missing product_brand
         )
 
         response = "Found a product matching your search criteria."

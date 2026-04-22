@@ -39,7 +39,9 @@ FULL_US_PARQUET = ESCI_DATASET_DIR / "esci_products_full_us.parquet"
 
 # Embedding parameters
 PRODUCT_LOCALE = "us"
-EMBEDDING_BATCH_SIZE = 100  # Match Gemini API's optimal batch size (25-30 products per internal request)
+EMBEDDING_BATCH_SIZE = (
+    100  # Match Gemini API's optimal batch size (25-30 products per internal request)
+)
 SAVE_INTERVAL = 50  # Save checkpoint every N batches (~5K products at 100/batch)
 
 
@@ -89,7 +91,9 @@ def _prepare_product_text(row) -> Optional[str]:
     return text if text and len(text) >= 50 else None
 
 
-def _flush_embeddings_to_parquet(df: pd.DataFrame, embedding_cache: dict, parquet_file: Path) -> None:
+def _flush_embeddings_to_parquet(
+    df: pd.DataFrame, embedding_cache: dict, parquet_file: Path
+) -> None:
     """Write pending embeddings to parquet and clear cache."""
     if not embedding_cache:
         return
@@ -102,7 +106,10 @@ def _flush_embeddings_to_parquet(df: pd.DataFrame, embedding_cache: dict, parque
 
     try:
         df.to_parquet(parquet_file)
-        print(f"   [checkpoint] Saved {len(embedding_cache):,} embeddings → {parquet_file.name}", flush=True)
+        print(
+            f"   [checkpoint] Saved {len(embedding_cache):,} embeddings → {parquet_file.name}",
+            flush=True,
+        )
     except Exception as e:
         logger.warning(f"Could not save embeddings to parquet: {e}")
 
@@ -189,7 +196,9 @@ def generate_embeddings(force_resample: bool = False) -> int:
                 break  # success
             except Exception as e:
                 error_str = str(e)
-                if ("RESOURCE_EXHAUSTED" in error_str or "429" in error_str) and attempt < max_retries - 1:
+                if (
+                    "RESOURCE_EXHAUSTED" in error_str or "429" in error_str
+                ) and attempt < max_retries - 1:
                     # Parse retry delay and increase pacing
                     match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_str)
                     wait_secs = int(float(match.group(1))) + 1 if match else 30
@@ -235,7 +244,9 @@ def generate_embeddings(force_resample: bool = False) -> int:
         _flush_embeddings_to_parquet(df, embedding_cache, FULL_US_PARQUET)
 
     elapsed_total = time.time() - start_time
-    print(f"   ✓ Generated {total_embedded:,} embeddings in {elapsed_total:.1f}s ({total_embedded/elapsed_total:.0f}/s)")
+    print(
+        f"   ✓ Generated {total_embedded:,} embeddings in {elapsed_total:.1f}s ({total_embedded/elapsed_total:.0f}/s)"
+    )
     return total_embedded
 
 
@@ -264,7 +275,7 @@ Examples:
   python generate_embeddings.py              # Generate all embeddings
   python generate_embeddings.py --resample   # Force re-read and regenerate
   python generate_embeddings.py --stats      # Show cache stats
-        """
+        """,
     )
     parser.add_argument(
         "--resample",
@@ -279,10 +290,7 @@ Examples:
     args = parser.parse_args()
 
     # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     try:
         if args.stats:
@@ -296,6 +304,7 @@ Examples:
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

@@ -14,9 +14,8 @@ import ssl
 import time
 from typing import Optional
 
-import pytest
 import httpx
-
+import pytest
 
 # Configuration
 CLOUD_RUN_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
@@ -42,9 +41,7 @@ class TestCloudRunConnectivity:
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(f"{CLOUD_RUN_URL}/api/health")
 
-        assert response.status_code == 200, (
-            f"Service not responding: {response.status_code}"
-        )
+        assert response.status_code == 200, f"Service not responding: {response.status_code}"
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -57,9 +54,7 @@ class TestCloudRunConnectivity:
         with httpx.Client(verify=True, timeout=TIMEOUT) as client:
             response = client.get(f"{CLOUD_RUN_URL}/api/health")
 
-        assert response.status_code == 200, (
-            "HTTPS certificate validation failed"
-        )
+        assert response.status_code == 200, "HTTPS certificate validation failed"
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -69,9 +64,9 @@ class TestCloudRunConnectivity:
             pytest.skip("CLOUD_RUN_URL not set")
 
         url = os.environ.get("CLOUD_RUN_URL")
-        assert url.startswith("http://") or url.startswith("https://"), (
-            f"Invalid CLOUD_RUN_URL format: {url}"
-        )
+        assert url.startswith("http://") or url.startswith(
+            "https://"
+        ), f"Invalid CLOUD_RUN_URL format: {url}"
 
 
 class TestRequestTimeout:
@@ -144,17 +139,11 @@ class TestGracefulShutdown:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Send a message
-                msg = json.dumps({
-                    "query": "test query",
-                    "session_id": thread_id
-                })
+                msg = json.dumps({"query": "test query", "session_id": thread_id})
                 await websocket.send(msg)
 
                 # Should receive response without abrupt termination
-                response = await asyncio.wait_for(
-                    websocket.recv(),
-                    timeout=TIMEOUT
-                )
+                response = await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
                 assert response is not None
         except asyncio.TimeoutError:
             pytest.fail("Request timed out during graceful shutdown test")
@@ -223,10 +212,7 @@ class TestHorizontalScaling:
         def make_request(query_id: int):
             with httpx.Client(timeout=TIMEOUT) as client:
                 headers = {"Authorization": f"Bearer {API_KEY}"}
-                response = client.get(
-                    f"{CLOUD_RUN_URL}/api/conversations",
-                    headers=headers
-                )
+                response = client.get(f"{CLOUD_RUN_URL}/api/conversations", headers=headers)
             # Origin-restricted deployment returns 403; treat as "server handled"
             if response.status_code == 403 and "origin" in response.text.lower():
                 origin_blocked[0] = True
@@ -299,9 +285,7 @@ class TestEnvironmentConfiguration:
         ]
 
         for pattern in sensitive_patterns:
-            assert pattern not in response_text, (
-                f"Potential credential leak in response: {pattern}"
-            )
+            assert pattern not in response_text, f"Potential credential leak in response: {pattern}"
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -312,15 +296,16 @@ class TestEnvironmentConfiguration:
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(
                 f"{CLOUD_RUN_URL}/api/conversations",
-                headers={"Authorization": "Bearer obviously-fake-key-xyz"}
+                headers={"Authorization": "Bearer obviously-fake-key-xyz"},
             )
 
         if response.status_code == 429:
             pytest.skip("Rate limited from prior burst test; cannot verify auth rejection")
         # Should reject with 401/403, not 500 (which would mean misconfiguration)
-        assert response.status_code in [401, 403], (
-            f"API key validation failed: {response.status_code}"
-        )
+        assert response.status_code in [
+            401,
+            403,
+        ], f"API key validation failed: {response.status_code}"
 
 
 class TestDatabaseConnectivity:
@@ -372,9 +357,7 @@ class TestOpenSearchIndex:
         data = response.json()
         doc_count = data.get("document_count", 0)
 
-        assert doc_count > 0, (
-            f"No product documents indexed: {doc_count}"
-        )
+        assert doc_count > 0, f"No product documents indexed: {doc_count}"
 
 
 # Make async tests work with pytest

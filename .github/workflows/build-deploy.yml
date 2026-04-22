@@ -226,38 +226,22 @@ jobs:
       - name: Check code formatting with black
         run: |
           cd langchain_agent
-          if black --check . --exclude venv/ --exclude .venv; then
-            echo "✓ Black formatting check passed"
-          else
-            echo "::warning title=Black::Formatting issues found (non-blocking). Run 'black .' locally to fix."
-          fi
+          black --check .
 
       - name: Sort imports with isort
         run: |
           cd langchain_agent
-          if isort --check-only . --skip venv/ --skip .venv; then
-            echo "✓ isort import sorting check passed"
-          else
-            echo "::warning title=isort::Import ordering issues found (non-blocking). Run 'isort .' locally to fix."
-          fi
+          isort --check-only .
 
       - name: Lint with flake8
         run: |
           cd langchain_agent
-          if flake8 . --exclude venv/,.venv --max-line-length=100 --count; then
-            echo "✓ flake8 linting check passed"
-          else
-            echo "::warning title=flake8::Lint issues found (non-blocking)."
-          fi
+          flake8 . --count
 
       - name: Type check with mypy
         run: |
           cd langchain_agent
-          if mypy main.py --ignore-missing-imports; then
-            echo "✓ mypy type checking passed"
-          else
-            echo "::warning title=mypy::Type errors found (non-blocking)."
-          fi
+          mypy main.py
 
   build-docker:
     name: Build Docker Image

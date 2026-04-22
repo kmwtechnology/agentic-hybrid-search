@@ -14,10 +14,10 @@ import time
 from datetime import datetime
 from typing import Optional
 
-import pytest
 import httpx
+import pytest
 from websockets.client import connect as ws_connect
-from websockets.exceptions import WebSocketException, InvalidStatusCode
+from websockets.exceptions import InvalidStatusCode, WebSocketException
 
 
 def _skip_if_origin_blocked(exc: BaseException) -> None:
@@ -126,10 +126,7 @@ class TestAuthentication:
 
         with httpx.Client(timeout=TIMEOUT) as client:
             # Test with conversations endpoint as a quick auth check
-            response = client.get(
-                f"{DEPLOYMENT_URL}/api/conversations",
-                headers=headers
-            )
+            response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
 
         # Should get 200 (or 400 for bad params) but NOT 401 auth error.
         # Accept 403 only when origin-restricted (deployment blocks non-UI callers).
@@ -137,9 +134,10 @@ class TestAuthentication:
             pytest.skip("Deployment is origin-restricted; cannot test auth from smoke test")
         if response.status_code == 429:
             pytest.skip("Rate limited; cannot verify auth acceptance")
-        assert response.status_code in [200, 400], (
-            f"Valid API key rejected: {response.status_code} - {response.text}"
-        )
+        assert response.status_code in [
+            200,
+            400,
+        ], f"Valid API key rejected: {response.status_code} - {response.text}"
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -148,16 +146,14 @@ class TestAuthentication:
         headers = {"Authorization": "Bearer invalid-key-12345"}
 
         with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(
-                f"{DEPLOYMENT_URL}/api/conversations",
-                headers=headers
-            )
+            response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
 
         if response.status_code == 429:
             pytest.skip("Rate limited; cannot verify auth rejection")
-        assert response.status_code in [401, 403], (
-            f"Invalid API key should be rejected, got {response.status_code}"
-        )
+        assert response.status_code in [
+            401,
+            403,
+        ], f"Invalid API key should be rejected, got {response.status_code}"
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -168,9 +164,10 @@ class TestAuthentication:
 
         if response.status_code == 429:
             pytest.skip("Rate limited; cannot verify auth rejection")
-        assert response.status_code in [401, 403], (
-            f"Missing API key should be rejected, got {response.status_code}"
-        )
+        assert response.status_code in [
+            401,
+            403,
+        ], f"Missing API key should be rejected, got {response.status_code}"
 
 
 class TestWebSocketConnectivity:
@@ -205,9 +202,9 @@ class TestWebSocketConnectivity:
                 event = json.loads(message)
 
                 assert "event_type" in event, "Missing event_type"
-                assert event["event_type"] == "ConnectionEstablished", (
-                    f"Expected ConnectionEstablished, got {event.get('event_type')}"
-                )
+                assert (
+                    event["event_type"] == "ConnectionEstablished"
+                ), f"Expected ConnectionEstablished, got {event.get('event_type')}"
         except asyncio.TimeoutError:
             pytest.fail("Timeout waiting for ConnectionEstablished event")
         except Exception as e:
@@ -227,10 +224,7 @@ class TestWebSocketConnectivity:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 # Send test message
-                message = json.dumps({
-                    "query": "Find wireless headphones",
-                    "session_id": thread_id
-                })
+                message = json.dumps({"query": "Find wireless headphones", "session_id": thread_id})
                 await websocket.send(message)
 
                 # Should receive events in response
@@ -261,10 +255,7 @@ class TestSearchPipeline:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 # Send search query
-                message = json.dumps({
-                    "query": "Find wireless headphones",
-                    "session_id": thread_id
-                })
+                message = json.dumps({"query": "Find wireless headphones", "session_id": thread_id})
                 await websocket.send(message)
 
                 # Collect response events
@@ -274,10 +265,7 @@ class TestSearchPipeline:
 
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
                         received_events.append(event)
 
@@ -312,10 +300,9 @@ class TestSearchPipeline:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 # Send comparison query
-                message = json.dumps({
-                    "query": "Compare wireless headphones vs earbuds",
-                    "session_id": thread_id
-                })
+                message = json.dumps(
+                    {"query": "Compare wireless headphones vs earbuds", "session_id": thread_id}
+                )
                 await websocket.send(message)
 
                 # Collect response
@@ -325,10 +312,7 @@ class TestSearchPipeline:
 
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
                         received_events.append(event)
 
@@ -358,20 +342,14 @@ class TestSearchPipeline:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 # First search
-                message1 = json.dumps({
-                    "query": "Show me headphones",
-                    "session_id": thread_id
-                })
+                message1 = json.dumps({"query": "Show me headphones", "session_id": thread_id})
                 await websocket.send(message1)
 
                 # Collect first response
                 start_time = time.time()
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
                         if event.get("event_type") == "AgentCompleteEvent":
                             break
@@ -379,10 +357,9 @@ class TestSearchPipeline:
                         break
 
                 # Second message with refinement
-                message2 = json.dumps({
-                    "query": "Now only show wireless ones",
-                    "session_id": thread_id
-                })
+                message2 = json.dumps(
+                    {"query": "Now only show wireless ones", "session_id": thread_id}
+                )
                 await websocket.send(message2)
 
                 # Collect refined response
@@ -390,10 +367,7 @@ class TestSearchPipeline:
                 start_time = time.time()
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
                         if event.get("event_type") == "LLMResponseChunkEvent":
                             response_text += event.get("chunk", "")
@@ -422,10 +396,7 @@ class TestCitations:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
-                message = json.dumps({
-                    "query": "Find headphones",
-                    "session_id": thread_id
-                })
+                message = json.dumps({"query": "Find headphones", "session_id": thread_id})
                 await websocket.send(message)
 
                 # Collect complete response
@@ -435,10 +406,7 @@ class TestCitations:
 
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
                         if event.get("event_type") == "LLMResponseChunkEvent":
@@ -450,9 +418,9 @@ class TestCitations:
                         break
 
                 # Check for citations in metadata
-                assert "citations" in metadata or "sources" in metadata or len(response_text) > 0, (
-                    "Response should include citations or sources"
-                )
+                assert (
+                    "citations" in metadata or "sources" in metadata or len(response_text) > 0
+                ), "Response should include citations or sources"
         except Exception as e:
             _skip_if_origin_blocked(e)
             pytest.fail(f"Citations test failed: {e}")
@@ -472,10 +440,9 @@ class TestResponseTiming:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
-                message = json.dumps({
-                    "query": "Find headphones under $100",
-                    "session_id": thread_id
-                })
+                message = json.dumps(
+                    {"query": "Find headphones under $100", "session_id": thread_id}
+                )
 
                 start_time = time.time()
                 await websocket.send(message)
@@ -483,10 +450,7 @@ class TestResponseTiming:
                 # Wait for completion
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
                         if event.get("event_type") == "AgentCompleteEvent":
                             break
@@ -495,9 +459,9 @@ class TestResponseTiming:
 
                 elapsed = time.time() - start_time
                 # Allow up to 8 seconds for search (network overhead)
-                assert elapsed < 8, (
-                    f"Search took {elapsed:.1f}s, should be under 5s (allowing for network)"
-                )
+                assert (
+                    elapsed < 8
+                ), f"Search took {elapsed:.1f}s, should be under 5s (allowing for network)"
         except Exception as e:
             _skip_if_origin_blocked(e)
             pytest.fail(f"Response timing test failed: {e}")
@@ -513,10 +477,12 @@ class TestResponseTiming:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
-                message = json.dumps({
-                    "query": "Generate comparison between wireless and wired headphones",
-                    "session_id": thread_id
-                })
+                message = json.dumps(
+                    {
+                        "query": "Generate comparison between wireless and wired headphones",
+                        "session_id": thread_id,
+                    }
+                )
 
                 start_time = time.time()
                 await websocket.send(message)
@@ -524,10 +490,7 @@ class TestResponseTiming:
                 # Wait for completion
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
                         if event.get("event_type") == "AgentCompleteEvent":
                             break
@@ -536,9 +499,9 @@ class TestResponseTiming:
 
                 elapsed = time.time() - start_time
                 # Allow up to 15 seconds for generation (network overhead)
-                assert elapsed < 15, (
-                    f"Generation took {elapsed:.1f}s, should be under 10s (allowing for network)"
-                )
+                assert (
+                    elapsed < 15
+                ), f"Generation took {elapsed:.1f}s, should be under 10s (allowing for network)"
         except Exception as e:
             _skip_if_origin_blocked(e)
             pytest.fail(f"Generation timing test failed: {e}")

@@ -8,11 +8,12 @@ Tests verify:
 4. Return values contain appropriate status/error info
 """
 
-import pytest
-from unittest.mock import patch
 import asyncio
+from unittest.mock import patch
 
-from api.routes.admin import perform_reindex, ReindexResponse, trigger_reindex
+import pytest
+
+from api.routes.admin import ReindexResponse, perform_reindex, trigger_reindex
 
 
 class TestPerformReindexSignature:

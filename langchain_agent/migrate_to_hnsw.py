@@ -26,8 +26,8 @@ import psycopg
 
 from config import (
     DATABASE_URL,
-    HNSW_M,
     HNSW_EF_CONSTRUCTION,
+    HNSW_M,
     IVFFLAT_LISTS,
 )
 
@@ -62,13 +62,11 @@ def get_current_index_type(conn: psycopg.Connection) -> str:
         "hnsw", "ivfflat", or "unknown"
     """
     with conn.cursor() as cur:
-        cur.execute(
-            """
+        cur.execute("""
             SELECT indexdef FROM pg_indexes
             WHERE tablename = 'document_chunks'
               AND indexname = 'document_chunks_embedding_idx'
-            """
-        )
+            """)
         result = cur.fetchone()
 
         if not result:
@@ -219,19 +217,9 @@ def migrate_to_ivfflat(conn: psycopg.Connection, dry_run: bool = False) -> bool:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Migrate between IVFFlat and HNSW vector indexes"
-    )
-    parser.add_argument(
-        "--rollback",
-        action="store_true",
-        help="Rollback to IVFFlat indexes"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Preview changes without executing"
-    )
+    parser = argparse.ArgumentParser(description="Migrate between IVFFlat and HNSW vector indexes")
+    parser.add_argument("--rollback", action="store_true", help="Rollback to IVFFlat indexes")
+    parser.add_argument("--dry-run", action="store_true", help="Preview changes without executing")
     args = parser.parse_args()
 
     print("\n" + "=" * 70)

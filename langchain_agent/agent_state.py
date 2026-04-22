@@ -7,12 +7,12 @@ IMPORTANT: State fields may not be initialized. Always use state.get(key, defaul
 to access optional fields safely. Only 'messages' is guaranteed to exist.
 """
 
-from typing import Sequence, List, Annotated, Optional
-from typing_extensions import TypedDict
+from typing import Annotated, List, Optional, Sequence
 
-from langchain_core.messages import BaseMessage
 from langchain_core.documents import Document
+from langchain_core.messages import BaseMessage
 from langgraph.graph import add_messages
+from typing_extensions import TypedDict
 
 
 class CustomAgentState(TypedDict, total=False):
@@ -87,6 +87,7 @@ class CustomAgentState(TypedDict, total=False):
             # Return updates (only modified fields)
             return {"custom_field": value}
     """
+
     # Core message state (required - managed by add_messages reducer)
     messages: Annotated[Sequence[BaseMessage], add_messages]
 

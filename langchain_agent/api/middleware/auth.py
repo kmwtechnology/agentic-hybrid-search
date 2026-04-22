@@ -12,7 +12,7 @@ import hmac
 import sys
 from typing import Optional
 
-from fastapi import Request, HTTPException, WebSocket, status
+from fastapi import HTTPException, Request, WebSocket, status
 from fastapi.security import APIKeyHeader
 
 # Add parent directory to path for config import
@@ -25,6 +25,7 @@ api_key_header = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
 
 class AuthConfigurationError(Exception):
     """Raised when API_KEY is not configured."""
+
     pass
 
 
@@ -99,10 +100,7 @@ async def verify_websocket_api_key(websocket: WebSocket) -> bool:
     """
     # Validate API_KEY is configured
     if not API_KEY:
-        await websocket.close(
-            code=4002,
-            reason="Server misconfiguration: API_KEY not set"
-        )
+        await websocket.close(code=4002, reason="Server misconfiguration: API_KEY not set")
         return False
 
     # Get API key from query parameter
@@ -110,8 +108,7 @@ async def verify_websocket_api_key(websocket: WebSocket) -> bool:
 
     if not provided_key:
         await websocket.close(
-            code=4001,
-            reason="API key required. Provide api_key query parameter."
+            code=4001, reason="API key required. Provide api_key query parameter."
         )
         return False
 

@@ -6,7 +6,7 @@ providing full observability into every step and decision.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Annotated
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -18,10 +18,14 @@ from pydantic import BaseModel, Field, field_validator
 ConfidenceScore = Annotated[float, Field(ge=0.0, le=1.0, description="Score in range [0.0, 1.0]")]
 
 # Alpha bounded to [0.0, 1.0] - represents lexical vs semantic weight
-AlphaWeight = Annotated[float, Field(ge=0.0, le=1.0, description="Alpha weight: 0.0=lexical, 1.0=semantic")]
+AlphaWeight = Annotated[
+    float, Field(ge=0.0, le=1.0, description="Alpha weight: 0.0=lexical, 1.0=semantic")
+]
 
 # Progress bounded to [0.0, 1.0]
-ProgressPercent = Annotated[float, Field(ge=0.0, le=1.0, description="Progress percentage [0.0, 1.0]")]
+ProgressPercent = Annotated[
+    float, Field(ge=0.0, le=1.0, description="Progress percentage [0.0, 1.0]")
+]
 
 
 # ============================================================================
@@ -109,7 +113,9 @@ class QueryEvaluationEvent(BaseEvent):
     query: str
     alpha: AlphaWeight  # 0.0 (lexical) to 1.0 (semantic), validated at construction
     query_analysis: str  # LLM's reasoning
-    search_strategy: Literal["lexical-heavy", "balanced", "semantic-heavy"]  # Validated set of strategies
+    search_strategy: Literal[
+        "lexical-heavy", "balanced", "semantic-heavy"
+    ]  # Validated set of strategies
 
     @field_validator("search_strategy", mode="after")
     @classmethod
@@ -155,7 +161,9 @@ class OpenSearchQueryEvent(BaseEvent):
     query: str
     alpha: AlphaWeight  # 0.0=lexical, 1.0=semantic
     filters: Optional[List[Dict[str, Any]]] = None  # Applied attribute filters
-    filter_summary: Optional[str] = None  # Human-readable summary (e.g., "brand: Sony, color: blue")
+    filter_summary: Optional[str] = (
+        None  # Human-readable summary (e.g., "brand: Sony, color: blue")
+    )
     intent: str  # intent that triggered the search
 
 
@@ -197,15 +205,15 @@ class HybridSearchStartEvent(BaseEvent):
 
 
 class SearchCandidate(BaseModel):
-  """A single search candidate before reranking."""
+    """A single search candidate before reranking."""
 
-  source: str
-  snippet: str
-  full_content: Optional[str] = None
-  vector_score: Optional[float] = None
-  text_score: Optional[float] = None
-  rrf_score: Optional[float] = None
-  url: Optional[str] = None
+    source: str
+    snippet: str
+    full_content: Optional[str] = None
+    vector_score: Optional[float] = None
+    text_score: Optional[float] = None
+    rrf_score: Optional[float] = None
+    url: Optional[str] = None
 
 
 class HybridSearchResultEvent(BaseEvent):
@@ -232,27 +240,31 @@ class RerankerStartEvent(BaseEvent):
 
 
 class RerankedDocument(BaseModel):
-  """A document after reranking with its new score and rank."""
+    """A document after reranking with its new score and rank."""
 
-  source: str
-  score: ConfidenceScore  # Cross-encoder score (0.0-1.0), validated
-  rank: Annotated[int, Field(gt=0, description="New rank after reranking (1-indexed, must be > 0)")]
-  original_rank: Annotated[int, Field(gt=0, description="Rank before reranking (1-indexed, must be > 0)")]
-  snippet: str
-  rank_change: int = 0  # How much the rank changed (computed: rank - original_rank)
-  url: Optional[str] = None
+    source: str
+    score: ConfidenceScore  # Cross-encoder score (0.0-1.0), validated
+    rank: Annotated[
+        int, Field(gt=0, description="New rank after reranking (1-indexed, must be > 0)")
+    ]
+    original_rank: Annotated[
+        int, Field(gt=0, description="Rank before reranking (1-indexed, must be > 0)")
+    ]
+    snippet: str
+    rank_change: int = 0  # How much the rank changed (computed: rank - original_rank)
+    url: Optional[str] = None
 
-  @field_validator("rank_change", mode="after")
-  @classmethod
-  def validate_rank_change(cls, rank_change: int, info) -> int:
-    """Ensure rank_change is consistent with rank and original_rank."""
-    rank = info.data.get("rank")
-    original_rank = info.data.get("original_rank")
-    if rank is not None and original_rank is not None:
-      expected = rank - original_rank
-      if rank_change != expected:
-        raise ValueError(f"rank_change={rank_change} but rank - original_rank = {expected}")
-    return rank_change
+    @field_validator("rank_change", mode="after")
+    @classmethod
+    def validate_rank_change(cls, rank_change: int, info) -> int:
+        """Ensure rank_change is consistent with rank and original_rank."""
+        rank = info.data.get("rank")
+        original_rank = info.data.get("original_rank")
+        if rank is not None and original_rank is not None:
+            expected = rank - original_rank
+            if rank_change != expected:
+                raise ValueError(f"rank_change={rank_change} but rank - original_rank = {expected}")
+        return rank_change
 
 
 class RerankerResultEvent(BaseEvent):
@@ -616,7 +628,9 @@ class ArticleProgressEvent(BaseEvent):
 
     type: Literal["article_progress"] = "article_progress"
     node: Literal["article_content_generator"] = "article_content_generator"
-    stage: Literal["outline", "retrieval_pass_1", "retrieval_pass_2", "retrieval_pass_3", "generation"]
+    stage: Literal[
+        "outline", "retrieval_pass_1", "retrieval_pass_2", "retrieval_pass_3", "generation"
+    ]
     message: str
 
 
@@ -657,7 +671,9 @@ class ClarificationRequestedEvent(BaseEvent):
     node: Literal["content_type_classifier"] = "content_type_classifier"
     clarification_type: str  # "format" | "topic" | "content_type" (deprecated)
     reason: str  # e.g., "Query doesn't specify content format"
-    candidates: List[Dict[str, Any]]  # [{"type": "blog_post", "confidence": 0.0, "description": "..."}, ...]
+    candidates: List[
+        Dict[str, Any]
+    ]  # [{"type": "blog_post", "confidence": 0.0, "description": "..."}, ...]
     threshold: float  # Always 1.0 for vagueness-based clarification (not confidence-based)
     original_query: str  # User's original query
 

@@ -18,11 +18,12 @@ Usage:
     deleted = cleanup_orphaned_checkpoints()
 """
 
-import psycopg
 from datetime import datetime, timedelta
 from typing import Optional
 
-from config import DATABASE_URL, CHECKPOINT_KEEP_VERSIONS, CHECKPOINT_COMPACTION_DAYS
+import psycopg
+
+from config import CHECKPOINT_COMPACTION_DAYS, CHECKPOINT_KEEP_VERSIONS, DATABASE_URL
 
 
 def compact_checkpoints(
@@ -50,7 +51,8 @@ def compact_checkpoints(
         with conn.cursor() as cur:
             if thread_id:
                 # Compact specific thread - delete old blobs not in recent checkpoints
-                cur.execute("""
+                cur.execute(
+                    """
                     DELETE FROM checkpoint_blobs
                     WHERE thread_id = %s
                     AND checkpoint_id NOT IN (
@@ -60,7 +62,9 @@ def compact_checkpoints(
                         ORDER BY checkpoint_id DESC
                         LIMIT %s
                     )
-                """, (thread_id, thread_id, keep_versions))
+                """,
+                    (thread_id, thread_id, keep_versions),
+                )
             else:
                 # Compact all threads - more complex query to handle per-thread limits
                 # First get list of threads, then compact each
@@ -69,7 +73,8 @@ def compact_checkpoints(
 
                 total_deleted = 0
                 for tid in threads:
-                    cur.execute("""
+                    cur.execute(
+                        """
                         DELETE FROM checkpoint_blobs
                         WHERE thread_id = %s
                         AND checkpoint_id NOT IN (
@@ -79,7 +84,9 @@ def compact_checkpoints(
                             ORDER BY checkpoint_id DESC
                             LIMIT %s
                         )
-                    """, (tid, tid, keep_versions))
+                    """,
+                        (tid, tid, keep_versions),
+                    )
                     total_deleted += cur.rowcount
 
                 conn.commit()
@@ -175,8 +182,12 @@ if __name__ == "__main__":
     parser.add_argument("--compact", action="store_true", help="Compact old checkpoints")
     parser.add_argument("--cleanup", action="store_true", help="Remove orphaned checkpoints")
     parser.add_argument("--thread-id", type=str, help="Specific thread to compact")
-    parser.add_argument("--keep-versions", type=int, default=CHECKPOINT_KEEP_VERSIONS,
-                        help=f"Versions to keep (default: {CHECKPOINT_KEEP_VERSIONS})")
+    parser.add_argument(
+        "--keep-versions",
+        type=int,
+        default=CHECKPOINT_KEEP_VERSIONS,
+        help=f"Versions to keep (default: {CHECKPOINT_KEEP_VERSIONS})",
+    )
 
     args = parser.parse_args()
 
@@ -189,10 +200,7 @@ if __name__ == "__main__":
         print(f"  Estimated Size: {stats['estimated_size']}")
 
     if args.compact:
-        deleted = compact_checkpoints(
-            thread_id=args.thread_id,
-            keep_versions=args.keep_versions
-        )
+        deleted = compact_checkpoints(thread_id=args.thread_id, keep_versions=args.keep_versions)
         print(f"Compacted {deleted} checkpoint blob(s)")
 
     if args.cleanup:

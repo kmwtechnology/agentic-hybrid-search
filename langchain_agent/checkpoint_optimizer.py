@@ -10,6 +10,7 @@ Usage:
 """
 
 from typing import Any, Tuple
+
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 
@@ -44,9 +45,6 @@ class SelectiveJsonPlusSerializer(JsonPlusSerializer):
         """
         if isinstance(value, dict):
             # Filter out excluded fields before serialization
-            filtered = {
-                k: v for k, v in value.items()
-                if k not in self.EXCLUDED_FIELDS
-            }
+            filtered = {k: v for k, v in value.items() if k not in self.EXCLUDED_FIELDS}
             return super().dumps_typed(filtered)
         return super().dumps_typed(value)

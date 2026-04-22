@@ -21,15 +21,16 @@ Powered by:
 - Observability: Pydantic-validated WebSocket events with real-time streaming
 """
 
-import sys
-import uuid
-import warnings
-import time
 import json
 import logging
+import sys
+import time
+import uuid
+import warnings
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+
 import httpx
 import psycopg
-from typing import Sequence, Tuple, List, Optional, Dict, Any, Union
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -42,29 +43,36 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
+from langchain_core.documents import Document
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from langgraph.graph import StateGraph, END
-from psycopg_pool import ConnectionPool, AsyncConnectionPool
-from langchain_core.messages import SystemMessage, BaseMessage, AIMessage, HumanMessage, ToolMessage
-from langchain_core.documents import Document
+from langgraph.graph import END, StateGraph
+from psycopg_pool import AsyncConnectionPool, ConnectionPool
 
 # Import extracted modules
 from agent_state import CustomAgentState
-from reranker import GeminiReranker
-from vector_store import OpenSearchVectorStore, OpenSearchRetriever
-from link_verifier import LinkVerifier
 from doc_replacer import DocumentReplacer
+from link_verifier import LinkVerifier
+from reranker import GeminiReranker
+from vector_store import OpenSearchRetriever, OpenSearchVectorStore
 
 # Import event types for observability
 try:
     from api.schemas.events import (
-        HybridSearchResultEvent, RerankerStartEvent, SearchCandidate,
-        SearchProgressEvent, RerankerProgressEvent,
-        LinkVerificationEvent, DocumentReplacementEvent,
-        LLMResponseStartEvent, LLMResponseChunkEvent,
-        QueryExpansionEvent, OpenSearchQueryEvent
+        DocumentReplacementEvent,
+        HybridSearchResultEvent,
+        LinkVerificationEvent,
+        LLMResponseChunkEvent,
+        LLMResponseStartEvent,
+        OpenSearchQueryEvent,
+        QueryExpansionEvent,
+        RerankerProgressEvent,
+        RerankerStartEvent,
+        SearchCandidate,
+        SearchProgressEvent,
     )
+
     _EVENTS_AVAILABLE = True
 except ImportError:
     # Event types might not be available in all contexts (e.g., CLI mode)
@@ -85,6 +93,7 @@ except ImportError:
 # LANGSMITH TRACING (Optional - enable with LANGSMITH_API_KEY env var)
 # ============================================================================
 import os
+
 if os.getenv("LANGSMITH_API_KEY"):
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
     os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGSMITH_PROJECT", "agentic-hybrid-search")
@@ -105,42 +114,42 @@ class IntentClassification(BaseModel):
 
 
 from config import (
-    LLM_MODEL,
-    LLM_TEMPERATURE,
-    EMBEDDINGS_MODEL,
-    VECTOR_DIMENSION,
+    COMPACTION_THRESHOLD_PCT,
     DATABASE_URL,
     DB_CONNECTION_KWARGS,
     DB_POOL_MAX_SIZE,
-    VECTOR_COLLECTION_NAME,
-    RETRIEVER_K,
-    RETRIEVER_FETCH_K,
-    RETRIEVER_ALPHA,
-    RETRIEVER_SEARCH_TYPE,
-    ENABLE_QUERY_EVALUATION,
     DEFAULT_ALPHA,
-    QUERY_EVAL_TIMEOUT_MS,
-    GOOGLE_API_KEY,
-    POSTGRES_HOST,
-    POSTGRES_PORT,
-    POSTGRES_USER,
-    POSTGRES_PASSWORD,
-    POSTGRES_DB,
-    ENABLE_RERANKING,
-    RERANKER_MODEL,
-    RERANKER_FETCH_K,
-    RERANKER_TOP_K,
-    RERANKER_WARMUP_ENABLED,
+    EMBEDDINGS_MODEL,
     ENABLE_COMPACTION,
+    ENABLE_QUERY_EVALUATION,
+    ENABLE_RERANKING,
+    GOOGLE_API_KEY,
+    LLM_MODEL,
+    LLM_TEMPERATURE,
     MAX_CONTEXT_TOKENS,
-    COMPACTION_THRESHOLD_PCT,
     MESSAGES_TO_KEEP_FULL,
     MIN_MESSAGES_FOR_COMPACTION,
-    TOKEN_CHAR_RATIO,
+    POSTGRES_DB,
+    POSTGRES_HOST,
+    POSTGRES_PASSWORD,
+    POSTGRES_PORT,
+    POSTGRES_USER,
+    QUERY_EVAL_MAX_TOKENS,
     QUERY_EVAL_MODEL,
     QUERY_EVAL_TEMPERATURE,
-    QUERY_EVAL_MAX_TOKENS,
+    QUERY_EVAL_TIMEOUT_MS,
+    RERANKER_FETCH_K,
+    RERANKER_MODEL,
+    RERANKER_TOP_K,
+    RERANKER_WARMUP_ENABLED,
+    RETRIEVER_ALPHA,
+    RETRIEVER_FETCH_K,
+    RETRIEVER_K,
+    RETRIEVER_SEARCH_TYPE,
     SEARCH_DEFAULTS,
+    TOKEN_CHAR_RATIO,
+    VECTOR_COLLECTION_NAME,
+    VECTOR_DIMENSION,
 )
 
 
@@ -270,10 +279,10 @@ class EcommerceSearchAgent:
         self.alpha_estimator_llm = None  # Lightweight model for query evaluation
 
         # Link verification and document replacement
-        from config import LINK_VERIFICATION_TIMEOUT_MS, LINK_CACHE_TTL_MINUTES
+        from config import LINK_CACHE_TTL_MINUTES, LINK_VERIFICATION_TIMEOUT_MS
+
         self.link_verifier = LinkVerifier(
-            timeout_ms=LINK_VERIFICATION_TIMEOUT_MS,
-            cache_ttl_minutes=LINK_CACHE_TTL_MINUTES
+            timeout_ms=LINK_VERIFICATION_TIMEOUT_MS, cache_ttl_minutes=LINK_CACHE_TTL_MINUTES
         )
         self.doc_replacer = DocumentReplacer()
 
@@ -304,9 +313,10 @@ class EcommerceSearchAgent:
         # Check if OpenSearch index has data
         try:
             from config import OPENSEARCH_INDEX_NAME
+
             count = self.vector_store.client.count(
                 index=OPENSEARCH_INDEX_NAME,
-                body={"query": {"term": {"collection_id": VECTOR_COLLECTION_NAME}}}
+                body={"query": {"term": {"collection_id": VECTOR_COLLECTION_NAME}}},
             )["count"]
             if count == 0:
                 print(f"✗ No documents found in OpenSearch index")
@@ -351,7 +361,9 @@ class EcommerceSearchAgent:
                 max_output_tokens=QUERY_EVAL_MAX_TOKENS,
             )
             self.alpha_structured = self.alpha_estimator_llm.with_structured_output(AlphaEstimation)
-            self.intent_structured = self.alpha_estimator_llm.with_structured_output(IntentClassification)
+            self.intent_structured = self.alpha_estimator_llm.with_structured_output(
+                IntentClassification
+            )
             print("✓ Query evaluator model initialized")
         else:
             self.alpha_estimator_llm = None
@@ -372,9 +384,7 @@ class EcommerceSearchAgent:
 
         # Sync pool for vector store operations
         self.pool = ConnectionPool(
-            conninfo=DATABASE_URL,
-            max_size=DB_POOL_MAX_SIZE,
-            kwargs=connection_kwargs
+            conninfo=DATABASE_URL, max_size=DB_POOL_MAX_SIZE, kwargs=connection_kwargs
         )
 
         # Async pool for checkpointer (required for astream_events)
@@ -382,7 +392,7 @@ class EcommerceSearchAgent:
             conninfo=DATABASE_URL,
             max_size=DB_POOL_MAX_SIZE,
             kwargs=connection_kwargs,
-            open=False  # Will be opened asynchronously
+            open=False,  # Will be opened asynchronously
         )
         print("✓ Postgres connection pools initialized")
 
@@ -401,7 +411,7 @@ class EcommerceSearchAgent:
                 "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
                 "fetch_k": RETRIEVER_FETCH_K,
                 "alpha": RETRIEVER_ALPHA,
-            }
+            },
         )
 
         # Initialize Gemini LLM Reranker
@@ -491,8 +501,12 @@ class EcommerceSearchAgent:
                 user_query = str(msg.content)
                 break
 
-        intent, reasoning, confidence, clarifying_questions = self._classify_intent(user_query, messages)
-        logger.info(f"Intent classification: intent={intent}, confidence={confidence:.2f}, query={user_query[:50] if user_query else '<empty>'}...")
+        intent, reasoning, confidence, clarifying_questions = self._classify_intent(
+            user_query, messages
+        )
+        logger.info(
+            f"Intent classification: intent={intent}, confidence={confidence:.2f}, query={user_query[:50] if user_query else '<empty>'}..."
+        )
 
         # NEW: Category continuity validation for refinement intents
         if intent == "refinement":
@@ -505,13 +519,19 @@ class EcommerceSearchAgent:
 
                 # If categories are very different, downgrade to search
                 if continuity_score < 0.3:
-                    logger.info(f"Category continuity check failed ({continuity_score:.2f}): {category_reasoning} → downgrading to search")
+                    logger.info(
+                        f"Category continuity check failed ({continuity_score:.2f}): {category_reasoning} → downgrading to search"
+                    )
                     intent = "search"
-                    reasoning = f"{category_reasoning}. Treating as new search instead of refinement."
+                    reasoning = (
+                        f"{category_reasoning}. Treating as new search instead of refinement."
+                    )
                     confidence = 0.95  # High confidence that this is a new search
                 # If ambiguous, lower confidence to trigger clarification
                 elif continuity_score < 0.7:
-                    logger.info(f"Category continuity ambiguous ({continuity_score:.2f}): {category_reasoning}")
+                    logger.info(
+                        f"Category continuity ambiguous ({continuity_score:.2f}): {category_reasoning}"
+                    )
                     confidence = min(confidence, 0.65)
                     reasoning = f"{category_reasoning}. Need clarification on intent."
 
@@ -588,7 +608,9 @@ class EcommerceSearchAgent:
             }
 
         intent = state.get("intent", "search")
-        print(f"\n[Query Evaluator] Starting evaluation for query: '{last_user_msg[:80]}...' (intent: {intent})")
+        print(
+            f"\n[Query Evaluator] Starting evaluation for query: '{last_user_msg[:80]}...' (intent: {intent})"
+        )
 
         # FAST PATH: Intent-specific alpha selection (high confidence, no LLM)
         # These patterns are deterministic and highly accurate for e-commerce
@@ -597,10 +619,14 @@ class EcommerceSearchAgent:
         if intent == "comparison":
             alpha = 0.60  # Semantic-heavy for quality/feature differences
             strategy = "Semantic-Heavy (Vector dominant)"
-            reasoning = f"Comparison query: prioritizing semantic search for quality/feature differences"
+            reasoning = (
+                f"Comparison query: prioritizing semantic search for quality/feature differences"
+            )
 
             elapsed = time.time() - start_time
-            logger.info(f"Query evaluation (FAST PATH - comparison): alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
+            logger.info(
+                f"Query evaluation (FAST PATH - comparison): alpha={alpha:.2f}, elapsed={elapsed:.3f}s"
+            )
             return {
                 "alpha": alpha,
                 "query_analysis": reasoning,
@@ -612,10 +638,14 @@ class EcommerceSearchAgent:
         elif intent == "attribute_filter":
             alpha = 0.25  # Lexical-heavy for exact attribute matching
             strategy = "Lexical-Heavy (BM25 dominant)"
-            reasoning = f"Attribute filter query: prioritizing lexical search for exact attribute matches"
+            reasoning = (
+                f"Attribute filter query: prioritizing lexical search for exact attribute matches"
+            )
 
             elapsed = time.time() - start_time
-            logger.info(f"Query evaluation (FAST PATH - attribute_filter): alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
+            logger.info(
+                f"Query evaluation (FAST PATH - attribute_filter): alpha={alpha:.2f}, elapsed={elapsed:.3f}s"
+            )
             return {
                 "alpha": alpha,
                 "query_analysis": reasoning,
@@ -625,12 +655,16 @@ class EcommerceSearchAgent:
 
         # 3. REFINEMENT queries: Adding constraint to prior search (category context + new attribute)
         elif intent == "refinement":
-            alpha = 0.35  # Slightly more semantic than attribute_filter to preserve category context
+            alpha = (
+                0.35  # Slightly more semantic than attribute_filter to preserve category context
+            )
             strategy = "Lexical-Heavy (BM25 dominant)"
             reasoning = "Refinement query: preserving category context while matching new attribute constraint"
 
             elapsed = time.time() - start_time
-            logger.info(f"Query evaluation (FAST PATH - refinement): alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
+            logger.info(
+                f"Query evaluation (FAST PATH - refinement): alpha={alpha:.2f}, elapsed={elapsed:.3f}s"
+            )
             return {
                 "alpha": alpha,
                 "query_analysis": reasoning,
@@ -694,7 +728,9 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 strategy = "Pure Semantic (Vector)"
 
             elapsed = time.time() - start_time
-            logger.info(f"Query evaluation (LLM path): strategy={strategy}, alpha={alpha:.2f}, elapsed={elapsed:.3f}s")
+            logger.info(
+                f"Query evaluation (LLM path): strategy={strategy}, alpha={alpha:.2f}, elapsed={elapsed:.3f}s"
+            )
             logger.debug(f"Query evaluation details: reasoning={reasoning}, query={last_user_msg}")
 
             return {
@@ -709,7 +745,9 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             elapsed = time.time() - start_time
             collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
             fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
-            logger.warning(f"Query evaluation failed: {e}, using default alpha={fallback_alpha}, elapsed={elapsed:.3f}s")
+            logger.warning(
+                f"Query evaluation failed: {e}, using default alpha={fallback_alpha}, elapsed={elapsed:.3f}s"
+            )
             return {
                 "alpha": fallback_alpha,
                 "query_analysis": f"Evaluation failed: {str(e)}",
@@ -748,7 +786,9 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         verification_results = self.link_verifier.verify_urls(urls)
 
         # Count results
-        broken_urls = {url: reason for url, (is_valid, reason) in verification_results.items() if not is_valid}
+        broken_urls = {
+            url: reason for url, (is_valid, reason) in verification_results.items() if not is_valid
+        }
         valid_count = len([is_valid for is_valid, _ in verification_results.values() if is_valid])
         broken_count = len(broken_urls)
 
@@ -829,8 +869,12 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 clarify_response = f"I'm not quite sure what you're asking. Could you help me understand better?\n\n{questions_text}"
             else:
                 # Fallback response if no questions were generated
-                clarify_response = "I'm not quite sure what you're asking. Could you please provide more details?"
-            logger.info(f"Agent: clarify intent detected, asking {len(clarifying_questions)} questions")
+                clarify_response = (
+                    "I'm not quite sure what you're asking. Could you please provide more details?"
+                )
+            logger.info(
+                f"Agent: clarify intent detected, asking {len(clarifying_questions)} questions"
+            )
             return {"messages": [AIMessage(content=clarify_response)]}
 
         logger.info(f"Agent: processing with {len(retrieved_documents)} retrieved documents")
@@ -838,8 +882,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         # Verify citation links if enabled
         if ENABLE_LINK_VERIFICATION and retrieved_documents:
             retrieved_documents = self._verify_and_replace_documents(
-                retrieved_documents,
-                MIN_VALID_DOCUMENTS
+                retrieved_documents, MIN_VALID_DOCUMENTS
             )
 
         # Extract user query
@@ -854,8 +897,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         MIN_RELEVANCE_THRESHOLD = 0.10  # Same as citation suppression threshold
         quality_gate_retried = state.get("quality_gate_retried", False)
         max_relevance = max(
-            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
-            default=0.0
+            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents), default=0.0
         )
 
         if quality_gate_retried and max_relevance < MIN_RELEVANCE_THRESHOLD:
@@ -875,13 +917,15 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         if retrieved_documents:
             context_parts = []
             for i, doc in enumerate(retrieved_documents, 1):
-                title = doc.metadata.get('title', '')
-                source = doc.metadata.get('source', 'unknown')
-                doc_type = doc.metadata.get('doc_type', 'reference')
-                score = doc.metadata.get('reranker_score', 0)
+                title = doc.metadata.get("title", "")
+                source = doc.metadata.get("source", "unknown")
+                doc_type = doc.metadata.get("doc_type", "reference")
+                score = doc.metadata.get("reranker_score", 0)
                 # Format: [Document N: Title] (doc_type, relevance: score)
                 header = f"[Document {i}: {title}]" if title else f"[Document {i}]"
-                context_parts.append(f"{header} ({doc_type}, relevance: {score:.3f})\n{doc.page_content}")
+                context_parts.append(
+                    f"{header} ({doc_type}, relevance: {score:.3f})\n{doc.page_content}"
+                )
             context = "\n\n---\n\n".join(context_parts)
         else:
             context = "No relevant documents were found."
@@ -892,8 +936,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         # Check max relevance score - suppress citations if all docs are irrelevant
         max_relevance = max(
-            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
-            default=0.0
+            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents), default=0.0
         )
         MIN_CITATION_RELEVANCE = 0.10  # Don't cite docs below 10% relevance
 
@@ -942,7 +985,9 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                     label = "Documentation"
                 citations_dict[url] = (label, [i])
         else:
-            logger.info(f"Suppressing citations: max_relevance={max_relevance:.3f} < {MIN_CITATION_RELEVANCE}")
+            logger.info(
+                f"Suppressing citations: max_relevance={max_relevance:.3f} < {MIN_CITATION_RELEVANCE}"
+            )
 
         # Convert to list format with document index prefixes
         citations = []
@@ -974,10 +1019,16 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         elif intent == "refinement":
             # Extract prior search category for explicit feedback
             prior_docs = state.get("prior_search_documents", [])
-            prior_category = self._extract_product_category_from_documents(prior_docs) if prior_docs else ""
+            prior_category = (
+                self._extract_product_category_from_documents(prior_docs) if prior_docs else ""
+            )
             prior_count = len(prior_docs)
 
-            category_context = f"From the {prior_count} {prior_category}" if prior_category else f"From the {prior_count} products"
+            category_context = (
+                f"From the {prior_count} {prior_category}"
+                if prior_category
+                else f"From the {prior_count} products"
+            )
 
             intent_instruction = f"""Your task is to narrow the prior search results by applying the user's new constraint:
 - Start with explicit context: "{category_context} I showed you earlier, here are the ones that match your new criteria:"
@@ -1018,7 +1069,7 @@ GENERAL INSTRUCTIONS:
         # Build messages for LLM
         llm_messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=user_query or "Please summarize the context.")
+            HumanMessage(content=user_query or "Please summarize the context."),
         ]
 
         # Generate response with streaming if available
@@ -1103,10 +1154,12 @@ Return ONLY the query text, nothing else."""
 
         try:
             response = self.alpha_estimator_llm.invoke(prompt)
-            expanded = response.content.strip() if hasattr(response, "content") else str(response).strip()
+            expanded = (
+                response.content.strip() if hasattr(response, "content") else str(response).strip()
+            )
 
             # Remove any quotes the LLM might have added
-            expanded = expanded.strip('"\'')
+            expanded = expanded.strip("\"'")
 
             # Sanity check - don't accept empty or very long expansions
             if not expanded or len(expanded) > 500:
@@ -1117,11 +1170,13 @@ Return ONLY the query text, nothing else."""
                 # Emit query expansion event
                 if QueryExpansionEvent:
                     try:
-                        self._emit_event_from_sync(QueryExpansionEvent(
-                            original_query=query,
-                            expanded_query=expanded,
-                            expansion_reason="Follow-up expanded with conversation context"
-                        ))
+                        self._emit_event_from_sync(
+                            QueryExpansionEvent(
+                                original_query=query,
+                                expanded_query=expanded,
+                                expansion_reason="Follow-up expanded with conversation context",
+                            )
+                        )
                     except Exception as emit_error:
                         logger.debug(f"Could not emit query expansion event: {emit_error}")
 
@@ -1148,7 +1203,9 @@ Return ONLY the query text, nothing else."""
 
         try:
             # Extract first 5 titles for category inference
-            titles = [doc.metadata.get("title", "") for doc in docs[:5] if doc.metadata.get("title")]
+            titles = [
+                doc.metadata.get("title", "") for doc in docs[:5] if doc.metadata.get("title")
+            ]
 
             if not titles:
                 return ""
@@ -1276,9 +1333,7 @@ Query: "{query}" """
 
         # 2. Document ID overlap
         prior_ids = {
-            doc.metadata.get("product_id")
-            for doc in prior_docs
-            if doc.metadata.get("product_id")
+            doc.metadata.get("product_id") for doc in prior_docs if doc.metadata.get("product_id")
         }
         current_ids = {
             doc.metadata.get("product_id")
@@ -1360,12 +1415,15 @@ Return ONLY a JSON object (use null for missing attributes):
 
         try:
             response = self.alpha_estimator_llm.invoke(prompt)
-            text = response.content.strip() if hasattr(response, "content") else str(response).strip()
+            text = (
+                response.content.strip() if hasattr(response, "content") else str(response).strip()
+            )
 
             # Extract JSON from response
             import json
             import re
-            json_match = re.search(r'\{.*?\}', text, re.DOTALL)
+
+            json_match = re.search(r"\{.*?\}", text, re.DOTALL)
             if not json_match:
                 return []
 
@@ -1374,61 +1432,45 @@ Return ONLY a JSON object (use null for missing attributes):
 
             # Build OpenSearch filter clauses (as separate filter objects - they're implicitly AND'd)
             if attributes.get("brand"):
-                filters.append({
-                    "match": {
-                        "product_brand": {
-                            "query": attributes["brand"]
-                        }
-                    }
-                })
+                filters.append({"match": {"product_brand": {"query": attributes["brand"]}}})
 
             if attributes.get("color"):
-                filters.append({
-                    "match": {
-                        "product_color": {
-                            "query": attributes["color"]
-                        }
-                    }
-                })
+                filters.append({"match": {"product_color": {"query": attributes["color"]}}})
 
             # material_or_feature → multi_match against title + content
             if attributes.get("material_or_feature"):
-                filters.append({
-                    "multi_match": {
-                        "query": attributes["material_or_feature"],
-                        "fields": ["title", "chunk_text"],
-                        "type": "best_fields"
+                filters.append(
+                    {
+                        "multi_match": {
+                            "query": attributes["material_or_feature"],
+                            "fields": ["title", "chunk_text"],
+                            "type": "best_fields",
+                        }
                     }
-                })
+                )
 
             # size → multi_match against title + content
             if attributes.get("size"):
-                filters.append({
-                    "multi_match": {
-                        "query": attributes["size"],
-                        "fields": ["title", "chunk_text"],
-                        "type": "best_fields"
+                filters.append(
+                    {
+                        "multi_match": {
+                            "query": attributes["size"],
+                            "fields": ["title", "chunk_text"],
+                            "type": "best_fields",
+                        }
                     }
-                })
+                )
 
             # price range → range filter (if price field exists in index)
             if attributes.get("price_max") is not None:
                 try:
-                    filters.append({
-                        "range": {
-                            "price": {"lte": float(attributes["price_max"])}
-                        }
-                    })
+                    filters.append({"range": {"price": {"lte": float(attributes["price_max"])}}})
                 except (ValueError, TypeError):
                     logger.debug(f"Could not parse price_max: {attributes.get('price_max')}")
 
             if attributes.get("price_min") is not None:
                 try:
-                    filters.append({
-                        "range": {
-                            "price": {"gte": float(attributes["price_min"])}
-                        }
-                    })
+                    filters.append({"range": {"price": {"gte": float(attributes["price_min"])}}})
                 except (ValueError, TypeError):
                     logger.debug(f"Could not parse price_min: {attributes.get('price_min')}")
 
@@ -1478,7 +1520,9 @@ Return ONLY a JSON object (use null for missing attributes):
         except Exception:
             return None
 
-    def _classify_intent(self, user_input: str, messages: Sequence[BaseMessage]) -> tuple[str, str, float, list]:
+    def _classify_intent(
+        self, user_input: str, messages: Sequence[BaseMessage]
+    ) -> tuple[str, str, float, list]:
         """
         Classify user intent using LLM.
 
@@ -1489,11 +1533,12 @@ Return ONLY a JSON object (use null for missing attributes):
             - confidence: 0.0-1.0 confidence score
             - clarifying_questions: List of questions to ask if confidence is low
         """
-        
 
         prompt = self._build_intent_prompt(user_input, messages)
 
-        structured_llm = self.intent_structured or self.llm.with_structured_output(IntentClassification)
+        structured_llm = self.intent_structured or self.llm.with_structured_output(
+            IntentClassification
+        )
         try:
             result = structured_llm.invoke(prompt)
             intent = result.intent.strip().lower()
@@ -1511,20 +1556,33 @@ Return ONLY a JSON object (use null for missing attributes):
             if intent == "refinement":
                 prior_human_msgs = [m for m in messages if isinstance(m, HumanMessage)]
                 if len(prior_human_msgs) <= 1:  # Only the current message, no prior context
-                    logger.info("Refinement intent with no prior context — downgrading to attribute_filter")
+                    logger.info(
+                        "Refinement intent with no prior context — downgrading to attribute_filter"
+                    )
                     intent = "attribute_filter"
 
             return intent, reasoning, confidence, clarifying_questions
         except Exception as e:
             logger.error(f"Intent classification failed: {e}")
-            return "question", f"Classification failed, defaulting to question: {str(e)[:50]}", 0.5, []
-
+            return (
+                "question",
+                f"Classification failed, defaulting to question: {str(e)[:50]}",
+                0.5,
+                [],
+            )
 
     def _build_intent_prompt(self, user_input: str, messages: Sequence[BaseMessage]) -> str:
         history_block = self._build_recent_context(messages, limit=6)
 
         # Available intents for e-commerce product search
-        available_intents = ["search", "comparison", "attribute_filter", "refinement", "follow_up", "summary"]
+        available_intents = [
+            "search",
+            "comparison",
+            "attribute_filter",
+            "refinement",
+            "follow_up",
+            "summary",
+        ]
 
         intents_str = "|".join(available_intents)
         example_intent = "search"
@@ -1647,6 +1705,7 @@ Respond with JSON only. No other text."""
 
         # Extract filename without extension
         import os
+
         filename = os.path.splitext(os.path.basename(path))[0]
 
         # Skip common non-document filenames
@@ -1755,7 +1814,9 @@ Respond with JSON only. No other text."""
             self._emit_streaming_event(completion_event)
 
         stream_elapsed = time.time() - stream_start
-        logger.debug(f"Streaming complete: {chunk_count} chunks, {len(accumulated_content)} chars in {stream_elapsed:.3f}s")
+        logger.debug(
+            f"Streaming complete: {chunk_count} chunks, {len(accumulated_content)} chars in {stream_elapsed:.3f}s"
+        )
 
         return AIMessage(content=accumulated_content)
 
@@ -1797,6 +1858,7 @@ Respond with JSON only. No other text."""
 
         try:
             import asyncio
+
             # Use the stored event loop that was set when emit_callback was assigned
             asyncio.run_coroutine_threadsafe(self.emit_callback(event), self.event_loop)
             # Don't wait for the result - let it run asynchronously
@@ -1901,7 +1963,9 @@ Respond with JSON only. No other text."""
                 if attribute_filters is None:
                     attribute_filters = []
                 attribute_filters.append(product_id_filter)
-                logger.info(f"Retriever (refinement): constraining to {len(prior_product_ids)} prior search product(s)")
+                logger.info(
+                    f"Retriever (refinement): constraining to {len(prior_product_ids)} prior search product(s)"
+                )
 
         # Emit OpenSearch query event with filters and modifications
         if OpenSearchQueryEvent:
@@ -1912,9 +1976,11 @@ Respond with JSON only. No other text."""
                     alpha=alpha,
                     filters=attribute_filters,
                     filter_summary=filter_summary,
-                    intent=intent
+                    intent=intent,
                 )
-                logger.info(f"Retriever: emitting OpenSearch query event - intent={intent}, filters={bool(attribute_filters)}, filter_summary={filter_summary}")
+                logger.info(
+                    f"Retriever: emitting OpenSearch query event - intent={intent}, filters={bool(attribute_filters)}, filter_summary={filter_summary}"
+                )
                 self._emit_event_from_sync(event)
             except Exception as e:
                 logger.error(f"Could not emit OpenSearch query event: {e}", exc_info=True)
@@ -1922,10 +1988,9 @@ Respond with JSON only. No other text."""
         # Emit embedding progress
         if SearchProgressEvent:
             try:
-                self._emit_event_from_sync(SearchProgressEvent(
-                    stage="embedding",
-                    message="Embedding query..."
-                ))
+                self._emit_event_from_sync(
+                    SearchProgressEvent(stage="embedding", message="Embedding query...")
+                )
             except Exception as e:
                 logger.debug(f"Could not emit embedding progress event: {e}")
 
@@ -1936,17 +2001,16 @@ Respond with JSON only. No other text."""
                 "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
                 "fetch_k": RETRIEVER_FETCH_K,
                 "alpha": alpha,
-                "filters": attribute_filters
-            }
+                "filters": attribute_filters,
+            },
         )
 
         # Emit search progress
         if SearchProgressEvent:
             try:
-                self._emit_event_from_sync(SearchProgressEvent(
-                    stage="vector_search",
-                    message="Searching vector index..."
-                ))
+                self._emit_event_from_sync(
+                    SearchProgressEvent(stage="vector_search", message="Searching vector index...")
+                )
             except Exception as e:
                 logger.debug(f"Could not emit vector search progress event: {e}")
 
@@ -1960,20 +2024,20 @@ Respond with JSON only. No other text."""
         # Emit text search progress
         if SearchProgressEvent:
             try:
-                self._emit_event_from_sync(SearchProgressEvent(
-                    stage="text_search",
-                    message="Full-text search complete"
-                ))
+                self._emit_event_from_sync(
+                    SearchProgressEvent(stage="text_search", message="Full-text search complete")
+                )
             except Exception as e:
                 logger.debug(f"Could not emit text search progress event: {e}")
 
         # Emit fusion progress
         if SearchProgressEvent:
             try:
-                self._emit_event_from_sync(SearchProgressEvent(
-                    stage="fusion",
-                    message="Fusing results with Reciprocal Rank Fusion..."
-                ))
+                self._emit_event_from_sync(
+                    SearchProgressEvent(
+                        stage="fusion", message="Fusing results with Reciprocal Rank Fusion..."
+                    )
+                )
             except Exception as e:
                 logger.debug(f"Could not emit fusion progress event: {e}")
 
@@ -1985,7 +2049,11 @@ Respond with JSON only. No other text."""
                     candidates=[
                         SearchCandidate(
                             source=doc.metadata.get("source", "unknown"),
-                            snippet=doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content,
+                            snippet=(
+                                doc.page_content[:200] + "..."
+                                if len(doc.page_content) > 200
+                                else doc.page_content
+                            ),
                             url=doc.metadata.get("url"),
                         )
                         for doc in results[:10]
@@ -2000,11 +2068,17 @@ Respond with JSON only. No other text."""
         # Intent-specific result logging
         result_summary = f"Retrieved {len(results)} documents in {elapsed:.3f}s"
         if intent == "comparison":
-            logger.info(f"Retriever (comparison): {result_summary} - highlighting product differences")
+            logger.info(
+                f"Retriever (comparison): {result_summary} - highlighting product differences"
+            )
         elif intent == "attribute_filter":
-            logger.info(f"Retriever (attribute_filter): {result_summary} - prioritizing attribute matches")
+            logger.info(
+                f"Retriever (attribute_filter): {result_summary} - prioritizing attribute matches"
+            )
         elif intent == "refinement":
-            logger.info(f"Retriever (refinement): {result_summary} - filtered to prior search with new constraint")
+            logger.info(
+                f"Retriever (refinement): {result_summary} - filtered to prior search with new constraint"
+            )
         elif intent == "follow_up":
             logger.info(f"Retriever (follow_up): {result_summary} - refining previous results")
         else:  # search
@@ -2053,33 +2127,39 @@ Respond with JSON only. No other text."""
         # Emit reranker start event
         if RerankerStartEvent:
             try:
-                self._emit_event_from_sync(RerankerStartEvent(
-                    model=RERANKER_MODEL,
-                    candidate_count=len(retrieved_documents),
-                ))
+                self._emit_event_from_sync(
+                    RerankerStartEvent(
+                        model=RERANKER_MODEL,
+                        candidate_count=len(retrieved_documents),
+                    )
+                )
             except Exception as e:
                 logger.debug(f"Could not emit reranker start event: {e}")
 
         # Store original ranks
-        original_sources = [doc.metadata.get('source', 'unknown') for doc in retrieved_documents]
+        original_sources = [doc.metadata.get("source", "unknown") for doc in retrieved_documents]
         for i, doc in enumerate(retrieved_documents, 1):
-            doc.metadata['original_rank'] = i
+            doc.metadata["original_rank"] = i
 
         # Calculate total content size for throughput metrics
         total_content_chars = sum(len(doc.page_content) for doc in retrieved_documents)
         batch_size = self.reranker.batch_size
 
         rerank_start = time.time()
-        logger.info(f"Reranker: processing {len(retrieved_documents)} candidates, batch_size={batch_size}, device={self.reranker.device}")
+        logger.info(
+            f"Reranker: processing {len(retrieved_documents)} candidates, batch_size={batch_size}, device={self.reranker.device}"
+        )
 
         # Emit initial progress
         if RerankerProgressEvent:
             try:
-                self._emit_event_from_sync(RerankerProgressEvent(
-                    stage="scoring",
-                    progress=0.0,
-                    message=f"Scoring {len(retrieved_documents)} documents..."
-                ))
+                self._emit_event_from_sync(
+                    RerankerProgressEvent(
+                        stage="scoring",
+                        progress=0.0,
+                        message=f"Scoring {len(retrieved_documents)} documents...",
+                    )
+                )
             except Exception as e:
                 logger.debug(f"Could not emit reranker progress event: {e}")
 
@@ -2089,11 +2169,13 @@ Respond with JSON only. No other text."""
         # Emit completion progress
         if RerankerProgressEvent:
             try:
-                self._emit_event_from_sync(RerankerProgressEvent(
-                    stage="ranking",
-                    progress=1.0,
-                    message=f"Ranking complete - {len(retrieved_documents)} documents scored"
-                ))
+                self._emit_event_from_sync(
+                    RerankerProgressEvent(
+                        stage="ranking",
+                        progress=1.0,
+                        message=f"Ranking complete - {len(retrieved_documents)} documents scored",
+                    )
+                )
             except Exception as e:
                 logger.debug(f"Could not emit reranker completion event: {e}")
 
@@ -2103,7 +2185,7 @@ Respond with JSON only. No other text."""
 
         # Store reranker scores in metadata
         for i, (doc, score) in enumerate(results_with_scores, 1):
-            doc.metadata['reranker_score'] = score
+            doc.metadata["reranker_score"] = score
 
         # Calculate throughput metrics
         docs_per_sec = len(results) / rerank_elapsed if rerank_elapsed > 0 else 0
@@ -2111,32 +2193,44 @@ Respond with JSON only. No other text."""
         ms_per_doc = (rerank_elapsed * 1000) / len(results) if results else 0
 
         # Log reranking results with detailed timing
-        avg_score = sum(score for _, score in results_with_scores) / len(results_with_scores) if results_with_scores else 0
+        avg_score = (
+            sum(score for _, score in results_with_scores) / len(results_with_scores)
+            if results_with_scores
+            else 0
+        )
         max_score = max((score for _, score in results_with_scores), default=0.0)
 
         # Intent-specific result logging
         result_summary = f"Complete in {rerank_elapsed:.3f}s, top {len(results)} selected, avg_score={avg_score:.4f}, max_score={max_score:.4f}"
         if intent == "comparison":
-            logger.info(f"Reranker (comparison): {result_summary} - prioritizing feature/quality differences")
+            logger.info(
+                f"Reranker (comparison): {result_summary} - prioritizing feature/quality differences"
+            )
         elif intent == "attribute_filter":
-            logger.info(f"Reranker (attribute_filter): {result_summary} - prioritizing attribute accuracy")
+            logger.info(
+                f"Reranker (attribute_filter): {result_summary} - prioritizing attribute accuracy"
+            )
         elif intent == "refinement":
-            logger.info(f"Reranker (refinement): {result_summary} - from prior search with new constraint")
+            logger.info(
+                f"Reranker (refinement): {result_summary} - from prior search with new constraint"
+            )
         elif intent == "follow_up":
             logger.info(f"Reranker (follow_up): {result_summary} - refining previous results")
         else:  # search
             logger.info(f"Reranker (search): {result_summary}")
 
-        logger.debug(f"Reranker throughput: {docs_per_sec:.1f} docs/s, {chars_per_sec:.0f} chars/s, {ms_per_doc:.1f} ms/doc")
+        logger.debug(
+            f"Reranker throughput: {docs_per_sec:.1f} docs/s, {chars_per_sec:.0f} chars/s, {ms_per_doc:.1f} ms/doc"
+        )
 
         # Log individual scores at debug level
         for i, (doc, score) in enumerate(results_with_scores, 1):
-            source = doc.metadata.get('source', 'unknown')
+            source = doc.metadata.get("source", "unknown")
             logger.debug(f"  {i}. score={score:.4f} [{source}]")
 
         # Log order changes
-        reranked_sources = [doc.metadata.get('source', 'unknown') for doc in results]
-        if original_sources[:len(reranked_sources)] != reranked_sources:
+        reranked_sources = [doc.metadata.get("source", "unknown") for doc in results]
+        if original_sources[: len(reranked_sources)] != reranked_sources:
             logger.debug("Reranker: order changed (reranking improved relevance)")
         else:
             logger.debug("Reranker: order unchanged (already optimally ranked)")
@@ -2222,11 +2316,11 @@ Respond with JSON only. No other text."""
 
         # Intent-aware thresholds
         intent_thresholds = {
-            "comparison": 0.55,       # Higher threshold for quality comparisons
-            "attribute_filter": 0.45, # Standard threshold
-            "refinement": 0.45,       # Same as attribute_filter — feature keyword matching is specific
-            "search": 0.50,          # Standard threshold
-            "follow_up": 0.50,       # Standard threshold
+            "comparison": 0.55,  # Higher threshold for quality comparisons
+            "attribute_filter": 0.45,  # Standard threshold
+            "refinement": 0.45,  # Same as attribute_filter — feature keyword matching is specific
+            "search": 0.50,  # Standard threshold
+            "follow_up": 0.50,  # Standard threshold
         }
         quality_threshold = intent_thresholds.get(intent, QUALITY_GATE_THRESHOLD)
 
@@ -2240,7 +2334,9 @@ Respond with JSON only. No other text."""
 
         # Already retried once - accept results
         if state.get("quality_gate_retried", False):
-            logger.info(f"QualityGate: already retried, accepting results (max_score={max_score:.3f})")
+            logger.info(
+                f"QualityGate: already retried, accepting results (max_score={max_score:.3f})"
+            )
             return {
                 "quality_gate_reason": f"Accepted after retry (max_score={max_score:.3f})",
                 "reranker_max_score": max_score,
@@ -2256,7 +2352,9 @@ Respond with JSON only. No other text."""
 
         # Score above threshold - good results, continue
         if max_score >= quality_threshold:
-            logger.info(f"QualityGate ({intent}): PASS - score {max_score:.3f} above threshold {quality_threshold:.2f}")
+            logger.info(
+                f"QualityGate ({intent}): PASS - score {max_score:.3f} above threshold {quality_threshold:.2f}"
+            )
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": f"PASS: max_score {max_score:.3f} >= threshold {quality_threshold:.2f}",
@@ -2272,7 +2370,9 @@ Respond with JSON only. No other text."""
             new_alpha = min(1.0, current_alpha + 0.3)
             direction = "semantic"
 
-        logger.info(f"QualityGate ({intent}): RETRY - score {max_score:.3f} below threshold {quality_threshold:.2f}, alpha {current_alpha:.2f} → {new_alpha:.2f} ({direction}-boost)")
+        logger.info(
+            f"QualityGate ({intent}): RETRY - score {max_score:.3f} below threshold {quality_threshold:.2f}, alpha {current_alpha:.2f} → {new_alpha:.2f} ({direction}-boost)"
+        )
 
         return {
             "alpha": new_alpha,
@@ -2371,18 +2471,14 @@ Respond with JSON only. No other text."""
         # Core pipeline edges
         workflow.add_edge("query_evaluator", "retriever")
         workflow.add_conditional_edges(
-            "summary",
-            self._route_after_summary,
-            {"done": "agent", "continue": "retriever"}
+            "summary", self._route_after_summary, {"done": "agent", "continue": "retriever"}
         )
         workflow.add_edge("retriever", "reranker")
         workflow.add_edge("reranker", "quality_gate")
 
         # Quality gate routing: retry retrieval or continue to agent
         workflow.add_conditional_edges(
-            "quality_gate",
-            self._quality_gate_route,
-            {"retry": "retriever", "continue": "agent"}
+            "quality_gate", self._quality_gate_route, {"retry": "retriever", "continue": "agent"}
         )
 
         # Agent is the final step
@@ -2391,7 +2487,9 @@ Respond with JSON only. No other text."""
         # Compile with checkpointer
         self.app = workflow.compile(checkpointer=self.checkpointer)
 
-        logger.info("Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent")
+        logger.info(
+            "Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent"
+        )
 
     def generate_thread_id(self):
         """Generate a unique thread ID for conversation persistence"""
@@ -2509,13 +2607,18 @@ Conversation:
 Title:"""
 
             response = self.llm.invoke(prompt)
-            title = response.content.strip().strip('"\'')[:50]
+            title = response.content.strip().strip("\"'")[:50]
             return title if title else "Untitled Conversation"
         except Exception as e:
             logger.debug(f"Title generation failed, using fallback: {e}")
             # Fallback: use first user message
             for msg in messages:
-                if hasattr(msg, "type") and msg.type == "human" and hasattr(msg, "content") and msg.content:
+                if (
+                    hasattr(msg, "type")
+                    and msg.type == "human"
+                    and hasattr(msg, "content")
+                    and msg.content
+                ):
                     return str(msg.content)[:50].strip()
             return "Untitled Conversation"
 
@@ -2551,12 +2654,15 @@ Title:"""
             with psycopg.connect(DATABASE_URL) as conn:
                 with conn.cursor() as cur:
                     # Insert or update conversation metadata with new title
-                    cur.execute("""
+                    cur.execute(
+                        """
                         INSERT INTO conversation_metadata (thread_id, title)
                         VALUES (%s, %s)
                         ON CONFLICT (thread_id)
                         DO UPDATE SET title = EXCLUDED.title, updated_at = CURRENT_TIMESTAMP
-                    """, (self.thread_id, title))
+                    """,
+                        (self.thread_id, title),
+                    )
                 conn.commit()
         except psycopg.Error as e:
             logger.warning(f"Database error updating conversation title: {e}")
@@ -2677,7 +2783,7 @@ Summary:"""
         except httpx.ConnectError as e:
             logger.error(
                 f"Connection error while summarizing {len(messages_to_summarize)} messages: {e}",
-                exc_info=True
+                exc_info=True,
             )
             logger.info("Falling back to simple concatenation summary")
             return self._fallback_summarize(messages_to_summarize)
@@ -2685,7 +2791,7 @@ Summary:"""
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(
                 f"JSON/parsing error while summarizing {len(messages_to_summarize)} messages: {e}",
-                exc_info=True
+                exc_info=True,
             )
             logger.info("Falling back to word count summary")
             return self._fallback_summarize(messages_to_summarize)
@@ -2693,7 +2799,7 @@ Summary:"""
         except TimeoutError as e:
             logger.error(
                 f"Timeout while summarizing {len(messages_to_summarize)} messages: {e}",
-                exc_info=True
+                exc_info=True,
             )
             logger.info("Falling back to first/last message summary")
             # Get first and last messages
@@ -2714,12 +2820,14 @@ Summary:"""
         except Exception as e:
             logger.error(
                 f"Unexpected error while summarizing {len(messages_to_summarize)} messages: {type(e).__name__}: {e}",
-                exc_info=True
+                exc_info=True,
             )
             logger.info("Falling back to basic summary")
             return self._fallback_summarize(messages_to_summarize)
 
-    def compact_conversation_if_needed(self, messages: Sequence[BaseMessage]) -> Tuple[Sequence[BaseMessage], bool, int]:
+    def compact_conversation_if_needed(
+        self, messages: Sequence[BaseMessage]
+    ) -> Tuple[Sequence[BaseMessage], bool, int]:
         """
         Check if conversation needs compaction and compact if necessary.
 
@@ -2753,9 +2861,7 @@ Summary:"""
         summary_text = self.summarize_messages(messages_to_compact)
 
         # Create summary message
-        summary_msg = SystemMessage(
-            content=f"[Earlier conversation summary]: {summary_text}"
-        )
+        summary_msg = SystemMessage(content=f"[Earlier conversation summary]: {summary_text}")
 
         # Return compacted messages
         compacted = [summary_msg] + messages_to_keep
@@ -2823,7 +2929,9 @@ Summary:"""
                     if conversations:
                         for i, (thread_id, title, created_at) in enumerate(conversations, 1):
                             # Format the date nicely
-                            date_str = created_at.strftime("%Y-%m-%d %H:%M") if created_at else "Unknown"
+                            date_str = (
+                                created_at.strftime("%Y-%m-%d %H:%M") if created_at else "Unknown"
+                            )
                             print(f"  {i}. {title}")
                             print(f"     ID: {thread_id} | {date_str}")
                         print("\nUse 'load <id>' to resume a conversation")
@@ -2845,10 +2953,18 @@ Summary:"""
 
                 if user_input.lower() == "clear":
                     # Confirm before clearing
-                    confirm = input("\n⚠️  This will delete ALL conversations and history. Continue? (yes/no): ").strip().lower()
+                    confirm = (
+                        input(
+                            "\n⚠️  This will delete ALL conversations and history. Continue? (yes/no): "
+                        )
+                        .strip()
+                        .lower()
+                    )
                     if confirm == "yes":
                         metadata_count, checkpoint_count = self.clear_all_conversations()
-                        print(f"\n✓ Cleared {metadata_count} conversation(s) and {checkpoint_count} checkpoint record(s)")
+                        print(
+                            f"\n✓ Cleared {metadata_count} conversation(s) and {checkpoint_count} checkpoint record(s)"
+                        )
                     else:
                         print("✗ Clear cancelled")
                     print()
@@ -2882,7 +2998,9 @@ Summary:"""
             # Prepare input for the agent with new state schema
             input_data = {
                 "messages": [],
-                "alpha": SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {}).get("alpha", DEFAULT_ALPHA),  # Collection-aware default
+                "alpha": SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {}).get(
+                    "alpha", DEFAULT_ALPHA
+                ),  # Collection-aware default
                 "query_analysis": "",
                 "intent": "question",
                 "summary_text": None,
@@ -2892,10 +3010,14 @@ Summary:"""
             compacted_messages: List[BaseMessage] = []
             current_messages: Sequence[BaseMessage] = []
             try:
-                checkpoint_state = self.checkpointer.get({"configurable": {"thread_id": self.thread_id}})
+                checkpoint_state = self.checkpointer.get(
+                    {"configurable": {"thread_id": self.thread_id}}
+                )
                 if checkpoint_state and "messages" in checkpoint_state:
                     current_messages = checkpoint_state["messages"]
-                    compacted_msgs, was_compacted, num_compacted = self.compact_conversation_if_needed(current_messages)
+                    compacted_msgs, was_compacted, num_compacted = (
+                        self.compact_conversation_if_needed(current_messages)
+                    )
                     compacted_messages = list(compacted_msgs)
                     if was_compacted:
                         print(f"[🗜️  Compacted {num_compacted} older messages to maintain context]")
@@ -2914,8 +3036,12 @@ Summary:"""
 
             # Get the current message count before invoking
             try:
-                checkpoint_before = self.checkpointer.get({"configurable": {"thread_id": self.thread_id}})
-                messages_before_count = len(checkpoint_before.get("messages", [])) if checkpoint_before else 0
+                checkpoint_before = self.checkpointer.get(
+                    {"configurable": {"thread_id": self.thread_id}}
+                )
+                messages_before_count = (
+                    len(checkpoint_before.get("messages", [])) if checkpoint_before else 0
+                )
             except Exception:
                 messages_before_count = 0
 
@@ -2936,7 +3062,11 @@ Summary:"""
                 messages = result["messages"]
                 # Only look at messages added in this turn (after the user message)
                 # We need to find the assistant message that came after the last user input
-                new_messages = messages[messages_before_count:] if messages_before_count < len(messages) else []
+                new_messages = (
+                    messages[messages_before_count:]
+                    if messages_before_count < len(messages)
+                    else []
+                )
 
                 # Find the last assistant message in the new messages (final response)
                 for msg in reversed(new_messages):
@@ -2966,6 +3096,7 @@ Summary:"""
         except Exception as e:
             print(f"✗ Error invoking agent: {e}")
             import traceback
+
             traceback.print_exc()
 
     def _stream_text(self, text: str, chunk_size: int = 1) -> None:
@@ -3012,9 +3143,13 @@ Summary:"""
         # Create checkpointer if not already created (must be done in async context)
         if self.checkpointer is None:
             from config import CHECKPOINT_SELECTIVE_SERIALIZATION
+
             if CHECKPOINT_SELECTIVE_SERIALIZATION:
                 from checkpoint_optimizer import SelectiveJsonPlusSerializer
-                self.checkpointer = AsyncPostgresSaver(self.async_pool, serde=SelectiveJsonPlusSerializer())
+
+                self.checkpointer = AsyncPostgresSaver(
+                    self.async_pool, serde=SelectiveJsonPlusSerializer()
+                )
             else:
                 self.checkpointer = AsyncPostgresSaver(self.async_pool)
 

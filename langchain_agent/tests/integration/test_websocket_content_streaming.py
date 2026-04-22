@@ -12,23 +12,24 @@ Tests WebSocket functionality for content generation pipeline:
 - Event schema validation against frontend types
 """
 
-import pytest
 import asyncio
 import json
-from unittest.mock import Mock, AsyncMock, MagicMock, patch
-from typing import List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
 
 from api.schemas.events import (
-    ContentTypeClassificationEvent,
-    SocialPostProgressEvent,
-    BlogPostProgressEvent,
     ArticleProgressEvent,
-    TutorialProgressEvent,
+    BlogPostProgressEvent,
     ContentCompleteEvent,
-    SearchProgressEvent,
-    RerankerProgressEvent,
+    ContentTypeClassificationEvent,
     LLMResponseChunkEvent,
+    RerankerProgressEvent,
+    SearchProgressEvent,
+    SocialPostProgressEvent,
+    TutorialProgressEvent,
 )
 
 
@@ -79,7 +80,11 @@ class TestWebSocketSocialPostStreaming:
             {"type": "social_post_progress", "stage": "generation"},
             {"type": "llm_response_chunk", "token": "Great", "cumulative_tokens": 1},
             {"type": "llm_response_chunk", "token": " post", "cumulative_tokens": 2},
-            {"type": "content_complete", "content_type": "social_post", "content_length_words": 150},
+            {
+                "type": "content_complete",
+                "content_type": "social_post",
+                "content_length_words": 150,
+            },
         ]
 
         event_types = [e["type"] for e in simulated_events]
@@ -91,8 +96,16 @@ class TestWebSocketSocialPostStreaming:
         stages = ["retrieval", "generation"]
 
         simulated_events = [
-            {"type": "social_post_progress", "stage": "retrieval", "message": "Retrieving relevant products..."},
-            {"type": "social_post_progress", "stage": "generation", "message": "Generating engaging copy..."},
+            {
+                "type": "social_post_progress",
+                "stage": "retrieval",
+                "message": "Retrieving relevant products...",
+            },
+            {
+                "type": "social_post_progress",
+                "stage": "generation",
+                "message": "Generating engaging copy...",
+            },
         ]
 
         for event in simulated_events:
@@ -161,15 +174,31 @@ class TestWebSocketBlogPostStreaming:
         simulated_events = [
             {"type": "content_type_classification", "content_type": "blog_post"},
             # Outline pass
-            {"type": "blog_post_progress", "stage": "outline", "message": "Creating blog outline..."},
+            {
+                "type": "blog_post_progress",
+                "stage": "outline",
+                "message": "Creating blog outline...",
+            },
             # First retrieval pass
             {"type": "search_progress", "documents_retrieved": 8},
-            {"type": "blog_post_progress", "stage": "retrieval_pass_1", "message": "Gathering concept information..."},
+            {
+                "type": "blog_post_progress",
+                "stage": "retrieval_pass_1",
+                "message": "Gathering concept information...",
+            },
             # Second retrieval pass
             {"type": "search_progress", "documents_retrieved": 7},
-            {"type": "blog_post_progress", "stage": "retrieval_pass_2", "message": "Gathering examples and case studies..."},
+            {
+                "type": "blog_post_progress",
+                "stage": "retrieval_pass_2",
+                "message": "Gathering examples and case studies...",
+            },
             # Generation
-            {"type": "blog_post_progress", "stage": "generation", "message": "Writing blog content..."},
+            {
+                "type": "blog_post_progress",
+                "stage": "generation",
+                "message": "Writing blog content...",
+            },
             {"type": "llm_response_chunk", "token": "In", "cumulative_tokens": 1},
             # ... more tokens ...
             {"type": "content_complete", "content_type": "blog_post", "content_length_words": 1450},
@@ -184,7 +213,17 @@ class TestWebSocketBlogPostStreaming:
 
     def test_blog_post_token_accumulation(self, websocket_mock):
         """Test cumulative token count during blog post generation."""
-        tokens = ["Building", " a", " successful", " e", "-", "commerce", " platform", " requires", " planning"]
+        tokens = [
+            "Building",
+            " a",
+            " successful",
+            " e",
+            "-",
+            "commerce",
+            " platform",
+            " requires",
+            " planning",
+        ]
 
         cumulative_events = []
         for i, token in enumerate(tokens, 1):
@@ -213,7 +252,9 @@ class TestWebSocketBlogPostStreaming:
         }
 
         assert 1000 <= completion_event["content_length_words"] <= 2000
-        assert completion_event["content_length_chars"] > completion_event["content_length_words"] * 4
+        assert (
+            completion_event["content_length_chars"] > completion_event["content_length_words"] * 4
+        )
 
 
 @pytest.mark.integration
@@ -235,19 +276,49 @@ class TestWebSocketArticleStreaming:
         """Test technical article with 3 retrieval passes."""
         simulated_events = [
             {"type": "content_type_classification", "content_type": "technical_article"},
-            {"type": "article_progress", "stage": "outline", "message": "Outlining technical structure..."},
+            {
+                "type": "article_progress",
+                "stage": "outline",
+                "message": "Outlining technical structure...",
+            },
             {"type": "search_progress", "documents_retrieved": 10},
-            {"type": "article_progress", "stage": "retrieval_pass_1", "message": "Gathering problem statements..."},
+            {
+                "type": "article_progress",
+                "stage": "retrieval_pass_1",
+                "message": "Gathering problem statements...",
+            },
             {"type": "search_progress", "documents_retrieved": 9},
-            {"type": "article_progress", "stage": "retrieval_pass_2", "message": "Gathering solutions and approaches..."},
+            {
+                "type": "article_progress",
+                "stage": "retrieval_pass_2",
+                "message": "Gathering solutions and approaches...",
+            },
             {"type": "search_progress", "documents_retrieved": 8},
-            {"type": "article_progress", "stage": "retrieval_pass_3", "message": "Gathering implementation details..."},
-            {"type": "article_progress", "stage": "generation", "message": "Writing technical content..."},
-            {"type": "content_complete", "content_type": "technical_article", "content_length_words": 1180},
+            {
+                "type": "article_progress",
+                "stage": "retrieval_pass_3",
+                "message": "Gathering implementation details...",
+            },
+            {
+                "type": "article_progress",
+                "stage": "generation",
+                "message": "Writing technical content...",
+            },
+            {
+                "type": "content_complete",
+                "content_type": "technical_article",
+                "content_length_words": 1180,
+            },
         ]
 
         stages = [e["stage"] for e in simulated_events if "stage" in e]
-        expected_stages = ["outline", "retrieval_pass_1", "retrieval_pass_2", "retrieval_pass_3", "generation"]
+        expected_stages = [
+            "outline",
+            "retrieval_pass_1",
+            "retrieval_pass_2",
+            "retrieval_pass_3",
+            "generation",
+        ]
 
         for expected in expected_stages:
             assert expected in stages
@@ -285,12 +356,28 @@ class TestWebSocketTutorialStreaming:
         """Test tutorial with concept and example retrieval passes."""
         simulated_events = [
             {"type": "content_type_classification", "content_type": "tutorial"},
-            {"type": "tutorial_progress", "stage": "outline", "message": "Planning tutorial structure..."},
+            {
+                "type": "tutorial_progress",
+                "stage": "outline",
+                "message": "Planning tutorial structure...",
+            },
             {"type": "search_progress", "documents_retrieved": 8},
-            {"type": "tutorial_progress", "stage": "concept_retrieval", "message": "Gathering core concepts..."},
+            {
+                "type": "tutorial_progress",
+                "stage": "concept_retrieval",
+                "message": "Gathering core concepts...",
+            },
             {"type": "search_progress", "documents_retrieved": 7},
-            {"type": "tutorial_progress", "stage": "example_retrieval", "message": "Gathering code examples..."},
-            {"type": "tutorial_progress", "stage": "generation", "message": "Writing step-by-step guide..."},
+            {
+                "type": "tutorial_progress",
+                "stage": "example_retrieval",
+                "message": "Gathering code examples...",
+            },
+            {
+                "type": "tutorial_progress",
+                "stage": "generation",
+                "message": "Writing step-by-step guide...",
+            },
             {"type": "content_complete", "content_type": "tutorial", "content_length_words": 950},
         ]
 
@@ -335,9 +422,7 @@ class TestWebSocketEventOrdering:
         classification_idx = next(
             i for i, e in enumerate(simulated_stream) if e["type"] == "content_type_classification"
         )
-        generation_idx = next(
-            i for i, e in enumerate(simulated_stream) if "progress" in e["type"]
-        )
+        generation_idx = next(i for i, e in enumerate(simulated_stream) if "progress" in e["type"])
 
         assert classification_idx < generation_idx
 
@@ -354,7 +439,9 @@ class TestWebSocketEventOrdering:
             i for i, e in enumerate(simulated_stream) if e["type"] == "search_progress"
         )
         generation_idx = next(
-            i for i, e in enumerate(simulated_stream) if "progress" in e["type"] and "blog" in e["type"]
+            i
+            for i, e in enumerate(simulated_stream)
+            if "progress" in e["type"] and "blog" in e["type"]
         )
 
         assert retrieval_idx < generation_idx

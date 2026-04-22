@@ -3,13 +3,15 @@ Unit tests for intent classifier.
 Tests all 5 e-commerce intents with various query patterns.
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 from pydantic import BaseModel
 
 
 class IntentClassification(BaseModel):
     """Mock intent classification model."""
+
     intent: str
     reasoning: str
     confidence: float
@@ -72,8 +74,22 @@ class TestIntentClassifier:
 
     def test_intent_is_valid_enum(self):
         """Test intent is one of the 6 valid e-commerce intents."""
-        valid_intents = ["search", "comparison", "attribute_filter", "refinement", "follow_up", "summary"]
-        test_intents = ["search", "comparison", "attribute_filter", "refinement", "follow_up", "summary"]
+        valid_intents = [
+            "search",
+            "comparison",
+            "attribute_filter",
+            "refinement",
+            "follow_up",
+            "summary",
+        ]
+        test_intents = [
+            "search",
+            "comparison",
+            "attribute_filter",
+            "refinement",
+            "follow_up",
+            "summary",
+        ]
         for intent in test_intents:
             assert intent in valid_intents, f"Invalid intent: {intent}"
 
@@ -83,11 +99,14 @@ class TestIntentClassifier:
         assert len(reasoning) > 0, "Reasoning should not be empty"
         assert isinstance(reasoning, str), "Reasoning should be a string"
 
-    @pytest.mark.parametrize("query,expected_intent", [
-        ("Compare X vs Y", "comparison"),
-        ("Which is better", "comparison"),
-        ("How does X compare to Y", "comparison"),
-    ])
+    @pytest.mark.parametrize(
+        "query,expected_intent",
+        [
+            ("Compare X vs Y", "comparison"),
+            ("Which is better", "comparison"),
+            ("How does X compare to Y", "comparison"),
+        ],
+    )
     def test_comparison_keyword_detection(self, query, expected_intent):
         """Test comparison queries are detected by keywords."""
         keywords = ["compare", "vs", "versus", "which is better", "how does"]
@@ -95,11 +114,14 @@ class TestIntentClassifier:
         has_keyword = any(kw in query_lower for kw in keywords)
         assert has_keyword, f"Comparison query '{query}' should contain keyword"
 
-    @pytest.mark.parametrize("query,expected_intent", [
-        ("Show me X in blue", "attribute_filter"),
-        ("Find X under $200", "attribute_filter"),
-        ("X with 30-hour battery", "attribute_filter"),
-    ])
+    @pytest.mark.parametrize(
+        "query,expected_intent",
+        [
+            ("Show me X in blue", "attribute_filter"),
+            ("Find X under $200", "attribute_filter"),
+            ("X with 30-hour battery", "attribute_filter"),
+        ],
+    )
     def test_attribute_filter_keyword_detection(self, query, expected_intent):
         """Test attribute filter queries are detected by keywords."""
         attr_keywords = ["color", "size", "price", "feature", "in ", "under ", "with "]
@@ -121,23 +143,36 @@ class TestRefinementIntent:
     def test_refinement_valid_intent(self):
         """Test refinement is in the valid intents list."""
         valid_intents = [
-            "search", "comparison", "attribute_filter",
-            "refinement", "follow_up", "summary"
+            "search",
+            "comparison",
+            "attribute_filter",
+            "refinement",
+            "follow_up",
+            "summary",
         ]
         assert "refinement" in valid_intents
 
-    @pytest.mark.parametrize("query", [
-        "Oh, they should also be waterproof",
-        "Make them under $100",
-        "Can they also be breathable?",
-        "I want ones that are insulated too",
-        "But only in leather",
-    ])
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "Oh, they should also be waterproof",
+            "Make them under $100",
+            "Can they also be breathable?",
+            "I want ones that are insulated too",
+            "But only in leather",
+        ],
+    )
     def test_refinement_query_patterns(self, query):
         """Test that refinement queries contain additive constraint language."""
         additive_signals = [
-            "also", "too", "but", "make them", "only in",
-            "can they", "I want ones that are", "they should"
+            "also",
+            "too",
+            "but",
+            "make them",
+            "only in",
+            "can they",
+            "I want ones that are",
+            "they should",
         ]
         query_lower = query.lower()
         has_signal = any(sig in query_lower for sig in additive_signals)
@@ -153,7 +188,9 @@ class TestRefinementIntent:
         # Constrained uses pronouns or implicit reference
         constrained_has_pronoun = "they" in constrained_query.lower()
 
-        assert standalone_has_category, "Standalone attribute_filter query should specify a category"
+        assert (
+            standalone_has_category
+        ), "Standalone attribute_filter query should specify a category"
         assert constrained_has_pronoun, "Refinement query should use pronouns/implicit reference"
 
     def test_refinement_vs_follow_up_distinction(self):
@@ -171,4 +208,3 @@ class TestRefinementIntent:
         refinement_query = "they should also be waterproof"
         has_specific_constraint = any(sig in refinement_query.lower() for sig in refinement_signals)
         assert has_specific_constraint
-

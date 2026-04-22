@@ -21,11 +21,12 @@ import json
 import os
 import sys
 import time
-import pytest
-import httpx
-from pathlib import Path
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import httpx
+import pytest
 
 # Add langchain_agent to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -53,7 +54,7 @@ class ScenarioTest:
             response = client.post(
                 f"{self.base_url}/api/conversations",
                 headers=self.headers,
-                json={"title": self.__class__.__name__}
+                json={"title": self.__class__.__name__},
             )
             self.thread_id = response.json().get("thread_id", "default")
         return self.thread_id
@@ -64,14 +65,13 @@ class ScenarioTest:
             response = client.post(
                 f"{self.base_url}/api/conversations/{self.thread_id}/messages",
                 headers=self.headers,
-                json={"content": content}
+                json={"content": content},
             )
 
         data = response.json()
-        self.conversation_history.append({
-            "user": content,
-            "assistant": str(data.get("messages", []))
-        })
+        self.conversation_history.append(
+            {"user": content, "assistant": str(data.get("messages", []))}
+        )
         return data
 
     def get_latest_response(self, data: Dict[str, Any]) -> str:
@@ -114,7 +114,9 @@ class TestEcommerceShopperScenario:
             "How does the Sony WH-1000XM5 compare to the Bose QuietComfort 45?"
         )
         content3 = scenario.get_latest_response(response3)
-        assert "sony" in content3.lower() or "bose" in content3.lower(), "Should compare requested models"
+        assert (
+            "sony" in content3.lower() or "bose" in content3.lower()
+        ), "Should compare requested models"
 
         # Step 4: Feature deep-dive
         response4 = scenario.send_message(
@@ -354,9 +356,7 @@ class TestPowerUserScenario:
         assert response2.get("status") in [200, 201], "Refinement should work"
 
         # Step 3: Faceted navigation
-        response3 = scenario.send_message(
-            "What brands are available in this filtered set?"
-        )
+        response3 = scenario.send_message("What brands are available in this filtered set?")
         assert response3.get("status") in [200, 201], "Faceted search should work"
 
         # Step 4: Feature comparison of filtered results

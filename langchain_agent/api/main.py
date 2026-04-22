@@ -25,15 +25,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
-from config import RATE_LIMIT_ENABLED, API_KEY
-from api.routes import health, conversations, chat, suggest, admin
 from api.middleware.auth import AuthConfigurationError
+from api.routes import admin, chat, conversations, health, suggest
+from config import API_KEY, RATE_LIMIT_ENABLED
 from logging_config import configure_logging, get_logger
 
 # Configure structured logging
@@ -107,7 +107,9 @@ cors_origins = [
 
 # Add explicitly configured origins (e.g., custom domains)
 if os.environ.get("CORS_ORIGINS"):
-    configured_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+    configured_origins = [
+        o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()
+    ]
     cors_origins.extend(configured_origins)
 
 # Determine this service's URL for Cloud Run
@@ -142,7 +144,11 @@ if static_dir.exists():
     async def serve_react(full_path: str):
         """Serve React frontend for all non-API routes"""
         # Skip API routes and documentation
-        if full_path.startswith("api/") or full_path.startswith("ws/") or full_path in ("docs", "redoc", "openapi.json"):
+        if (
+            full_path.startswith("api/")
+            or full_path.startswith("ws/")
+            or full_path in ("docs", "redoc", "openapi.json")
+        ):
             return JSONResponse({"error": "Not Found"}, status_code=404)
 
         # Serve index.html for all other routes (React Router will handle)

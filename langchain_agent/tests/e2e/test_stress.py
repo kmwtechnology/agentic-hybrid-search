@@ -18,17 +18,18 @@ Markers: @pytest.mark.performance, @pytest.mark.stress, @pytest.mark.slow, @pyte
 import asyncio
 import json
 import os
+import random
 import sys
 import time
-import pytest
-import httpx
-import psutil
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+from pathlib import Path
 from statistics import mean, median, stdev
-import random
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
+import psutil
+import pytest
 
 # Add langchain_agent to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -169,7 +170,7 @@ class StressTester:
                     f"{self.base_url}/api/conversations/{thread_id}/messages",
                     headers=self.headers,
                     json={"content": query},
-                    timeout=httpx.Timeout(TIMEOUT)
+                    timeout=httpx.Timeout(TIMEOUT),
                 )
                 latency = time.time() - start
                 success = response.status_code in [200, 201]
@@ -185,10 +186,7 @@ class StressTester:
             return False, latency, f"Error: {str(e)}"
 
     def sustained_load(
-        self,
-        num_users: int,
-        duration_seconds: int,
-        queries: List[str]
+        self, num_users: int, duration_seconds: int, queries: List[str]
     ) -> StressMetrics:
         """
         Run sustained load test.
@@ -246,7 +244,9 @@ class StressTester:
         metrics.finalize()
         return metrics
 
-    def burst_load(self, num_requests: int, duration_seconds: int, queries: List[str]) -> StressMetrics:
+    def burst_load(
+        self, num_requests: int, duration_seconds: int, queries: List[str]
+    ) -> StressMetrics:
         """
         Send many requests in a short burst.
 
@@ -311,7 +311,7 @@ class StressTester:
                             f"{self.base_url}/api/conversations/{thread_id}/messages",
                             headers=self.headers,
                             json={"content": query},
-                            timeout=httpx.Timeout(TIMEOUT)
+                            timeout=httpx.Timeout(TIMEOUT),
                         )
                         latency = time.time() - start
                         success = response.status_code in [200, 201]
@@ -365,15 +365,15 @@ class TestSustainedLoad:
         """Run 50 concurrent users for 1 minute."""
         tester = StressTester(DEPLOYMENT_URL, API_KEY)
 
-        metrics = tester.sustained_load(
-            num_users=50,
-            duration_seconds=60,
-            queries=STRESS_QUERIES
-        )
+        metrics = tester.sustained_load(num_users=50, duration_seconds=60, queries=STRESS_QUERIES)
 
         # System should handle sustained load
-        assert metrics.success_rate > 0.70, f"Success rate should be > 70%, got {metrics.success_rate:.1%}"
-        assert metrics.timeout_errors < metrics.total_requests * 0.15, "Timeout errors should be < 15%"
+        assert (
+            metrics.success_rate > 0.70
+        ), f"Success rate should be > 70%, got {metrics.success_rate:.1%}"
+        assert (
+            metrics.timeout_errors < metrics.total_requests * 0.15
+        ), "Timeout errors should be < 15%"
 
         # Save results
         with open(STRESS_RESULTS_DIR / "sustained_50_users.json", "w") as f:
@@ -383,13 +383,11 @@ class TestSustainedLoad:
         """Run 20 concurrent users for 90 seconds (more conservative)."""
         tester = StressTester(DEPLOYMENT_URL, API_KEY)
 
-        metrics = tester.sustained_load(
-            num_users=20,
-            duration_seconds=90,
-            queries=STRESS_QUERIES
-        )
+        metrics = tester.sustained_load(num_users=20, duration_seconds=90, queries=STRESS_QUERIES)
 
-        assert metrics.success_rate > 0.75, f"Success rate should be > 75%, got {metrics.success_rate:.1%}"
+        assert (
+            metrics.success_rate > 0.75
+        ), f"Success rate should be > 75%, got {metrics.success_rate:.1%}"
 
 
 @pytest.mark.performance
@@ -403,25 +401,21 @@ class TestBurstLoad:
         """Send 100 requests in 10 seconds."""
         tester = StressTester(DEPLOYMENT_URL, API_KEY)
 
-        metrics = tester.burst_load(
-            num_requests=100,
-            duration_seconds=10,
-            queries=STRESS_QUERIES
-        )
+        metrics = tester.burst_load(num_requests=100, duration_seconds=10, queries=STRESS_QUERIES)
 
         # Even under burst, most should succeed
-        assert metrics.success_rate > 0.60, f"Burst success rate should be > 60%, got {metrics.success_rate:.1%}"
-        assert metrics.latency_p99_ms < 30000, f"P99 latency should be < 30s, got {metrics.latency_p99_ms}ms"
+        assert (
+            metrics.success_rate > 0.60
+        ), f"Burst success rate should be > 60%, got {metrics.success_rate:.1%}"
+        assert (
+            metrics.latency_p99_ms < 30000
+        ), f"P99 latency should be < 30s, got {metrics.latency_p99_ms}ms"
 
     def test_burst_50_requests_5_seconds(self):
         """Send 50 requests in 5 seconds (more aggressive)."""
         tester = StressTester(DEPLOYMENT_URL, API_KEY)
 
-        metrics = tester.burst_load(
-            num_requests=50,
-            duration_seconds=5,
-            queries=STRESS_QUERIES
-        )
+        metrics = tester.burst_load(num_requests=50, duration_seconds=5, queries=STRESS_QUERIES)
 
         # Verify requests were attempted
         assert metrics.total_requests >= 50, "Should attempt all requests"
@@ -438,14 +432,12 @@ class TestConnectionPooling:
         """Test connection pool with 50 concurrent clients."""
         tester = StressTester(DEPLOYMENT_URL, API_KEY)
 
-        metrics = tester.connection_pool_test(
-            num_concurrent=50,
-            queries=STRESS_QUERIES
-        )
+        metrics = tester.connection_pool_test(num_concurrent=50, queries=STRESS_QUERIES)
 
         # Connection pool should not be exhausted
-        assert metrics.connection_errors < metrics.total_requests * 0.20, \
-            "Connection errors should be < 20%"
+        assert (
+            metrics.connection_errors < metrics.total_requests * 0.20
+        ), "Connection errors should be < 20%"
 
 
 @pytest.mark.performance
@@ -460,26 +452,19 @@ class TestErrorRecovery:
         tester = StressTester(DEPLOYMENT_URL, API_KEY)
 
         # Stress the system
-        metrics1 = tester.burst_load(
-            num_requests=50,
-            duration_seconds=5,
-            queries=STRESS_QUERIES
-        )
+        metrics1 = tester.burst_load(num_requests=50, duration_seconds=5, queries=STRESS_QUERIES)
 
         # Wait a moment
         time.sleep(2)
 
         # System should recover - send more requests
-        metrics2 = tester.burst_load(
-            num_requests=20,
-            duration_seconds=5,
-            queries=STRESS_QUERIES
-        )
+        metrics2 = tester.burst_load(num_requests=20, duration_seconds=5, queries=STRESS_QUERIES)
 
         # Recovery requests should have similar success rate or better
         # (not significantly worse than burst1)
-        assert metrics2.success_rate > metrics1.success_rate * 0.8, \
-            "System should recover after errors"
+        assert (
+            metrics2.success_rate > metrics1.success_rate * 0.8
+        ), "System should recover after errors"
 
     def test_handle_malformed_requests(self):
         """System should gracefully handle malformed requests."""
@@ -504,8 +489,9 @@ class TestErrorRecovery:
                 error_count += 1
 
         # System should handle or reject gracefully, not crash
-        assert success_count + error_count == len(malformed_queries), \
-            "All requests should be handled (success or error)"
+        assert success_count + error_count == len(
+            malformed_queries
+        ), "All requests should be handled (success or error)"
 
 
 @pytest.mark.performance
@@ -528,11 +514,7 @@ class TestResourceLeakDetection:
 
         # Run multiple bursts
         for i in range(3):
-            metrics = tester.burst_load(
-                num_requests=20,
-                duration_seconds=5,
-                queries=STRESS_QUERIES
-            )
+            metrics = tester.burst_load(num_requests=20, duration_seconds=5, queries=STRESS_QUERIES)
 
             mem_mb = process.memory_info().rss / 1024 / 1024
             memory_samples.append(mem_mb)
@@ -546,8 +528,9 @@ class TestResourceLeakDetection:
         if len(memory_samples) > 1:
             memory_growth = memory_samples[-1] - memory_samples[0]
             # Allow up to 50MB growth per burst
-            assert memory_growth < 50 * len(memory_samples), \
-                f"Memory growth should be bounded, got {memory_growth}MB"
+            assert memory_growth < 50 * len(
+                memory_samples
+            ), f"Memory growth should be bounded, got {memory_growth}MB"
 
 
 def export_stress_report(metrics_list: List[StressMetrics]) -> str:
@@ -560,7 +543,7 @@ def export_stress_report(metrics_list: List[StressMetrics]) -> str:
             "avg_success_rate": mean([m.success_rate for m in metrics_list]),
             "max_throughput_rps": max([m.throughput_rps for m in metrics_list] or [0]),
             "all_passed": all(m.success_rate > 0.5 for m in metrics_list),
-        }
+        },
     }
 
     output_path = STRESS_RESULTS_DIR / f"stress_report_{int(time.time())}.json"

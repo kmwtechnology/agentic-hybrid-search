@@ -27,42 +27,41 @@ logger = logging.getLogger(__name__)
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from main import EcommerceSearchAgent
+from api.schemas.events import (
+    AgentCompleteEvent,
+    AgentErrorEvent,
+    BaseEvent,
+    ConversationContextEvent,
+    HybridSearchResultEvent,
+    HybridSearchStartEvent,
+    IntentClassificationEvent,
+    LLMReasoningChunkEvent,
+    LLMReasoningStartEvent,
+    LLMResponseChunkEvent,
+    LLMResponseStartEvent,
+    MetricsEvent,
+    NodeEndEvent,
+    NodeStartEvent,
+    OpenSearchQueryEvent,
+    QualityGateEvent,
+    QueryEvaluationEvent,
+    QueryExpansionEvent,
+    RerankedDocument,
+    RerankerResultEvent,
+    RerankerStartEvent,
+    SearchCandidate,
+    SummaryEvent,
+    ToolCallEvent,
+)
 from config import (
     ENABLE_RERANKING,
     RERANKER_MODEL,
     RETRIEVER_FETCH_K,
 )
-
-from api.schemas.events import (
-    BaseEvent,
-    ConversationContextEvent,
-    NodeStartEvent,
-    NodeEndEvent,
-    QueryEvaluationEvent,
-    HybridSearchStartEvent,
-    HybridSearchResultEvent,
-    SearchCandidate,
-    RerankerStartEvent,
-    RerankerResultEvent,
-    RerankedDocument,
-    LLMReasoningStartEvent,
-    LLMReasoningChunkEvent,
-    LLMResponseStartEvent,
-    LLMResponseChunkEvent,
-    ToolCallEvent,
-    IntentClassificationEvent,
-    SummaryEvent,
-    AgentCompleteEvent,
-    AgentErrorEvent,
-    MetricsEvent,
-    QueryExpansionEvent,
-    QualityGateEvent,
-    OpenSearchQueryEvent,
-)
-
+from main import EcommerceSearchAgent
 
 # Type alias for emit callback
 EmitCallback = Callable[[BaseEvent], Coroutine[Any, Any, None]]
@@ -123,18 +122,28 @@ class ObservableAgentService:
             pool = self._agent.async_pool
             async with pool.connection() as conn:
                 async with conn.cursor() as cur:
-                    await cur.execute("""
+                    await cur.execute(
+                        """
                         SELECT blob, type FROM checkpoint_blobs
                         WHERE thread_id = %s AND channel = 'messages'
                         ORDER BY version DESC LIMIT 1
-                    """, (thread_id,))
+                    """,
+                        (thread_id,),
+                    )
                     blob_row = await cur.fetchone()
                     if blob_row and blob_row[0]:
                         from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
                         serializer = JsonPlusSerializer()
                         messages = serializer.loads_typed((blob_row[1], blob_row[0]))
                         # Count human and AI messages
-                        return len([m for m in messages if hasattr(m, 'type') and m.type in ('human', 'ai')])
+                        return len(
+                            [
+                                m
+                                for m in messages
+                                if hasattr(m, "type") and m.type in ("human", "ai")
+                            ]
+                        )
             return 0
         except Exception:
             return 0
@@ -166,6 +175,7 @@ class ObservableAgentService:
             # Set emit callback for intermediate events from retriever_node
             # Also store the current event loop so retriever_node can use it
             import asyncio
+
             self._agent.emit_callback = emit
             try:
                 self._agent.event_loop = asyncio.get_running_loop()
@@ -175,15 +185,22 @@ class ObservableAgentService:
             # Load and emit conversation context
             previous_count = await self._load_conversation_context(thread_id)
             is_new = previous_count == 0
-            await emit(ConversationContextEvent(
-                previous_message_count=previous_count,
-                is_new_conversation=is_new,
-                summary="New conversation" if is_new else f"Loaded {previous_count} previous messages",
-            ))
+            await emit(
+                ConversationContextEvent(
+                    previous_message_count=previous_count,
+                    is_new_conversation=is_new,
+                    summary=(
+                        "New conversation"
+                        if is_new
+                        else f"Loaded {previous_count} previous messages"
+                    ),
+                )
+            )
 
             # Build initial state
             # Reset per-query state while preserving conversation history via checkpoint
             from config import DEFAULT_ALPHA
+
             initial_state = {
                 "messages": [HumanMessage(content=message)],
                 "alpha": DEFAULT_ALPHA,
@@ -200,7 +217,9 @@ class ObservableAgentService:
             citations: List[Dict[str, str]] = []
 
             # Stream through the graph
-            async for event in self._astream_graph(initial_state, config, emit, node_start_times, metrics):
+            async for event in self._astream_graph(
+                initial_state, config, emit, node_start_times, metrics
+            ):
                 # Extract final response from agent completions
                 if isinstance(event, dict):
                     if "messages" in event:
@@ -217,7 +236,9 @@ class ObservableAgentService:
                                         final_response = "".join(text_parts) if text_parts else ""
                                     else:
                                         final_response = content
-                                    logger.debug(f"Extracted final_response: {len(final_response or '')} chars")
+                                    logger.debug(
+                                        f"Extracted final_response: {len(final_response or '')} chars"
+                                    )
 
                     if "retrieved_documents" in event:
                         documents_used = len(event["retrieved_documents"])
@@ -235,37 +256,45 @@ class ObservableAgentService:
             logger.debug(f"Title generated: {title}")
 
             # Emit completion event
-            logger.info(f"Emitting AgentCompleteEvent: {len(final_response or '')} chars, {total_duration_ms:.0f}ms")
-            await emit(AgentCompleteEvent(
-                thread_id=thread_id,
-                total_duration_ms=total_duration_ms,
-                final_response=final_response or "No response generated",
-                iterations=0,
-                response_retries=0,
-                documents_used=documents_used,
-                title=title,
-                citations=citations,
-            ))
+            logger.info(
+                f"Emitting AgentCompleteEvent: {len(final_response or '')} chars, {total_duration_ms:.0f}ms"
+            )
+            await emit(
+                AgentCompleteEvent(
+                    thread_id=thread_id,
+                    total_duration_ms=total_duration_ms,
+                    final_response=final_response or "No response generated",
+                    iterations=0,
+                    response_retries=0,
+                    documents_used=documents_used,
+                    title=title,
+                    citations=citations,
+                )
+            )
             logger.info("AgentCompleteEvent emitted successfully")
 
             # Emit metrics
-            await emit(MetricsEvent(
-                query_evaluation_ms=metrics.get("query_evaluator"),
-                retrieval_ms=metrics.get("retriever"),
-                reranking_ms=metrics.get("reranker"),
-                document_grading_ms=None,
-                llm_generation_ms=metrics.get("agent"),
-                response_grading_ms=None,
-                total_ms=total_duration_ms,
-            ))
+            await emit(
+                MetricsEvent(
+                    query_evaluation_ms=metrics.get("query_evaluator"),
+                    retrieval_ms=metrics.get("retriever"),
+                    reranking_ms=metrics.get("reranker"),
+                    document_grading_ms=None,
+                    llm_generation_ms=metrics.get("agent"),
+                    response_grading_ms=None,
+                    total_ms=total_duration_ms,
+                )
+            )
 
             return final_response
 
         except Exception as e:
-            await emit(AgentErrorEvent(
-                error=str(e),
-                recoverable=False,
-            ))
+            await emit(
+                AgentErrorEvent(
+                    error=str(e),
+                    recoverable=False,
+                )
+            )
             return None
 
     async def _emit_queued_events(self, emit: EmitCallback) -> None:
@@ -299,8 +328,13 @@ class ObservableAgentService:
         """
         # Known LangGraph nodes to track (filter out internal chains)
         tracked_nodes = {
-            "intent_classifier", "query_evaluator", "summary",
-            "retriever", "reranker", "quality_gate", "agent",
+            "intent_classifier",
+            "query_evaluator",
+            "summary",
+            "retriever",
+            "reranker",
+            "quality_gate",
+            "agent",
         }
         current_node: Optional[str] = None
         accumulated_output: Dict[str, Any] = {}
@@ -329,25 +363,33 @@ class ObservableAgentService:
                         current_node = event_name
                         node_start_times[event_name] = time.time()
 
-                        await emit(NodeStartEvent(
-                            node=event_name,
-                            input_summary=f"Starting {event_name}",
-                        ))
+                        await emit(
+                            NodeStartEvent(
+                                node=event_name,
+                                input_summary=f"Starting {event_name}",
+                            )
+                        )
 
                         # Emit HybridSearchStartEvent immediately when retriever starts
                         if event_name == "retriever":
                             input_state = event_data.get("input", {})
                             query = ""
                             for msg in reversed(input_state.get("messages", [])):
-                                if hasattr(msg, "content") and hasattr(msg, "type") and msg.type == "human":
+                                if (
+                                    hasattr(msg, "content")
+                                    and hasattr(msg, "type")
+                                    and msg.type == "human"
+                                ):
                                     query = msg.content
                                     break
 
-                            await emit(HybridSearchStartEvent(
-                                query=query,
-                                alpha=input_state.get("alpha", 0.25),
-                                fetch_k=RETRIEVER_FETCH_K,
-                            ))
+                            await emit(
+                                HybridSearchStartEvent(
+                                    query=query,
+                                    alpha=input_state.get("alpha", 0.25),
+                                    fetch_k=RETRIEVER_FETCH_K,
+                                )
+                            )
 
                 elif event_type == "on_chain_end":
                     if event_name in skipped_nodes:
@@ -368,8 +410,12 @@ class ObservableAgentService:
                             # Emit node-specific events
                             # Pass streaming flag for agent node to avoid duplicate response emission
                             await self._emit_node_events(
-                                event_name, output, emit,
-                                already_streamed=response_streaming_started if event_name == "agent" else False
+                                event_name,
+                                output,
+                                emit,
+                                already_streamed=(
+                                    response_streaming_started if event_name == "agent" else False
+                                ),
                             )
 
                             # Emit any events queued by retriever_node
@@ -383,11 +429,15 @@ class ObservableAgentService:
                         )
 
                         if not skip_node_end:
-                            await emit(NodeEndEvent(
-                                node=event_name,
-                                duration_ms=duration_ms,
-                                output_summary=self._summarize_output(event_name, output if isinstance(output, dict) else {}),
-                            ))
+                            await emit(
+                                NodeEndEvent(
+                                    node=event_name,
+                                    duration_ms=duration_ms,
+                                    output_summary=self._summarize_output(
+                                        event_name, output if isinstance(output, dict) else {}
+                                    ),
+                                )
+                            )
 
                         # Yield the output for state tracking
                         if isinstance(output, dict) and output:
@@ -424,23 +474,32 @@ class ObservableAgentService:
                                     await emit(LLMResponseStartEvent())
                                     response_streaming_started = True
                                 # Emit token chunk directly to WebSocket
-                                await emit(LLMResponseChunkEvent(
-                                    content=content,
-                                    is_complete=False,
-                                ))
+                                await emit(
+                                    LLMResponseChunkEvent(
+                                        content=content,
+                                        is_complete=False,
+                                    )
+                                )
 
                 # Handle tool events
                 elif event_type == "on_tool_start":
                     tool_name = event_name
                     tool_input = event_data.get("input", {})
-                    await emit(ToolCallEvent(
-                        tool_name=tool_name,
-                        tool_args=tool_input if isinstance(tool_input, dict) else {"query": str(tool_input)},
-                    ))
+                    await emit(
+                        ToolCallEvent(
+                            tool_name=tool_name,
+                            tool_args=(
+                                tool_input
+                                if isinstance(tool_input, dict)
+                                else {"query": str(tool_input)}
+                            ),
+                        )
+                    )
 
         except Exception as e:
             # Log error and re-raise to trigger AgentErrorEvent in process_message
             import traceback
+
             print(f"Error in astream_events: {e}")
             traceback.print_exc()
             raise
@@ -460,25 +519,31 @@ class ObservableAgentService:
         """
 
         if node_name == "intent_classifier":
-            await emit(IntentClassificationEvent(
-                intent=output.get("intent", "question"),
-                user_query=output.get("user_query", ""),
-                reasoning=output.get("reasoning", "Heuristic classification"),
-                confidence=output.get("confidence") or output.get("intent_confidence"),
-            ))
+            await emit(
+                IntentClassificationEvent(
+                    intent=output.get("intent", "question"),
+                    user_query=output.get("user_query", ""),
+                    reasoning=output.get("reasoning", "Heuristic classification"),
+                    confidence=output.get("confidence") or output.get("intent_confidence"),
+                )
+            )
         elif node_name == "query_evaluator":
-            await emit(QueryEvaluationEvent(
-                query="",  # Original query used as-is (no query rewriting)
-                alpha=output.get("alpha", 0.25),
-                query_analysis=output.get("query_analysis", ""),
-                search_strategy=self._get_search_strategy(output.get("alpha", 0.25)),
-            ))
+            await emit(
+                QueryEvaluationEvent(
+                    query="",  # Original query used as-is (no query rewriting)
+                    alpha=output.get("alpha", 0.25),
+                    query_analysis=output.get("query_analysis", ""),
+                    search_strategy=self._get_search_strategy(output.get("alpha", 0.25)),
+                )
+            )
 
         elif node_name == "summary":
-            await emit(SummaryEvent(
-                summary_text=output.get("summary_text"),
-                message_count=output.get("message_count", 0),
-            ))
+            await emit(
+                SummaryEvent(
+                    summary_text=output.get("summary_text"),
+                    message_count=output.get("message_count", 0),
+                )
+            )
 
         elif node_name == "retriever":
             # Search events (hybrid_search_result etc.) are emitted from within retriever_node
@@ -491,23 +556,30 @@ class ObservableAgentService:
                 reranked_docs = self._compute_reranked_documents(documents)
                 reranking_changed_order = self._check_if_order_changed(documents, reranked_docs)
 
-                await emit(RerankerResultEvent(
-                    results=reranked_docs,
-                    reranking_changed_order=reranking_changed_order,
-                ))
+                await emit(
+                    RerankerResultEvent(
+                        results=reranked_docs,
+                        reranking_changed_order=reranking_changed_order,
+                    )
+                )
 
         elif node_name == "quality_gate":
-            from config import QUALITY_GATE_THRESHOLD, DEFAULT_ALPHA
+            from config import DEFAULT_ALPHA, QUALITY_GATE_THRESHOLD
+
             reason = output.get("quality_gate_reason", "")
             triggered = "Retry triggered" in reason
-            await emit(QualityGateEvent(
-                triggered=triggered,
-                original_alpha=output.get("alpha", DEFAULT_ALPHA) if not triggered else DEFAULT_ALPHA,
-                new_alpha=output.get("alpha") if triggered else None,
-                max_score=output.get("reranker_max_score", 0.0),
-                threshold=QUALITY_GATE_THRESHOLD,
-                reason=reason,
-            ))
+            await emit(
+                QualityGateEvent(
+                    triggered=triggered,
+                    original_alpha=(
+                        output.get("alpha", DEFAULT_ALPHA) if not triggered else DEFAULT_ALPHA
+                    ),
+                    new_alpha=output.get("alpha") if triggered else None,
+                    max_score=output.get("reranker_max_score", 0.0),
+                    threshold=QUALITY_GATE_THRESHOLD,
+                    reason=reason,
+                )
+            )
 
         elif node_name == "agent":
             # Emit LLM events
@@ -522,18 +594,22 @@ class ObservableAgentService:
                     # Emit reasoning if present
                     if reasoning:
                         await emit(LLMReasoningStartEvent())
-                        await emit(LLMReasoningChunkEvent(
-                            content=reasoning,
-                            is_complete=True,
-                        ))
+                        await emit(
+                            LLMReasoningChunkEvent(
+                                content=reasoning,
+                                is_complete=True,
+                            )
+                        )
 
                     # Check for tool calls
                     if hasattr(msg, "tool_calls") and msg.tool_calls:
                         for tool_call in msg.tool_calls:
-                            await emit(ToolCallEvent(
-                                tool_name=tool_call["name"],
-                                tool_args=tool_call["args"],
-                            ))
+                            await emit(
+                                ToolCallEvent(
+                                    tool_name=tool_call["name"],
+                                    tool_args=tool_call["args"],
+                                )
+                            )
                     elif msg.content:
                         # For responses without tool calls, check if content needs parsing
                         # (handles Ollama models that format reasoning as "Reasoning: ... \nAnswer: ...")
@@ -545,30 +621,38 @@ class ObservableAgentService:
                                 if isinstance(block, dict) and "text" in block:
                                     text_parts.append(block["text"])
                             content = "".join(text_parts) if text_parts else ""
-                        reasoning_extracted, response_content = self._parse_structured_response(content)
+                        reasoning_extracted, response_content = self._parse_structured_response(
+                            content
+                        )
 
                         # Emit reasoning if extracted from content
                         if reasoning_extracted and not reasoning:
                             await emit(LLMReasoningStartEvent())
-                            await emit(LLMReasoningChunkEvent(
-                                content=reasoning_extracted,
-                                is_complete=True,
-                            ))
+                            await emit(
+                                LLMReasoningChunkEvent(
+                                    content=reasoning_extracted,
+                                    is_complete=True,
+                                )
+                            )
 
                         if already_streamed:
                             # Response was already streamed token-by-token to chat window
                             # Just emit completion marker
-                            await emit(LLMResponseChunkEvent(
-                                content="",
-                                is_complete=True,
-                            ))
+                            await emit(
+                                LLMResponseChunkEvent(
+                                    content="",
+                                    is_complete=True,
+                                )
+                            )
                         else:
                             # Emit full response (fallback for non-streaming models)
                             await emit(LLMResponseStartEvent())
-                            await emit(LLMResponseChunkEvent(
-                                content=response_content,
-                                is_complete=True,
-                            ))
+                            await emit(
+                                LLMResponseChunkEvent(
+                                    content=response_content,
+                                    is_complete=True,
+                                )
+                            )
 
     def _parse_structured_response(self, content: str) -> tuple[Optional[str], str]:
         """
@@ -631,17 +715,21 @@ class ObservableAgentService:
             # Calculate rank change (negative = improved/moved up, positive = degraded/moved down)
             rank_change = rank - original_rank
 
-            snippet = doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+            snippet = (
+                doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+            )
 
-            reranked_docs.append(RerankedDocument(
-                source=source,
-                score=score,
-                rank=rank,
-                original_rank=original_rank,
-                snippet=snippet,
-                rank_change=rank_change,
-                url=doc.metadata.get("url"),
-            ))
+            reranked_docs.append(
+                RerankedDocument(
+                    source=source,
+                    score=score,
+                    rank=rank,
+                    original_rank=original_rank,
+                    snippet=snippet,
+                    rank_change=rank_change,
+                    url=doc.metadata.get("url"),
+                )
+            )
 
         return reranked_docs
 
@@ -715,8 +803,8 @@ class ObservableAgentService:
                 return "Response generated"
             return ""
         elif node_name == "intent_classifier":
-            intent = output.get('intent', 'unknown')
-            reasoning = output.get('reasoning', 'Heuristic classification')
+            intent = output.get("intent", "unknown")
+            reasoning = output.get("reasoning", "Heuristic classification")
             return f"Intent → {intent} ({reasoning})"
         elif node_name == "summary":
             summary_text = output.get("summary_text")
@@ -737,10 +825,7 @@ class ObservableAgentService:
             loop = asyncio.get_event_loop()
             # update_conversation_title() uses the internally set thread_id
             # and handles both generation and database update
-            await loop.run_in_executor(
-                None,
-                self._agent.update_conversation_title
-            )
+            await loop.run_in_executor(None, self._agent.update_conversation_title)
             # Return a generated title from the user message for the WebSocket event
             # (the actual title is saved to DB by update_conversation_title)
             return user_message[:50].strip() if user_message else None

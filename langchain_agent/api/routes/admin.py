@@ -4,6 +4,7 @@ Provides endpoints to manage the search index and re-ingest data when mappings c
 """
 
 import logging
+
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
@@ -16,6 +17,7 @@ logger.info(f"Admin router created with prefix: {router.prefix}")
 
 class ReindexRequest(BaseModel):
     """Request to trigger re-indexing of the OpenSearch index."""
+
     limit: int = 10000
     force_resample: bool = False
     reset_index: bool = True
@@ -23,6 +25,7 @@ class ReindexRequest(BaseModel):
 
 class ReindexResponse(BaseModel):
     """Response from re-index operation."""
+
     status: str
     message: str
     documents_ingested: int | None = None
@@ -45,7 +48,9 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
     Returns:
         ReindexResponse with status and document counts
     """
-    logger.info(f"[perform_reindex] Starting re-index: limit={limit}, force_resample={force_resample}, reset_index={reset_index}")
+    logger.info(
+        f"[perform_reindex] Starting re-index: limit={limit}, force_resample={force_resample}, reset_index={reset_index}"
+    )
 
     try:
         from ingest_esci_products import ingest_esci_products
@@ -60,7 +65,9 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
         )
 
         logger.info(f"[perform_reindex] ingest_esci_products completed successfully")
-        logger.info(f"[perform_reindex] Results: {docs} documents ingested, {chunks} chunks created")
+        logger.info(
+            f"[perform_reindex] Results: {docs} documents ingested, {chunks} chunks created"
+        )
 
         return ReindexResponse(
             status="success",
@@ -148,8 +155,8 @@ async def trigger_reindex(
 async def admin_health() -> dict:
     """Admin health check - verify system components."""
     try:
-        from vector_store import create_opensearch_client
         from config import OPENSEARCH_INDEX_NAME
+        from vector_store import create_opensearch_client
 
         client = create_opensearch_client()
 

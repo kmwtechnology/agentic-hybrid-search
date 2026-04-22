@@ -10,36 +10,36 @@ Usage:
 """
 
 import argparse
-import os
-import sys
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import List, Tuple
 
 import psycopg
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg import sql
 from psycopg_pool import ConnectionPool
-from langgraph.checkpoint.postgres import PostgresSaver
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from config import (
     DATABASE_URL,
     DB_CONNECTION_KWARGS,
     DB_POOL_MAX_SIZE,
-    POSTGRES_HOST,
-    POSTGRES_PORT,
-    POSTGRES_USER,
-    POSTGRES_PASSWORD,
-    POSTGRES_DB,
-    LLM_MODEL,
     EMBEDDINGS_MODEL,
-    RERANKER_MODEL,
     GOOGLE_API_KEY,
-    QUERY_EVAL_MODEL,
-    VECTOR_DIMENSION,
+    LLM_MODEL,
     OPENSEARCH_INDEX_NAME,
     OPENSEARCH_SEARCH_PIPELINE,
+    POSTGRES_DB,
+    POSTGRES_HOST,
+    POSTGRES_PASSWORD,
+    POSTGRES_PORT,
+    POSTGRES_USER,
+    QUERY_EVAL_MODEL,
+    RERANKER_MODEL,
+    VECTOR_DIMENSION,
 )
 
 # Document chunking settings
@@ -51,6 +51,7 @@ CHUNK_OVERLAP = 200
 # STEP 1: POSTGRESQL DATABASE SETUP
 # ============================================================================
 
+
 def create_database():
     """Create the langchain_agent database if it doesn't exist"""
     print("\n[1/7] Creating database...")
@@ -58,7 +59,9 @@ def create_database():
     try:
         # Connect to the default postgres database to create our database
         if POSTGRES_HOST.startswith("/cloudsql/"):
-            admin_conn_string = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@/postgres?host={POSTGRES_HOST}"
+            admin_conn_string = (
+                f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@/postgres?host={POSTGRES_HOST}"
+            )
         else:
             admin_conn_string = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/postgres"
 
@@ -66,10 +69,7 @@ def create_database():
             conn.autocommit = True
             with conn.cursor() as cur:
                 # Check if database exists
-                cur.execute(
-                    "SELECT 1 FROM pg_database WHERE datname = %s",
-                    (POSTGRES_DB,)
-                )
+                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (POSTGRES_DB,))
                 if not cur.fetchone():
                     cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(POSTGRES_DB)))
                     print(f"      ✓ Database '{POSTGRES_DB}' created")
@@ -87,7 +87,7 @@ def verify_connection():
             with conn.cursor() as cur:
                 cur.execute("SELECT version()")
                 version = cur.fetchone()[0]
-                postgres_version = version.split(',')[0]
+                postgres_version = version.split(",")[0]
                 print(f"      ✓ Connected to: {postgres_version}")
     except Exception as e:
         print(f"      ✗ Error connecting to database: {e}")
@@ -99,7 +99,7 @@ def create_opensearch_index():
     print("\n[2/7] Creating OpenSearch index...")
 
     try:
-        from vector_store import create_opensearch_client, INDEX_MAPPING, SEARCH_PIPELINE
+        from vector_store import INDEX_MAPPING, SEARCH_PIPELINE, create_opensearch_client
 
         client = create_opensearch_client()
 
@@ -124,7 +124,7 @@ def create_search_pipeline():
     print("\n[3/7] Creating search pipeline...")
 
     try:
-        from vector_store import create_opensearch_client, SEARCH_PIPELINE
+        from vector_store import SEARCH_PIPELINE, create_opensearch_client
 
         client = create_opensearch_client()
 
@@ -146,9 +146,7 @@ def init_checkpoint_tables():
         # Create connection pool
         connection_kwargs = DB_CONNECTION_KWARGS.copy()
         pool = ConnectionPool(
-            conninfo=DATABASE_URL,
-            max_size=DB_POOL_MAX_SIZE,
-            kwargs=connection_kwargs
+            conninfo=DATABASE_URL, max_size=DB_POOL_MAX_SIZE, kwargs=connection_kwargs
         )
 
         # Initialize the checkpointer (creates tables if they don't exist)
@@ -186,6 +184,7 @@ def init_metadata_table():
 # STEP 2: GOOGLE AI API VALIDATION
 # ============================================================================
 
+
 def validate_google_api():
     """Validate Google API key by testing an embedding call"""
     print("\n[5/7] Validating Google AI API key...")
@@ -196,7 +195,9 @@ def validate_google_api():
         return False
 
     try:
-        embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDINGS_MODEL, output_dimensionality=VECTOR_DIMENSION)
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model=EMBEDDINGS_MODEL, output_dimensionality=VECTOR_DIMENSION
+        )
         result = embeddings.embed_query("test")
         print(f"      ✓ Google AI API key is valid")
         print(f"      ✓ Embedding dimension: {len(result)}")
@@ -215,6 +216,7 @@ def validate_google_api():
 # ============================================================================
 # STEP 3: SAMPLE DATA LOADING
 # ============================================================================
+
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
     """Split text into overlapping chunks"""
@@ -259,16 +261,17 @@ def load_documents_from_directory(docs_dir: str) -> List[Tuple[str, str]]:
             print(f"      ✗ Error loading {file_path.name}: {e}")
 
     return documents
+
+
 def verify_data_load() -> bool:
     """Verify that documents were loaded into OpenSearch"""
     try:
         from vector_store import create_opensearch_client
 
         client = create_opensearch_client()
-        count = client.count(
-            index=OPENSEARCH_INDEX_NAME,
-            body={"query": {"match_all": {}}}
-        )["count"]
+        count = client.count(index=OPENSEARCH_INDEX_NAME, body={"query": {"match_all": {}}})[
+            "count"
+        ]
 
         print(f"      ✓ Chunks in OpenSearch: {count}")
         return count > 0
@@ -282,23 +285,18 @@ def verify_data_load() -> bool:
 # MAIN SETUP ORCHESTRATION
 # ============================================================================
 
+
 def main():
     """Run complete setup process"""
     parser = argparse.ArgumentParser(description="Setup LangChain Agent")
     parser.add_argument(
-        "--skip-docs",
-        action="store_true",
-        help="Skip document loading (database setup only)"
+        "--skip-docs", action="store_true", help="Skip document loading (database setup only)"
     )
-    parser.add_argument(
-        "--skip-models",
-        action="store_true",
-        help="Skip Google AI API validation"
-    )
+    parser.add_argument("--skip-models", action="store_true", help="Skip Google AI API validation")
     parser.add_argument(
         "--reset-index",
         action="store_true",
-        help="Delete the existing OpenSearch index before creating a new one (forces re-index with new mapping)"
+        help="Delete the existing OpenSearch index before creating a new one (forces re-index with new mapping)",
     )
     args = parser.parse_args()
 
@@ -333,15 +331,19 @@ def main():
         # Step 3: Product Data Loading
         if not args.skip_docs:
             print("\n[6/7] Loading ESCI e-commerce products...")
-            print("      Ensure ESCI dataset files are present in ../esci/shopping_queries_dataset/")
+            print(
+                "      Ensure ESCI dataset files are present in ../esci/shopping_queries_dataset/"
+            )
             print("      Embeddings are batched (100/call) — progress shown per batch.", flush=True)
             try:
                 from ingest_esci_products import ingest_esci_products
+
                 docs_loaded, chunks_loaded = ingest_esci_products(reset_index=args.reset_index)
                 print(f"      ✓ Loaded {docs_loaded:,} products ({chunks_loaded:,} chunks)")
             except Exception as e:
                 print(f"      ⚠ Error loading ESCI products: {e}")
                 import traceback
+
                 traceback.print_exc()
                 print("      You can manually load products later with:")
                 print("      PYTHONPATH=. python ingest_esci_products.py")

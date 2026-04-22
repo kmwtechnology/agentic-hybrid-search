@@ -7,31 +7,31 @@ Provides:
 """
 
 import logging
-from typing import List, Optional, Dict, Any, Union
+from typing import Any, Dict, List, Optional, Union
 
 import urllib3
-from opensearchpy import OpenSearch, RequestsHttpConnection
 from langchain_core.documents import Document
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from opensearchpy import OpenSearch, RequestsHttpConnection
 
 from config import (
-    RETRIEVER_K,
-    RETRIEVER_FETCH_K,
-    RETRIEVER_ALPHA,
-    ENABLE_EMBEDDING_CACHE,
     EMBEDDING_CACHE_MAX_SIZE,
+    ENABLE_EMBEDDING_CACHE,
     OPENSEARCH_HOST,
-    OPENSEARCH_PORT,
-    OPENSEARCH_USER,
-    OPENSEARCH_PASSWORD,
-    OPENSEARCH_USE_SSL,
-    OPENSEARCH_VERIFY_CERTS,
     OPENSEARCH_INDEX_NAME,
+    OPENSEARCH_PASSWORD,
+    OPENSEARCH_PORT,
     OPENSEARCH_SEARCH_PIPELINE,
     OPENSEARCH_TIMEOUT,
+    OPENSEARCH_USE_SSL,
+    OPENSEARCH_USER,
+    OPENSEARCH_VERIFY_CERTS,
+    RETRIEVER_ALPHA,
+    RETRIEVER_FETCH_K,
+    RETRIEVER_K,
 )
 from embedding_cache import EmbeddingCache
-from exceptions import SearchValidationError, SearchFailureError, SearchTimeoutError, EmbeddingError
+from exceptions import EmbeddingError, SearchFailureError, SearchTimeoutError, SearchValidationError
 
 # Suppress InsecureRequestWarning for self-signed certs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -76,7 +76,7 @@ INDEX_MAPPING = {
                         "speaker, speakers, soundbar",
                         "keyboard, mechanical keyboard",
                         "mouse, mice, trackpad",
-                    ]
+                    ],
                 },
                 "phonetic_filter": {
                     "type": "phonetic",
@@ -105,7 +105,7 @@ INDEX_MAPPING = {
                     "tokenizer": "standard",
                     "filter": ["lowercase"],
                 },
-            }
+            },
         },
     },
     "mappings": {
@@ -343,9 +343,7 @@ class OpenSearchVectorStore:
                                 }
                             }
                         ],
-                        "filter": [
-                            {"term": {"collection_id": self.collection_id}}
-                        ],
+                        "filter": [{"term": {"collection_id": self.collection_id}}],
                     }
                 },
             }
@@ -400,7 +398,9 @@ class OpenSearchVectorStore:
             query_embedding = self._get_embedding(query)
 
             if self._check_hybrid_support():
-                return self._hybrid_search_native(query, query_embedding, k, fetch_k, alpha, filters)
+                return self._hybrid_search_native(
+                    query, query_embedding, k, fetch_k, alpha, filters
+                )
             else:
                 return self._hybrid_search_rrf(query, query_embedding, k, fetch_k, alpha, filters)
 
@@ -441,11 +441,11 @@ class OpenSearchVectorStore:
                                 "embedding": {
                                     "vector": query_embedding,
                                     "k": fetch_k,
-                                    "filter": {
-                                        "bool": {
-                                            "must": knn_filter_list
-                                        }
-                                    } if len(knn_filter_list) > 1 else knn_filter_list[0],
+                                    "filter": (
+                                        {"bool": {"must": knn_filter_list}}
+                                        if len(knn_filter_list) > 1
+                                        else knn_filter_list[0]
+                                    ),
                                 }
                             }
                         },
@@ -632,6 +632,7 @@ class OpenSearchVectorStore:
             "product_color": src.get("product_color", ""),
         }
         return Document(page_content=src.get("chunk_text", ""), metadata=metadata)
+
 
 class OpenSearchRetriever:
     """

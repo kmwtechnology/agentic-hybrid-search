@@ -9,14 +9,13 @@ Provides:
 
 import logging
 import sys
-from typing import Any, Dict, Optional
 from contextvars import ContextVar
+from typing import Any, Dict, Optional
 
 import structlog
 from structlog.types import Processor
 
-from config import LOG_LEVEL, LOG_FORMAT, LOG_INCLUDE_TIMESTAMP
-
+from config import LOG_FORMAT, LOG_INCLUDE_TIMESTAMP, LOG_LEVEL
 
 # Context variable for request-scoped logging context
 _log_context: ContextVar[Dict[str, Any]] = ContextVar("log_context", default={})
@@ -63,7 +62,8 @@ def configure_logging() -> None:
 
     # Configure structlog
     structlog.configure(
-        processors=shared_processors + [
+        processors=shared_processors
+        + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),

@@ -85,6 +85,7 @@ async def health_check():
     # Check OpenSearch vector store has documents
     try:
         from vector_store import create_opensearch_client
+
         client = create_opensearch_client()
         result = client.count(
             index=OPENSEARCH_INDEX_NAME,

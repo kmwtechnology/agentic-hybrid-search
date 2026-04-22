@@ -9,6 +9,7 @@ Tests:
 
 import sys
 
+
 def test_alpha_labels():
     """Test that alpha labels are correct (standard convention: 0=lexical, 1=semantic)."""
     print("\n=== Testing Alpha Label Convention ===")
@@ -95,19 +96,19 @@ def test_score_source_field():
             "grade": "pass",
             "score": 0.95,
             "score_source": "reranker",
-            "reasoning": "Auto-pass: Documents validated with high reranker confidence"
+            "reasoning": "Auto-pass: Documents validated with high reranker confidence",
         },
         {
             "grade": "pass",
             "score": 0.90,
             "score_source": "honest_ack",
-            "reasoning": "Auto-pass: Response honestly acknowledges missing info"
+            "reasoning": "Auto-pass: Response honestly acknowledges missing info",
         },
         {
             "grade": "fail",
             "score": 0.40,
             "score_source": "llm",
-            "reasoning": "Response lacks detail and structure"
+            "reasoning": "Response lacks detail and structure",
         },
     ]
 
@@ -133,14 +134,16 @@ def test_honest_ack_score():
         "grade": "pass",
         "score": 0.90,  # Changed from 0.75 to 0.90
         "score_source": "honest_ack",
-        "reasoning": "Auto-pass: Response honestly acknowledges information is not in knowledge base"
+        "reasoning": "Auto-pass: Response honestly acknowledges information is not in knowledge base",
     }
 
     actual_score = honest_ack_response["score"]
     passed = actual_score == expected_score
 
     status = "PASS" if passed else "FAIL"
-    print(f"  [{status}] Honest acknowledgment score = {actual_score:.2f} (expected: {expected_score:.2f})")
+    print(
+        f"  [{status}] Honest acknowledgment score = {actual_score:.2f} (expected: {expected_score:.2f})"
+    )
     print(f"       This prevents low-confidence retry for good 'not found' responses")
 
     return passed
@@ -151,7 +154,8 @@ def test_type_imports():
     print("\n=== Testing Type Imports ===")
 
     try:
-        from agent_state import ReflectionResult, DocumentGrade, CustomAgentState
+        from agent_state import CustomAgentState, DocumentGrade, ReflectionResult
+
         print(f"  [PASS] agent_state.py imports successful")
         print(f"       ReflectionResult fields: grade, score, reasoning, score_source (optional)")
         return True

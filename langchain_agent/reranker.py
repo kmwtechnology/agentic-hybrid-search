@@ -7,15 +7,15 @@ in a single batch API call, replacing the local cross-encoder model.
 
 import logging
 import time
-from typing import List, Tuple, Annotated
+from typing import Annotated, List, Tuple
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field, field_validator
 
 from config import RERANKER_BATCH_SIZE
-from exceptions import RerankerValidationError, RerankerLLMError
+from exceptions import RerankerLLMError, RerankerValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ class GeminiReranker:
         dummy_query = "What is the purpose of this warmup function?"
         dummy_doc = Document(
             page_content="This is a warmup document with enough content to be realistic. " * 5,
-            metadata={"source": "warmup"}
+            metadata={"source": "warmup"},
         )
         self.score_documents(dummy_query, [dummy_doc])
 
@@ -187,16 +187,10 @@ class GeminiReranker:
             text = doc.page_content[:500]
             doc_lines.append(f"[{i}] {text}")
 
-        return SCORING_PROMPT_TEMPLATE.format(
-            query=query,
-            documents="\n".join(doc_lines)
-        )
+        return SCORING_PROMPT_TEMPLATE.format(query=query, documents="\n".join(doc_lines))
 
     def score_documents(
-        self,
-        query: str,
-        documents: List[Document],
-        batch_size: int = None
+        self, query: str, documents: List[Document], batch_size: int = None
     ) -> List[Tuple[Document, float]]:
         """
         Score documents by relevance to query using batch LLM prompting.
@@ -224,7 +218,7 @@ class GeminiReranker:
         all_scored: List[Tuple[Document, float]] = []
 
         for batch_idx in range(0, len(documents), batch_size):
-            batch_docs = documents[batch_idx:batch_idx + batch_size]
+            batch_docs = documents[batch_idx : batch_idx + batch_size]
             prompt = self._build_prompt(query, batch_docs)
 
             try:
@@ -239,7 +233,7 @@ class GeminiReranker:
                         "error": str(e),
                         "query_length": len(query),
                         "batch_size": len(batch_docs),
-                    }
+                    },
                 )
                 raise RerankerLLMError(
                     f"LLM scoring failed: {type(e).__name__}",
@@ -249,7 +243,9 @@ class GeminiReranker:
 
             # Build score map from valid scores only (skip out-of-range indices)
             valid_scores = [s for s in result.scores if 0 <= s.index < len(batch_docs)]
-            invalid_indices = [s.index for s in result.scores if not (0 <= s.index < len(batch_docs))]
+            invalid_indices = [
+                s.index for s in result.scores if not (0 <= s.index < len(batch_docs))
+            ]
 
             if invalid_indices:
                 # Check if indices are significantly out of range (clearly erroneous)
@@ -264,7 +260,7 @@ class GeminiReranker:
                         extra={
                             "invalid_indices": significantly_invalid,
                             "batch_size": batch_size,
-                        }
+                        },
                     )
                     raise RerankerValidationError(
                         f"LLM returned invalid document indices: {significantly_invalid}",
@@ -278,7 +274,7 @@ class GeminiReranker:
                         extra={
                             "invalid_indices": invalid_indices,
                             "batch_size": batch_size,
-                        }
+                        },
                     )
 
             score_map = {s.index: s.score for s in valid_scores}
@@ -292,7 +288,7 @@ class GeminiReranker:
                     extra={
                         "missing_indices": missing_indices,
                         "batch_size": len(batch_docs),
-                    }
+                    },
                 )
                 # Use fallback (0.5) only for missing indices, not all documents
                 for missing_idx in missing_indices:
@@ -307,10 +303,7 @@ class GeminiReranker:
         return all_scored
 
     def rerank(
-        self,
-        query: str,
-        documents: List[Document],
-        top_k: int
+        self, query: str, documents: List[Document], top_k: int
     ) -> List[Tuple[Document, float]]:
         """
         Rerank documents and return top-k most relevant results.

@@ -9,8 +9,9 @@ LLM-based reranker, including:
 - Document preservation and metadata
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
 from langchain_core.documents import Document
 
 

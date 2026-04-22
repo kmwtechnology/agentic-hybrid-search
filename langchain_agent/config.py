@@ -71,8 +71,9 @@ All other variables have sensible defaults in this file.
 
 import os
 from pathlib import Path
-from psycopg.rows import dict_row
+
 from dotenv import load_dotenv
+from psycopg.rows import dict_row
 
 # Load environment variables from .env file
 load_dotenv()
@@ -217,7 +218,9 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "langchain_agent")
 # When detected, skip TCP port and use socket-based connection string
 if POSTGRES_HOST.startswith("/cloudsql/"):
     POSTGRES_PORT = None
-    DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@/{POSTGRES_DB}?host={POSTGRES_HOST}"
+    DATABASE_URL = (
+        f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@/{POSTGRES_DB}?host={POSTGRES_HOST}"
+    )
 else:
     POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
     DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
@@ -391,8 +394,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Path to ESCI dataset directory
 ESCI_DATASET_DIR = os.getenv(
-    "ESCI_DATASET_DIR",
-    str(Path(BASE_DIR).parent / "esci" / "shopping_queries_dataset")
+    "ESCI_DATASET_DIR", str(Path(BASE_DIR).parent / "esci" / "shopping_queries_dataset")
 )
 
 # Product locale for filtering (e.g., "us" for English US)
@@ -483,7 +485,7 @@ API_KEY_QUERY_PARAM = "api_key"  # For WebSocket authentication
 
 # Rate limiting configuration
 RATE_LIMIT_CONVERSATIONS = "10/minute"  # List/manage conversations
-RATE_LIMIT_CHAT = "20/minute"           # Chat requests (REST + WebSocket)
+RATE_LIMIT_CHAT = "20/minute"  # Chat requests (REST + WebSocket)
 RATE_LIMIT_ENABLED = True
 
 # ============================================================================
@@ -536,7 +538,9 @@ CHECKPOINT_COMPACTION_DAYS = 7
 # Enable Content Type Classification (for product content generation)
 # When enabled, documentation_request intent routes to classifier first
 # When disabled, documentation_request routes directly to doc_planner
-ENABLE_CONTENT_TYPE_CLASSIFICATION = os.getenv("ENABLE_CONTENT_TYPE_CLASSIFICATION", "true").lower() == "true"
+ENABLE_CONTENT_TYPE_CLASSIFICATION = (
+    os.getenv("ENABLE_CONTENT_TYPE_CLASSIFICATION", "true").lower() == "true"
+)
 
 # Content type classifier model (reuses lightweight query evaluator model)
 CONTENT_TYPE_CLASSIFIER_MODEL = os.getenv("CONTENT_TYPE_CLASSIFIER_MODEL", QUERY_EVAL_MODEL)
@@ -544,4 +548,6 @@ CONTENT_TYPE_CLASSIFIER_MODEL = os.getenv("CONTENT_TYPE_CLASSIFIER_MODEL", QUERY
 # Confidence threshold for content type clarification
 # When classifier confidence < threshold, ask user to clarify
 # Default: 0.90 (90%) - balances accuracy vs interruption
-CONTENT_TYPE_CLARIFICATION_THRESHOLD = float(os.getenv("CONTENT_TYPE_CLARIFICATION_THRESHOLD", "0.90"))
+CONTENT_TYPE_CLARIFICATION_THRESHOLD = float(
+    os.getenv("CONTENT_TYPE_CLARIFICATION_THRESHOLD", "0.90")
+)

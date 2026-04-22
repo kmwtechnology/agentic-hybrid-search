@@ -8,12 +8,12 @@ Tests the 4-layer refinement solution:
 4. User Feedback - Explicit context confirmation
 """
 
+# Import the main orchestrator (requires mocking dependencies)
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
 from langchain_core.documents import Document
-from langchain_core.messages import HumanMessage, AIMessage
-
-# Import the main orchestrator (requires mocking dependencies)
-from unittest.mock import Mock, MagicMock, patch
+from langchain_core.messages import AIMessage, HumanMessage
 
 
 @pytest.fixture
@@ -22,15 +22,27 @@ def sample_boot_documents():
     return [
         Document(
             page_content="Waterproof hiking boots with ankle support",
-            metadata={"product_id": "BOOT001", "title": "Waterproof Hiking Boots", "product_brand": "Columbia"},
+            metadata={
+                "product_id": "BOOT001",
+                "title": "Waterproof Hiking Boots",
+                "product_brand": "Columbia",
+            },
         ),
         Document(
             page_content="Winter snow boots with insulation",
-            metadata={"product_id": "BOOT002", "title": "Winter Snow Boots", "product_brand": "Sorel"},
+            metadata={
+                "product_id": "BOOT002",
+                "title": "Winter Snow Boots",
+                "product_brand": "Sorel",
+            },
         ),
         Document(
             page_content="Casual leather boots",
-            metadata={"product_id": "BOOT003", "title": "Casual Leather Boots", "product_brand": "Timberland"},
+            metadata={
+                "product_id": "BOOT003",
+                "title": "Casual Leather Boots",
+                "product_brand": "Timberland",
+            },
         ),
     ]
 
@@ -41,11 +53,19 @@ def sample_dress_documents():
     return [
         Document(
             page_content="Red evening gown with sequins",
-            metadata={"product_id": "DRESS001", "title": "Red Evening Gown", "product_brand": "Designer X"},
+            metadata={
+                "product_id": "DRESS001",
+                "title": "Red Evening Gown",
+                "product_brand": "Designer X",
+            },
         ),
         Document(
             page_content="Red cocktail dress",
-            metadata={"product_id": "DRESS002", "title": "Red Cocktail Dress", "product_brand": "Designer Y"},
+            metadata={
+                "product_id": "DRESS002",
+                "title": "Red Cocktail Dress",
+                "product_brand": "Designer Y",
+            },
         ),
     ]
 
@@ -91,14 +111,16 @@ class TestContinuityValidation:
         prior_ids = {doc.metadata.get("product_id") for doc in sample_boot_documents}
         assert prior_ids == {"BOOT001", "BOOT002", "BOOT003"}
 
-    def test_different_category_different_products(self, sample_boot_documents, sample_dress_documents):
+    def test_different_category_different_products(
+        self, sample_boot_documents, sample_dress_documents
+    ):
         """Boots → red dresses = low continuity (0.0)."""
         # Prior: 3 boot documents
         # New query: "red dresses" (dress category)
         # Expected: continuity < 0.3
         boot_ids = {doc.metadata.get("product_id") for doc in sample_boot_documents}
         dress_ids = {doc.metadata.get("product_id") for doc in sample_dress_documents}
-        
+
         # No overlap between boot and dress IDs
         assert len(boot_ids & dress_ids) == 0
         overlap = len(boot_ids & dress_ids) / len(boot_ids) if boot_ids else 0
@@ -108,11 +130,11 @@ class TestContinuityValidation:
         """Boots → waterproof boots with partial overlap = medium continuity."""
         prior_docs = sample_boot_documents
         prior_ids = {doc.metadata.get("product_id") for doc in prior_docs}
-        
+
         # Simulate refined results (only some prior boots match waterproof criteria)
         refined_ids = {"BOOT001", "BOOT002"}  # 2 out of 3 are waterproof
         overlap = len(prior_ids & refined_ids) / len(prior_ids)
-        
+
         assert overlap == 2 / 3  # ~67% continuity
         assert overlap > 0.3  # Should treat as refinement
 
@@ -125,13 +147,13 @@ class TestContinuityValidation:
         # Expected: continuity ~0.5 (ambiguous)
         prior_category = "boots"
         query = "waterproof"
-        
+
         # Simulating the validation logic
         if prior_category and not query.lower() in ["boots", "shoes", "sneakers"]:
             continuity = 0.5  # Ambiguous
         else:
             continuity = 0.7
-        
+
         assert 0.3 < continuity < 0.7
 
 
@@ -145,24 +167,24 @@ class TestIntentDowngrade:
         # Expected: intent downgraded to "search"
         initial_intent = "refinement"
         continuity_score = 0.0  # Different categories
-        
+
         if continuity_score < 0.3:
             final_intent = "search"
         else:
             final_intent = initial_intent
-        
+
         assert final_intent == "search"
 
     def test_refinement_confidence_lowered_ambiguous_category(self):
         """Refinement confidence lowered when category continuity is ambiguous."""
         initial_confidence = 0.95
         continuity_score = 0.5  # Ambiguous
-        
+
         if continuity_score < 0.7:
             final_confidence = min(initial_confidence, 0.65)
         else:
             final_confidence = initial_confidence
-        
+
         assert final_confidence == 0.65
         assert final_confidence < 0.7  # Triggers clarification
 
@@ -171,7 +193,7 @@ class TestIntentDowngrade:
         initial_intent = "refinement"
         initial_confidence = 0.95
         continuity_score = 0.9  # Strong match
-        
+
         if continuity_score < 0.3:
             final_intent = "search"
             final_confidence = 0.95
@@ -181,7 +203,7 @@ class TestIntentDowngrade:
         else:
             final_intent = initial_intent
             final_confidence = initial_confidence
-        
+
         assert final_intent == "refinement"
         assert final_confidence == 0.95
 
@@ -198,13 +220,13 @@ class TestContextReset:
             ],
             "prior_search_intent": "search",
         }
-        
+
         # New search detected (intent=search with low continuity)
         new_intent = "search"
         if new_intent == "search":
             state["prior_search_documents"] = []
             state["prior_search_intent"] = None
-        
+
         assert len(state["prior_search_documents"]) == 0
         assert state["prior_search_intent"] is None
 
@@ -214,15 +236,15 @@ class TestContextReset:
             "prior_search_documents": sample_boot_documents,
             "prior_search_intent": "search",
         }
-        
+
         # Refinement confirmed (continuity > 0.7)
         continuity_score = 0.95
         new_intent = "refinement"
-        
+
         if continuity_score >= 0.7 and new_intent == "refinement":
             # Keep prior context
             pass
-        
+
         assert len(state["prior_search_documents"]) == 3
         assert state["prior_search_intent"] == "search"
 
@@ -237,7 +259,7 @@ class TestMultiSequenceConversation:
             "prior_search_documents": [],
             "prior_search_intent": None,
         }
-        
+
         # Turn 1: Search for boots
         conversation_state["prior_search_documents"] = sample_boot_documents
         conversation_state["prior_search_intent"] = "search"
@@ -267,9 +289,9 @@ class TestExplicitFeedback:
         """Refinement response includes prior category."""
         prior_category = "boots"
         prior_count = 30
-        
+
         response_intro = f"From the {prior_count} {prior_category} I showed you earlier, here are the ones that match your new criteria:"
-        
+
         assert prior_category in response_intro
         assert str(prior_count) in response_intro
         assert "From the" in response_intro
@@ -277,7 +299,7 @@ class TestExplicitFeedback:
     def test_new_search_response_no_prior_reference(self):
         """New search response doesn't reference prior context."""
         response_intro = "I found the following products matching your search:"
-        
+
         assert "From the" not in response_intro
         assert "earlier" not in response_intro
 

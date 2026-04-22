@@ -21,12 +21,7 @@ class AgenticHybridSearchError(Exception):
         recoverable: Whether the error is potentially recoverable
     """
 
-    def __init__(
-        self,
-        message: str,
-        details: Optional[str] = None,
-        recoverable: bool = False
-    ):
+    def __init__(self, message: str, details: Optional[str] = None, recoverable: bool = False):
         self.message = message
         self.details = details
         self.recoverable = recoverable
@@ -69,7 +64,7 @@ class DatabaseError(AgenticHybridSearchError):
         message: str,
         operation: Optional[str] = None,
         table: Optional[str] = None,
-        recoverable: bool = True
+        recoverable: bool = True,
     ):
         details_parts = []
         if operation:
@@ -98,7 +93,7 @@ class OpenSearchError(AgenticHybridSearchError):
         message: str,
         operation: Optional[str] = None,
         index: Optional[str] = None,
-        recoverable: bool = True
+        recoverable: bool = True,
     ):
         details_parts = []
         if operation:
@@ -128,7 +123,7 @@ class LLMError(AgenticHybridSearchError):
         message: str,
         model: Optional[str] = None,
         operation: Optional[str] = None,
-        recoverable: bool = True
+        recoverable: bool = True,
     ):
         details_parts = []
         if model:
@@ -157,7 +152,7 @@ class RetrievalError(AgenticHybridSearchError):
         message: str,
         stage: Optional[str] = None,
         query: Optional[str] = None,
-        recoverable: bool = True
+        recoverable: bool = True,
     ):
         details_parts = []
         if stage:
@@ -188,7 +183,7 @@ class LinkVerificationError(AgenticHybridSearchError):
         message: str,
         url: Optional[str] = None,
         status_code: Optional[int] = None,
-        recoverable: bool = True
+        recoverable: bool = True,
     ):
         details_parts = []
         if url:
@@ -212,12 +207,7 @@ class StreamingError(AgenticHybridSearchError):
     - Stream timeout
     """
 
-    def __init__(
-        self,
-        message: str,
-        event_type: Optional[str] = None,
-        recoverable: bool = True
-    ):
+    def __init__(self, message: str, event_type: Optional[str] = None, recoverable: bool = True):
         details = f"event_type={event_type}" if event_type else None
         super().__init__(message, details=details, recoverable=recoverable)
         self.event_type = event_type
@@ -238,7 +228,7 @@ class StateError(AgenticHybridSearchError):
         message: str,
         field: Optional[str] = None,
         node: Optional[str] = None,
-        recoverable: bool = False
+        recoverable: bool = False,
     ):
         details_parts = []
         if field:
@@ -267,7 +257,7 @@ class RerankerLLMError(AgenticHybridSearchError):
         message: str,
         model: Optional[str] = None,
         batch_size: Optional[int] = None,
-        recoverable: bool = True
+        recoverable: bool = True,
     ):
         details_parts = []
         if model:
@@ -296,7 +286,7 @@ class RerankerValidationError(AgenticHybridSearchError):
         message: str,
         num_scores: Optional[int] = None,
         num_docs: Optional[int] = None,
-        recoverable: bool = False
+        recoverable: bool = False,
     ):
         details_parts = []
         if num_scores is not None:
@@ -320,13 +310,10 @@ class SearchValidationError(AgenticHybridSearchError):
     - Query format is invalid
     """
 
-    def __init__(
-        self,
-        message: str,
-        query: Optional[str] = None,
-        recoverable: bool = False
-    ):
-        details = f"query={query[:50] + '...' if query and len(query) > 50 else query}" if query else None
+    def __init__(self, message: str, query: Optional[str] = None, recoverable: bool = False):
+        details = (
+            f"query={query[:50] + '...' if query and len(query) > 50 else query}" if query else None
+        )
         super().__init__(message, details=details, recoverable=recoverable)
         self.query = query
 
@@ -341,12 +328,7 @@ class SearchFailureError(AgenticHybridSearchError):
     - Index corruption
     """
 
-    def __init__(
-        self,
-        message: str,
-        index: Optional[str] = None,
-        recoverable: bool = True
-    ):
+    def __init__(self, message: str, index: Optional[str] = None, recoverable: bool = True):
         details = f"index={index}" if index else None
         super().__init__(message, details=details, recoverable=recoverable)
         self.index = index
@@ -362,12 +344,7 @@ class EmbeddingError(AgenticHybridSearchError):
     - Embedding API error
     """
 
-    def __init__(
-        self,
-        message: str,
-        dimension: Optional[int] = None,
-        recoverable: bool = True
-    ):
+    def __init__(self, message: str, dimension: Optional[int] = None, recoverable: bool = True):
         details = f"dimension={dimension}" if dimension else None
         super().__init__(message, details=details, recoverable=recoverable)
         self.dimension = dimension
@@ -388,7 +365,7 @@ class SearchTimeoutError(AgenticHybridSearchError):
         message: str,
         operation: Optional[str] = None,
         timeout_ms: Optional[float] = None,
-        recoverable: bool = True
+        recoverable: bool = True,
     ):
         details_parts = []
         if operation:
@@ -412,12 +389,7 @@ class AgentError(AgenticHybridSearchError):
     - Agent completion failure
     """
 
-    def __init__(
-        self,
-        message: str,
-        node: Optional[str] = None,
-        recoverable: bool = False
-    ):
+    def __init__(self, message: str, node: Optional[str] = None, recoverable: bool = False):
         details = f"node={node}" if node else None
         super().__init__(message, details=details, recoverable=recoverable)
         self.node = node
@@ -438,7 +410,7 @@ class AgentTimeoutError(AgenticHybridSearchError):
         message: str,
         timeout_ms: Optional[float] = None,
         node: Optional[str] = None,
-        recoverable: bool = True
+        recoverable: bool = True,
     ):
         details_parts = []
         if timeout_ms:
@@ -462,12 +434,7 @@ class RerankerError(AgenticHybridSearchError):
     - Batch processing failure
     """
 
-    def __init__(
-        self,
-        message: str,
-        batch_size: Optional[int] = None,
-        recoverable: bool = True
-    ):
+    def __init__(self, message: str, batch_size: Optional[int] = None, recoverable: bool = True):
         details = f"batch_size={batch_size}" if batch_size else None
         super().__init__(message, details=details, recoverable=recoverable)
         self.batch_size = batch_size

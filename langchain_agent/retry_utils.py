@@ -11,22 +11,22 @@ Uses tenacity for robust retry logic with exponential backoff.
 
 import logging
 from functools import wraps
-from typing import Callable, Type, Tuple, Any
+from typing import Any, Callable, Tuple, Type
 
 from tenacity import (
+    RetryError,
+    before_sleep_log,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
-    before_sleep_log,
-    RetryError,
 )
 
 from exceptions import (
     DatabaseError,
+    LinkVerificationError,
     LLMError,
     RetrievalError,
-    LinkVerificationError,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ NETWORK_RETRY_WAIT_MAX = 2
 # RETRY DECORATORS
 # ============================================================================
 
+
 def retry_database(
     max_attempts: int = DB_RETRY_ATTEMPTS,
     wait_min: float = DB_RETRY_WAIT_MIN,
@@ -84,12 +85,14 @@ def retry_database(
     return retry(
         stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=1, min=wait_min, max=wait_max),
-        retry=retry_if_exception_type((
-            psycopg.OperationalError,
-            psycopg.InterfaceError,
-            ConnectionError,
-            TimeoutError,
-        )),
+        retry=retry_if_exception_type(
+            (
+                psycopg.OperationalError,
+                psycopg.InterfaceError,
+                ConnectionError,
+                TimeoutError,
+            )
+        ),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
@@ -123,12 +126,14 @@ def retry_llm(
     return retry(
         stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=1, min=wait_min, max=wait_max),
-        retry=retry_if_exception_type((
-            httpx.TimeoutException,
-            httpx.ConnectError,
-            ConnectionError,
-            TimeoutError,
-        )),
+        retry=retry_if_exception_type(
+            (
+                httpx.TimeoutException,
+                httpx.ConnectError,
+                ConnectionError,
+                TimeoutError,
+            )
+        ),
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
@@ -162,13 +167,15 @@ def retry_network(
     return retry(
         stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=0.5, min=wait_min, max=wait_max),
-        retry=retry_if_exception_type((
-            httpx.TimeoutException,
-            httpx.ConnectError,
-            ConnectionError,
-            TimeoutError,
-            OSError,  # Catches DNS failures
-        )),
+        retry=retry_if_exception_type(
+            (
+                httpx.TimeoutException,
+                httpx.ConnectError,
+                ConnectionError,
+                TimeoutError,
+                OSError,  # Catches DNS failures
+            )
+        ),
         before_sleep=before_sleep_log(logger, logging.DEBUG),
         reraise=True,
     )
@@ -177,6 +184,7 @@ def retry_network(
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
 
 def with_retry_context(
     operation_name: str,
@@ -207,10 +215,7 @@ def with_retry_context(
         except error_class:
             raise
         except Exception as e:
-            raise error_class(
-                f"{operation_name} failed: {str(e)}",
-                recoverable=recoverable
-            ) from e
+            raise error_class(f"{operation_name} failed: {str(e)}", recoverable=recoverable) from e
 
     return context()
 

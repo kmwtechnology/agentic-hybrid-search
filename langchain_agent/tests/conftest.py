@@ -5,9 +5,10 @@ Provides reusable fixtures for all test levels (unit, integration, E2E).
 
 import os
 import sys
-import pytest
-from unittest.mock import Mock, MagicMock
 from pathlib import Path
+from unittest.mock import MagicMock, Mock
+
+import pytest
 
 # Add langchain_agent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -51,7 +52,7 @@ def sample_documents():
                 "product_id": "B09YLRKTRL",
                 "product_brand": "Sony",
                 "price": 399.99,
-            }
+            },
         ),
         Document(
             page_content="Bose QuietComfort 45 premium noise-canceling headphones",
@@ -62,7 +63,7 @@ def sample_documents():
                 "product_id": "B097BQ5LYH",
                 "product_brand": "Bose",
                 "price": 379.00,
-            }
+            },
         ),
     ]
 
@@ -114,7 +115,9 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "evaluator: mark test as query evaluator test")
     config.addinivalue_line("markers", "quality_gate: mark test as quality gate test")
     config.addinivalue_line("markers", "slow: mark test as slow")
-    config.addinivalue_line("markers", "requires_real_api: mark test as requiring real API credentials")
+    config.addinivalue_line(
+        "markers", "requires_real_api: mark test as requiring real API credentials"
+    )
 
 
 def pytest_collection_modifyitems(config, items):

@@ -10,8 +10,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from vector_store import create_opensearch_client
 from config import OPENSEARCH_INDEX_NAME
+from vector_store import create_opensearch_client
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ router = APIRouter()
 
 class SuggestResponse(BaseModel):
     """Response model for autocomplete suggestions."""
+
     suggestions: List[str]
 
 

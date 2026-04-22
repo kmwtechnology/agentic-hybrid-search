@@ -266,15 +266,15 @@ class TestRetryDecisionLogic:
         """Test retry only happens when both conditions met."""
         test_cases = [
             (0.68, False, False),  # Good score - no retry
-            (0.32, True, False),   # Low score but already retried - no retry
-            (0.32, False, True),   # Low score and not retried - retry!
+            (0.32, True, False),  # Low score but already retried - no retry
+            (0.32, False, True),  # Low score and not retried - retry!
             (0.50, False, False),  # Exactly threshold - no retry
         ]
 
         for max_score, already_retried, expected_retry in test_cases:
             threshold = 0.50
 
-            should_retry = (max_score < threshold and not already_retried)
+            should_retry = max_score < threshold and not already_retried
 
             assert should_retry == expected_retry
 

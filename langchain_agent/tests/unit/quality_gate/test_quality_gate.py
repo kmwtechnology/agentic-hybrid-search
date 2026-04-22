@@ -38,7 +38,9 @@ class TestQualityGate:
         threshold = 0.45
         assert intent == "refinement", "Should be refinement intent"
         assert threshold == 0.45, "Refinement threshold should be 0.45"
-        assert threshold < 0.50, "Refinement threshold should be below standard (permissive for feature-text matching)"
+        assert (
+            threshold < 0.50
+        ), "Refinement threshold should be below standard (permissive for feature-text matching)"
 
     def test_pass_decision_above_threshold(self, quality_gate_test_cases):
         """Test PASS decision when max_score >= threshold."""
@@ -126,13 +128,16 @@ class TestQualityGate:
         status = "retry" if (max_score < threshold and not quality_gate_retried) else "pass"
         assert status == "retry", "Status should be 'retry'"
 
-    @pytest.mark.parametrize("intent,expected_threshold", [
-        ("comparison", 0.55),
-        ("search", 0.50),
-        ("attribute_filter", 0.45),
-        ("refinement", 0.45),
-        ("follow_up", 0.50),
-    ])
+    @pytest.mark.parametrize(
+        "intent,expected_threshold",
+        [
+            ("comparison", 0.55),
+            ("search", 0.50),
+            ("attribute_filter", 0.45),
+            ("refinement", 0.45),
+            ("follow_up", 0.50),
+        ],
+    )
     def test_intent_thresholds(self, intent, expected_threshold):
         """Test each intent has correct threshold."""
         thresholds = {
@@ -144,4 +149,3 @@ class TestQualityGate:
         }
         actual_threshold = thresholds.get(intent)
         assert actual_threshold == expected_threshold, f"{intent} threshold mismatch"
-

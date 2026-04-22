@@ -100,13 +100,16 @@ class TestQueryEvaluator:
         assert fast_path_latency < 0.050, "Fast path should be under 50ms"
         assert llm_path_latency > 1.0, "LLM path should be over 1s"
 
-    @pytest.mark.parametrize("alpha,expected_range", [
-        (0.05, "pure_lexical"),
-        (0.25, "lexical_heavy"),
-        (0.50, "balanced"),
-        (0.65, "semantic_heavy"),
-        (0.90, "pure_semantic"),
-    ])
+    @pytest.mark.parametrize(
+        "alpha,expected_range",
+        [
+            (0.05, "pure_lexical"),
+            (0.25, "lexical_heavy"),
+            (0.50, "balanced"),
+            (0.65, "semantic_heavy"),
+            (0.90, "pure_semantic"),
+        ],
+    )
     def test_alpha_ranges(self, alpha, expected_range):
         """Test alpha values map to expected ranges."""
         if alpha <= 0.15:
@@ -131,4 +134,3 @@ class TestQueryEvaluator:
         # When no query is provided, should use collection default
         alpha = 0.65  # Example default
         assert 0.0 <= alpha <= 1.0, "Default alpha should be valid"
-

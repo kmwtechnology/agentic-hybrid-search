@@ -9,10 +9,11 @@ Tests that models are correctly configured:
 """
 
 import os
-import pytest
-from unittest.mock import Mock, MagicMock, patch
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 # Add langchain_agent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

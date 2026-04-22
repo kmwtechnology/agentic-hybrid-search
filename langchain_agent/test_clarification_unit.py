@@ -13,13 +13,20 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from content_generators import get_content_params
 
+
 def test_get_content_params_descriptions():
     """Test that get_content_params returns descriptions."""
     print("=" * 80)
     print("TEST: get_content_params includes descriptions")
     print("=" * 80)
 
-    content_types = ["social_post", "blog_post", "technical_article", "tutorial", "comprehensive_docs"]
+    content_types = [
+        "social_post",
+        "blog_post",
+        "technical_article",
+        "tutorial",
+        "comprehensive_docs",
+    ]
 
     for content_type in content_types:
         params = get_content_params(content_type)
@@ -38,6 +45,7 @@ def test_get_content_params_descriptions():
 
     return True
 
+
 def test_config_constants():
     """Test that config constants are defined."""
     print("\n" + "=" * 80)
@@ -55,6 +63,7 @@ def test_config_constants():
         print(f"  ✅ PASS: Valid threshold (0.0-1.0)")
 
     return True
+
 
 def test_state_schema():
     """Test that state schema includes clarification fields."""
@@ -83,6 +92,7 @@ def test_state_schema():
 
     return True
 
+
 if __name__ == "__main__":
     print("UNIT TESTS FOR CLARIFICATION SYSTEM\n")
 
@@ -100,6 +110,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"\n❌ EXCEPTION in {test.__name__}: {e}")
             import traceback
+
             traceback.print_exc()
             results.append(False)
 

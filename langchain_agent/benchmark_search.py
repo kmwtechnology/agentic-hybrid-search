@@ -25,19 +25,20 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
 from statistics import mean, median, stdev
+from typing import Any, Dict, List, Tuple
 
+import psycopg
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from config import (
-    VECTOR_COLLECTION_NAME,
+    DATABASE_URL,
     EMBEDDINGS_MODEL,
+    VECTOR_COLLECTION_NAME,
     VECTOR_DIMENSION,
 )
-from vector_store import OpenSearchVectorStore
 from reranker import GeminiReranker
-
+from vector_store import OpenSearchVectorStore
 
 # Benchmark test queries covering different types
 BENCHMARK_QUERIES = [
@@ -76,11 +77,7 @@ class SearchBenchmark:
         self.reranker = GeminiReranker()
 
     def measure_query_latency(
-        self,
-        queries: List[str],
-        k: int = 4,
-        fetch_k: int = 30,
-        alpha: float = 0.25
+        self, queries: List[str], k: int = 4, fetch_k: int = 30, alpha: float = 0.25
     ) -> Dict[str, float]:
         """
         Measure search latency for a set of queries.
@@ -98,12 +95,7 @@ class SearchBenchmark:
 
         for query in queries:
             start = time.time()
-            self.vector_store.hybrid_search(
-                query,
-                k=k,
-                fetch_k=fetch_k,
-                alpha=alpha
-            )
+            self.vector_store.hybrid_search(query, k=k, fetch_k=fetch_k, alpha=alpha)
             elapsed = (time.time() - start) * 1000  # Convert to ms
             latencies.append(elapsed)
 
@@ -119,11 +111,7 @@ class SearchBenchmark:
         }
 
     def measure_result_quality(
-        self,
-        queries: List[str],
-        k: int = 4,
-        fetch_k: int = 30,
-        alpha: float = 0.25
+        self, queries: List[str], k: int = 4, fetch_k: int = 30, alpha: float = 0.25
     ) -> Dict[str, float]:
         """
         Measure result quality using reranker scores.
@@ -140,12 +128,7 @@ class SearchBenchmark:
         all_scores = []
 
         for query in queries:
-            results = self.vector_store.hybrid_search(
-                query,
-                k=k,
-                fetch_k=fetch_k,
-                alpha=alpha
-            )
+            results = self.vector_store.hybrid_search(query, k=k, fetch_k=fetch_k, alpha=alpha)
 
             if results:
                 # Rerank and collect scores (returns List[Tuple[Document, float]])
@@ -172,13 +155,11 @@ class SearchBenchmark:
             with psycopg.connect(DATABASE_URL) as conn:
                 with conn.cursor() as cur:
                     # Get index type
-                    cur.execute(
-                        """
+                    cur.execute("""
                         SELECT indexdef FROM pg_indexes
                         WHERE tablename = 'document_chunks'
                           AND indexname = 'document_chunks_embedding_idx'
-                        """
-                    )
+                        """)
                     result = cur.fetchone()
                     index_type = "unknown"
                     if result:
@@ -189,11 +170,9 @@ class SearchBenchmark:
                             index_type = "ivfflat"
 
                     # Get database size
-                    cur.execute(
-                        """
+                    cur.execute("""
                         SELECT pg_size_pretty(pg_total_relation_size('document_chunks')) as size
-                        """
-                    )
+                        """)
                     table_size = cur.fetchone()[0]
 
                     # Get document count
@@ -204,7 +183,7 @@ class SearchBenchmark:
                             SELECT id FROM documents WHERE collection_id = %s
                         )
                         """,
-                        (VECTOR_COLLECTION_NAME,)
+                        (VECTOR_COLLECTION_NAME,),
                     )
                     chunk_count = cur.fetchone()[0]
 
@@ -284,14 +263,8 @@ class SearchBenchmark:
         for alpha, label in zip(alpha_values, labels):
             print(f"\nTesting α={alpha} ({label})...")
 
-            latencies = self.measure_query_latency(
-                BENCHMARK_QUERIES,
-                alpha=alpha
-            )
-            quality = self.measure_result_quality(
-                BENCHMARK_QUERIES,
-                alpha=alpha
-            )
+            latencies = self.measure_query_latency(BENCHMARK_QUERIES, alpha=alpha)
+            quality = self.measure_result_quality(BENCHMARK_QUERIES, alpha=alpha)
 
             results[f"alpha_{alpha:.2f}"] = {
                 "label": label,
@@ -331,7 +304,7 @@ class SearchBenchmark:
             current_type: {
                 "latency": latencies,
                 "quality": quality,
-            }
+            },
         }
 
         # Instructions for switching
@@ -383,39 +356,19 @@ class SearchBenchmark:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Benchmark search configurations"
+    parser = argparse.ArgumentParser(description="Benchmark search configurations")
+    parser.add_argument("--all", action="store_true", help="Run all benchmarks")
+    parser.add_argument("--rrf-k", action="store_true", help="Benchmark RRF_K constant")
+    parser.add_argument(
+        "--ivfflat-lists", action="store_true", help="Benchmark IVFFlat lists parameter"
     )
     parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Run all benchmarks"
+        "--alpha", action="store_true", help="Benchmark alpha values (hybrid search weighting)"
     )
     parser.add_argument(
-        "--rrf-k",
-        action="store_true",
-        help="Benchmark RRF_K constant"
+        "--index-type", action="store_true", help="Benchmark index types (IVFFlat vs HNSW)"
     )
-    parser.add_argument(
-        "--ivfflat-lists",
-        action="store_true",
-        help="Benchmark IVFFlat lists parameter"
-    )
-    parser.add_argument(
-        "--alpha",
-        action="store_true",
-        help="Benchmark alpha values (hybrid search weighting)"
-    )
-    parser.add_argument(
-        "--index-type",
-        action="store_true",
-        help="Benchmark index types (IVFFlat vs HNSW)"
-    )
-    parser.add_argument(
-        "--save",
-        action="store_true",
-        help="Save results to JSON file"
-    )
+    parser.add_argument("--save", action="store_true", help="Save results to JSON file")
 
     args = parser.parse_args()
 
@@ -451,6 +404,7 @@ def main():
     except Exception as e:
         print(f"\n✗ Benchmark failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

@@ -9,13 +9,14 @@ are working before sending documents to the LLM. Features:
 - Detailed logging of verification results
 """
 
-import httpx
 import logging
-import time
 import threading
-from typing import Dict, Set, Optional, Tuple, Any
-from datetime import datetime, timedelta
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional, Set, Tuple
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -189,10 +190,7 @@ class LinkVerifier:
 
         # Use thread pool for concurrent verification
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_url = {
-                executor.submit(self.verify_url, url): url
-                for url in urls
-            }
+            future_to_url = {executor.submit(self.verify_url, url): url for url in urls}
 
             for future in as_completed(future_to_url):
                 url = future_to_url[future]

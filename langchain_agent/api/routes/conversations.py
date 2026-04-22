@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import List, Optional
 
 import psycopg
-from fastapi import APIRouter, HTTPException, Request, Query, Path as PathParam
+from fastapi import APIRouter, HTTPException
+from fastapi import Path as PathParam
+from fastapi import Query, Request
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -17,13 +19,12 @@ from slowapi.util import get_remote_address
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config import DATABASE_URL, RATE_LIMIT_CONVERSATIONS
 from api.middleware.origin_auth import verify_same_origin
+from config import DATABASE_URL, RATE_LIMIT_CONVERSATIONS
 from logging_config import get_logger
 
-
 # Thread ID validation pattern (alphanumeric, underscore, hyphen, 1-64 chars)
-THREAD_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_-]{1,64}$')
+THREAD_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
 def validate_thread_id(thread_id: str) -> str:
@@ -42,9 +43,10 @@ def validate_thread_id(thread_id: str) -> str:
     if not thread_id or not THREAD_ID_PATTERN.match(thread_id):
         raise HTTPException(
             status_code=400,
-            detail="Invalid thread_id format. Must be 1-64 alphanumeric characters, underscores, or hyphens."
+            detail="Invalid thread_id format. Must be 1-64 alphanumeric characters, underscores, or hyphens.",
         )
     return thread_id
+
 
 logger = get_logger(__name__)
 
@@ -73,8 +75,12 @@ class ConversationSummary(BaseModel):
         ```
     """
 
-    thread_id: str = Field(description="Unique conversation identifier (alphanumeric, underscore, hyphen, max 64 chars)")
-    title: str = Field(description="Auto-generated title based on first message (derived from thread_id if not set)")
+    thread_id: str = Field(
+        description="Unique conversation identifier (alphanumeric, underscore, hyphen, max 64 chars)"
+    )
+    title: str = Field(
+        description="Auto-generated title based on first message (derived from thread_id if not set)"
+    )
     created_at: datetime = Field(description="Conversation creation timestamp (ISO 8601)")
     updated_at: Optional[datetime] = Field(None, description="Last message timestamp (ISO 8601)")
 
@@ -107,7 +113,9 @@ class ConversationDetail(BaseModel):
     title: str = Field(description="Conversation title")
     created_at: datetime = Field(description="Creation timestamp")
     message_count: int = Field(description="Total number of human + AI messages")
-    messages: List[dict] = Field(description="Message history (human and AI messages only, tool messages filtered)")
+    messages: List[dict] = Field(
+        description="Message history (human and AI messages only, tool messages filtered)"
+    )
 
 
 # ============================================================================
@@ -120,11 +128,8 @@ class ConversationDetail(BaseModel):
 async def list_conversations(
     request: Request,
     limit: int = Query(
-        default=20,
-        ge=1,
-        le=100,
-        description="Maximum conversations to return (1-100)"
-    )
+        default=20, ge=1, le=100, description="Maximum conversations to return (1-100)"
+    ),
 ):
     """
     List all previous conversations with summaries.
@@ -177,21 +182,26 @@ async def list_conversations(
     try:
         with psycopg.connect(DATABASE_URL) as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT thread_id, title, created_at, updated_at
                     FROM conversation_metadata
                     ORDER BY COALESCE(updated_at, created_at) DESC
                     LIMIT %s
-                """, (limit,))
+                """,
+                    (limit,),
+                )
 
                 conversations = []
                 for row in cur.fetchall():
-                    conversations.append(ConversationSummary(
-                        thread_id=row[0],
-                        title=row[1],
-                        created_at=row[2],
-                        updated_at=row[3],
-                    ))
+                    conversations.append(
+                        ConversationSummary(
+                            thread_id=row[0],
+                            title=row[1],
+                            created_at=row[2],
+                            updated_at=row[3],
+                        )
+                    )
 
                 return conversations
     except Exception as e:
@@ -257,11 +267,14 @@ async def get_conversation(request: Request, thread_id: str):
         with psycopg.connect(DATABASE_URL) as conn:
             with conn.cursor() as cur:
                 # Get metadata
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT title, created_at
                     FROM conversation_metadata
                     WHERE thread_id = %s
-                """, (thread_id,))
+                """,
+                    (thread_id,),
+                )
 
                 row = cur.fetchone()
                 if not row:
@@ -271,20 +284,24 @@ async def get_conversation(request: Request, thread_id: str):
 
                 # Get messages from checkpoint_blobs (LangGraph stores them as msgpack)
                 # Get latest messages blob for this thread
-                cur.execute("""
+                cur.execute(
+                    """
                     SELECT blob, type
                     FROM checkpoint_blobs
                     WHERE thread_id = %s
                       AND channel = 'messages'
                     ORDER BY version DESC
                     LIMIT 1
-                """, (thread_id,))
+                """,
+                    (thread_id,),
+                )
 
                 blob_row = cur.fetchone()
                 messages = []
 
                 if blob_row and blob_row[0]:
                     from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
                     try:
                         blob, blob_type = blob_row
                         serializer = JsonPlusSerializer()
@@ -296,10 +313,12 @@ async def get_conversation(request: Request, thread_id: str):
                             content = getattr(msg, "content", "")
                             # Skip tool messages and empty content
                             if content and msg_type in ("human", "ai"):
-                                messages.append({
-                                    "type": msg_type,
-                                    "content": content,
-                                })
+                                messages.append(
+                                    {
+                                        "type": msg_type,
+                                        "content": content,
+                                    }
+                                )
                     except Exception as e:
                         logger.warning("message_decode_error", thread_id=thread_id, error=str(e))
 
@@ -429,19 +448,13 @@ async def delete_conversation(request: Request, thread_id: str):
             conn.autocommit = True
             with conn.cursor() as cur:
                 # Delete metadata
-                cur.execute(
-                    "DELETE FROM conversation_metadata WHERE thread_id = %s",
-                    (thread_id,)
-                )
+                cur.execute("DELETE FROM conversation_metadata WHERE thread_id = %s", (thread_id,))
 
                 if cur.rowcount == 0:
                     raise HTTPException(status_code=404, detail="Conversation not found")
 
                 # Delete checkpoints
-                cur.execute(
-                    "DELETE FROM checkpoints WHERE thread_id = %s",
-                    (thread_id,)
-                )
+                cur.execute("DELETE FROM checkpoints WHERE thread_id = %s", (thread_id,))
 
                 logger.info(f"Conversation deleted: {thread_id}")
                 # 204 No Content - no response body needed

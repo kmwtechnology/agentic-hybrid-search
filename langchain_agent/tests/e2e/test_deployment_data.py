@@ -7,11 +7,12 @@ Verifies ESCI products are properly indexed and searchable.
 Markers: @pytest.mark.e2e, @pytest.mark.slow, @pytest.mark.phase3
 """
 
-import os
-import pytest
-import httpx
+import asyncio
 import json
+import os
 
+import httpx
+import pytest
 
 # Configuration
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
@@ -40,9 +41,7 @@ class TestESCIProductIndexing:
         data = response.json()
 
         doc_count = data.get("document_count", 0)
-        assert doc_count > 0, (
-            f"No products indexed: {doc_count}"
-        )
+        assert doc_count > 0, f"No products indexed: {doc_count}"
 
     @pytest.mark.e2e
     @pytest.mark.slow
@@ -55,22 +54,19 @@ class TestESCIProductIndexing:
         doc_count = data.get("document_count", 0)
 
         # Should have at least 100 products in any deployment
-        assert doc_count >= 100, (
-            f"Product count too low: {doc_count} (expected >= 100)"
-        )
+        assert doc_count >= 100, f"Product count too low: {doc_count} (expected >= 100)"
 
         # Should not exceed reasonable limits (10 million)
-        assert doc_count <= 10_000_000, (
-            f"Product count unreasonable: {doc_count}"
-        )
+        assert doc_count <= 10_000_000, f"Product count unreasonable: {doc_count}"
 
     @pytest.mark.e2e
     @pytest.mark.slow
     async def test_hybrid_search_returns_products(self):
         """Verify hybrid search (vector + lexical) returns product results."""
-        from websockets.client import connect as ws_connect
         import asyncio
         import time
+
+        from websockets.client import connect as ws_connect
 
         thread_id = "hybrid-search-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
@@ -81,10 +77,7 @@ class TestESCIProductIndexing:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search for a common product
-                message = json.dumps({
-                    "query": "headphones",
-                    "session_id": thread_id
-                })
+                message = json.dumps({"query": "headphones", "session_id": thread_id})
                 await websocket.send(message)
 
                 # Collect response to verify products were retrieved
@@ -93,10 +86,7 @@ class TestESCIProductIndexing:
 
                 while time.time() - start_time < 30:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
                         if event.get("event_type") == "LLMResponseChunkEvent":
@@ -117,9 +107,10 @@ class TestESCIProductIndexing:
     @pytest.mark.slow
     async def test_vector_search_semantic_similarity(self):
         """Verify vector search finds semantically similar products."""
-        from websockets.client import connect as ws_connect
         import asyncio
         import time
+
+        from websockets.client import connect as ws_connect
 
         thread_id = "vector-search-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
@@ -129,10 +120,9 @@ class TestESCIProductIndexing:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search with a descriptive query (should use vector search)
-                message = json.dumps({
-                    "query": "I need to cancel noise from my environment",
-                    "session_id": thread_id
-                })
+                message = json.dumps(
+                    {"query": "I need to cancel noise from my environment", "session_id": thread_id}
+                )
                 await websocket.send(message)
 
                 response_text = ""
@@ -140,10 +130,7 @@ class TestESCIProductIndexing:
 
                 while time.time() - start_time < 30:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
                         if event.get("event_type") == "LLMResponseChunkEvent":
@@ -164,9 +151,10 @@ class TestESCIProductIndexing:
     @pytest.mark.slow
     async def test_lexical_search_exact_match(self):
         """Verify lexical search finds exact product matches."""
-        from websockets.client import connect as ws_connect
         import asyncio
         import time
+
+        from websockets.client import connect as ws_connect
 
         thread_id = "lexical-search-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
@@ -176,10 +164,7 @@ class TestESCIProductIndexing:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search with specific brand name (should use lexical search)
-                message = json.dumps({
-                    "query": "Sony products",
-                    "session_id": thread_id
-                })
+                message = json.dumps({"query": "Sony products", "session_id": thread_id})
                 await websocket.send(message)
 
                 response_text = ""
@@ -187,10 +172,7 @@ class TestESCIProductIndexing:
 
                 while time.time() - start_time < 30:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
                         if event.get("event_type") == "LLMResponseChunkEvent":
@@ -215,9 +197,10 @@ class TestProductMetadata:
     @pytest.mark.slow
     async def test_products_have_required_metadata(self):
         """Verify retrieved products have required metadata fields."""
-        from websockets.client import connect as ws_connect
         import asyncio
         import time
+
+        from websockets.client import connect as ws_connect
 
         thread_id = "metadata-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
@@ -226,10 +209,7 @@ class TestProductMetadata:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
-                message = json.dumps({
-                    "query": "headphones",
-                    "session_id": thread_id
-                })
+                message = json.dumps({"query": "headphones", "session_id": thread_id})
                 await websocket.send(message)
 
                 metadata = {}
@@ -237,10 +217,7 @@ class TestProductMetadata:
 
                 while time.time() - start_time < 30:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
                         if event.get("event_type") == "AgentCompleteEvent":
@@ -262,9 +239,10 @@ class TestProductMetadata:
     @pytest.mark.slow
     async def test_product_brand_attribute_accessible(self):
         """Verify product brand attribute is indexed and searchable."""
-        from websockets.client import connect as ws_connect
         import asyncio
         import time
+
+        from websockets.client import connect as ws_connect
 
         thread_id = "brand-search-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
@@ -274,10 +252,9 @@ class TestProductMetadata:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search by brand
-                message = json.dumps({
-                    "query": "Apple brand wireless earbuds",
-                    "session_id": thread_id
-                })
+                message = json.dumps(
+                    {"query": "Apple brand wireless earbuds", "session_id": thread_id}
+                )
                 await websocket.send(message)
 
                 response_text = ""
@@ -285,10 +262,7 @@ class TestProductMetadata:
 
                 while time.time() - start_time < 30:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
                         if event.get("event_type") == "LLMResponseChunkEvent":
@@ -312,9 +286,10 @@ class TestDataConsistency:
     @pytest.mark.slow
     async def test_same_query_returns_consistent_results(self):
         """Verify repeated searches return consistent results."""
-        from websockets.client import connect as ws_connect
         import asyncio
         import time
+
+        from websockets.client import connect as ws_connect
 
         thread_id_1 = "consistency-1"
         thread_id_2 = "consistency-2"
@@ -368,9 +343,9 @@ class TestDataConsistency:
 
             # Should be roughly similar length (within 50%)
             ratio = max(len(response_1), len(response_2)) / min(len(response_1), len(response_2))
-            assert ratio < 1.5, (
-                f"Results inconsistent: {len(response_1)} vs {len(response_2)} chars"
-            )
+            assert (
+                ratio < 1.5
+            ), f"Results inconsistent: {len(response_1)} vs {len(response_2)} chars"
         except Exception as e:
             _skip_if_origin_blocked(e)
             pytest.fail(f"Data consistency test failed: {e}")
@@ -379,9 +354,10 @@ class TestDataConsistency:
     @pytest.mark.slow
     async def test_no_data_corruption_after_deployment(self):
         """Verify no data corruption in indexed products."""
-        from websockets.client import connect as ws_connect
         import asyncio
         import time
+
+        from websockets.client import connect as ws_connect
 
         thread_id = "data-integrity-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
@@ -390,10 +366,7 @@ class TestDataConsistency:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
-                message = json.dumps({
-                    "query": "Find any product",
-                    "session_id": thread_id
-                })
+                message = json.dumps({"query": "Find any product", "session_id": thread_id})
                 await websocket.send(message)
 
                 response_text = ""
@@ -401,10 +374,7 @@ class TestDataConsistency:
 
                 while time.time() - start_time < 30:
                     try:
-                        event_msg = await asyncio.wait_for(
-                            websocket.recv(),
-                            timeout=5
-                        )
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
                         if event.get("event_type") == "LLMResponseChunkEvent":
@@ -433,9 +403,10 @@ class TestCheckpointPersistence:
     @pytest.mark.slow
     async def test_conversation_checkpoints_stored(self):
         """Verify conversation checkpoints are persisted."""
-        from websockets.client import connect as ws_connect
         import asyncio
         import time
+
+        from websockets.client import connect as ws_connect
 
         thread_id = "checkpoint-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
@@ -462,10 +433,7 @@ class TestCheckpointPersistence:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
-                msg2 = json.dumps({
-                    "query": "What was I looking for?",
-                    "session_id": thread_id
-                })
+                msg2 = json.dumps({"query": "What was I looking for?", "session_id": thread_id})
                 await ws.send(msg2)
 
                 response_text = ""

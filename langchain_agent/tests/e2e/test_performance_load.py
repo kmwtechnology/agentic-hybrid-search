@@ -21,33 +21,34 @@ import json
 import os
 import sys
 import time
+import tracemalloc
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+from pathlib import Path
+from statistics import mean, median, stdev
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
 import psutil
 import pytest
-import httpx
-from pathlib import Path
-from typing import List, Dict, Any, Tuple
-from datetime import datetime, timedelta
-from statistics import mean, median, stdev
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import tracemalloc
 
 # Add langchain_agent to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config import (
-    VECTOR_COLLECTION_NAME,
-    EMBEDDINGS_MODEL,
-    VECTOR_DIMENSION,
-    RETRIEVER_K,
-    RETRIEVER_FETCH_K,
-    DATABASE_URL,
-    POSTGRES_HOST,
-    POSTGRES_PORT,
-)
-from vector_store import OpenSearchVectorStore
-from reranker import GeminiReranker
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
+from config import (
+    DATABASE_URL,
+    EMBEDDINGS_MODEL,
+    POSTGRES_HOST,
+    POSTGRES_PORT,
+    RETRIEVER_FETCH_K,
+    RETRIEVER_K,
+    VECTOR_COLLECTION_NAME,
+    VECTOR_DIMENSION,
+)
+from reranker import GeminiReranker
+from vector_store import OpenSearchVectorStore
 
 # Configuration
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
@@ -192,7 +193,7 @@ class LoadTester:
                 response = client.post(
                     f"{self.base_url}/api/conversations",
                     headers=self.headers,
-                    json={"title": "Load test conversation"}
+                    json={"title": "Load test conversation"},
                 )
                 if response.status_code == 201:
                     return response.json().get("thread_id", "default")
@@ -215,7 +216,7 @@ class LoadTester:
                 response = client.post(
                     f"{self.base_url}/api/conversations/{thread_id}/messages",
                     headers=self.headers,
-                    json={"content": query}
+                    json={"content": query},
                 )
                 success = response.status_code in [200, 201]
                 if success and "messages" in response.json():
@@ -229,10 +230,7 @@ class LoadTester:
         return latency, success, tokens
 
     def concurrent_load_test(
-        self,
-        num_users: int,
-        queries_per_user: int,
-        queries: List[str]
+        self, num_users: int, queries_per_user: int, queries: List[str]
     ) -> PerformanceMetrics:
         """
         Simulate concurrent users sending queries.
@@ -322,14 +320,16 @@ class TestLoadPerformance:
     def test_single_user_baseline(self):
         """Baseline: single user performance."""
         metrics = self.tester.concurrent_load_test(
-            num_users=1,
-            queries_per_user=5,
-            queries=SEARCH_QUERIES
+            num_users=1, queries_per_user=5, queries=SEARCH_QUERIES
         )
 
         assert metrics.error_rate < 0.1, "Error rate should be < 10%"
-        assert metrics.latency_p50 < 5000, f"P50 latency should be < 5s, got {metrics.latency_p50}ms"
-        assert metrics.latency_p95 < 10000, f"P95 latency should be < 10s, got {metrics.latency_p95}ms"
+        assert (
+            metrics.latency_p50 < 5000
+        ), f"P50 latency should be < 5s, got {metrics.latency_p50}ms"
+        assert (
+            metrics.latency_p95 < 10000
+        ), f"P95 latency should be < 10s, got {metrics.latency_p95}ms"
 
         # Save baseline
         with open(BASELINE_FILE, "w") as f:
@@ -338,9 +338,7 @@ class TestLoadPerformance:
     def test_5_concurrent_users(self):
         """Load test: 5 concurrent users."""
         metrics = self.tester.concurrent_load_test(
-            num_users=5,
-            queries_per_user=3,
-            queries=SEARCH_QUERIES
+            num_users=5, queries_per_user=3, queries=SEARCH_QUERIES
         )
 
         assert metrics.error_rate < 0.15, "Error rate should be < 15% at 5 users"
@@ -349,9 +347,7 @@ class TestLoadPerformance:
     def test_10_concurrent_users(self):
         """Load test: 10 concurrent users."""
         metrics = self.tester.concurrent_load_test(
-            num_users=10,
-            queries_per_user=2,
-            queries=SEARCH_QUERIES
+            num_users=10, queries_per_user=2, queries=SEARCH_QUERIES
         )
 
         assert metrics.error_rate < 0.20, "Error rate should be < 20% at 10 users"
@@ -360,9 +356,7 @@ class TestLoadPerformance:
     def test_20_concurrent_users(self):
         """Load test: 20 concurrent users."""
         metrics = self.tester.concurrent_load_test(
-            num_users=20,
-            queries_per_user=1,
-            queries=SEARCH_QUERIES
+            num_users=20, queries_per_user=1, queries=SEARCH_QUERIES
         )
 
         assert metrics.error_rate < 0.25, "Error rate should be < 25% at 20 users"
@@ -395,10 +389,7 @@ class TestSearchLatencyProfiles:
         for query in SEARCH_QUERIES[:5]:
             start = time.time()
             docs = self.vector_store.hybrid_search(
-                query=query,
-                k=RETRIEVER_K,
-                fetch_k=RETRIEVER_FETCH_K,
-                alpha=0.0  # Pure lexical
+                query=query, k=RETRIEVER_K, fetch_k=RETRIEVER_FETCH_K, alpha=0.0  # Pure lexical
             )
             latency = time.time() - start
             metrics.add_latency(latency)
@@ -414,10 +405,7 @@ class TestSearchLatencyProfiles:
         for query in SEARCH_QUERIES[:5]:
             start = time.time()
             docs = self.vector_store.hybrid_search(
-                query=query,
-                k=RETRIEVER_K,
-                fetch_k=RETRIEVER_FETCH_K,
-                alpha=0.5  # Balanced
+                query=query, k=RETRIEVER_K, fetch_k=RETRIEVER_FETCH_K, alpha=0.5  # Balanced
             )
             latency = time.time() - start
             metrics.add_latency(latency)
@@ -432,10 +420,7 @@ class TestSearchLatencyProfiles:
         for query in SEARCH_QUERIES[:5]:
             start = time.time()
             docs = self.vector_store.hybrid_search(
-                query=query,
-                k=RETRIEVER_K,
-                fetch_k=RETRIEVER_FETCH_K,
-                alpha=1.0  # Pure semantic
+                query=query, k=RETRIEVER_K, fetch_k=RETRIEVER_FETCH_K, alpha=1.0  # Pure semantic
             )
             latency = time.time() - start
             metrics.add_latency(latency)
@@ -461,7 +446,10 @@ class TestRerankerPerformance:
 
         # Create sample documents
         sample_docs = [
-            Document(page_content=f"Product {i}: Wireless headphones", metadata={"source": f"product_{i}"})
+            Document(
+                page_content=f"Product {i}: Wireless headphones",
+                metadata={"source": f"product_{i}"},
+            )
             for i in range(10)
         ]
 
@@ -469,10 +457,7 @@ class TestRerankerPerformance:
 
         for query in SEARCH_QUERIES[:5]:
             start = time.time()
-            scored_docs = self.reranker.compress_documents(
-                documents=sample_docs,
-                query=query
-            )
+            scored_docs = self.reranker.compress_documents(documents=sample_docs, query=query)
             latency = time.time() - start
             metrics.add_latency(latency)
 
@@ -484,19 +469,25 @@ class TestRerankerPerformance:
         from langchain_core.documents import Document
 
         sample_docs = [
-            Document(page_content="Sony WH-1000XM5 wireless headphones", metadata={"source": "product_1"}),
+            Document(
+                page_content="Sony WH-1000XM5 wireless headphones", metadata={"source": "product_1"}
+            ),
             Document(page_content="Running shoes for athletics", metadata={"source": "product_2"}),
-            Document(page_content="Bose QuietComfort 45 headphones", metadata={"source": "product_3"}),
+            Document(
+                page_content="Bose QuietComfort 45 headphones", metadata={"source": "product_3"}
+            ),
         ]
 
         scored_docs = self.reranker.compress_documents(
-            documents=sample_docs,
-            query="best wireless headphones"
+            documents=sample_docs, query="best wireless headphones"
         )
 
         # Headphone products should rank higher
         assert len(scored_docs) > 0, "Should return scored documents"
-        assert scored_docs[0].metadata.get("source") in ["product_1", "product_3"], "Headphones should rank first"
+        assert scored_docs[0].metadata.get("source") in [
+            "product_1",
+            "product_3",
+        ], "Headphones should rank first"
 
 
 @pytest.mark.performance
@@ -521,8 +512,7 @@ class TestMemoryUsage:
         for i in range(10):
             mem_before = process.memory_info().rss / 1024 / 1024
             latency, success, tokens = tester.send_search_query(
-                thread_id,
-                SEARCH_QUERIES[i % len(SEARCH_QUERIES)]
+                thread_id, SEARCH_QUERIES[i % len(SEARCH_QUERIES)]
             )
             mem_after = process.memory_info().rss / 1024 / 1024
             memory_samples.append(mem_after - mem_before)
@@ -534,7 +524,9 @@ class TestMemoryUsage:
         peak_mb = peak / 1024 / 1024
 
         # Memory usage should be relatively stable
-        assert avg_memory_delta < 50, f"Average memory delta should be < 50MB, got {avg_memory_delta}MB"
+        assert (
+            avg_memory_delta < 50
+        ), f"Average memory delta should be < 50MB, got {avg_memory_delta}MB"
 
 
 @pytest.mark.performance
@@ -558,9 +550,7 @@ class TestRegressionDetection:
 
         # Run quick performance check
         metrics = tester.concurrent_load_test(
-            num_users=1,
-            queries_per_user=3,
-            queries=SEARCH_QUERIES
+            num_users=1, queries_per_user=3, queries=SEARCH_QUERIES
         )
 
         current = metrics.to_dict()
@@ -569,12 +559,15 @@ class TestRegressionDetection:
 
         # Allow 10% regression tolerance
         regression_threshold = baseline_p50 * 1.10
-        assert current_p50 <= regression_threshold, \
-            f"Performance regression: baseline p50={baseline_p50}ms, current={current_p50}ms"
+        assert (
+            current_p50 <= regression_threshold
+        ), f"Performance regression: baseline p50={baseline_p50}ms, current={current_p50}ms"
 
 
 # Export results helper
-def export_metrics_report(metrics_list: List[PerformanceMetrics], filename: str = "performance_report.json"):
+def export_metrics_report(
+    metrics_list: List[PerformanceMetrics], filename: str = "performance_report.json"
+):
     """Export performance metrics to JSON file."""
     report = {
         "timestamp": datetime.now().isoformat(),
@@ -583,7 +576,7 @@ def export_metrics_report(metrics_list: List[PerformanceMetrics], filename: str 
             "total_tests": len(metrics_list),
             "avg_throughput_rps": mean([m.throughput for m in metrics_list]),
             "avg_error_rate": mean([m.error_rate for m in metrics_list]),
-        }
+        },
     }
 
     output_path = BENCHMARK_RESULTS_DIR / filename

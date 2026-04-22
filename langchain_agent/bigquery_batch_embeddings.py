@@ -28,8 +28,8 @@ from typing import Optional, Tuple
 
 import pandas as pd
 import pyarrow.parquet as pq
+from google.api_core.exceptions import AlreadyExists, NotFound
 from google.cloud import bigquery, storage
-from google.api_core.exceptions import NotFound, AlreadyExists
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +84,7 @@ def enable_gcp_apis(project_id: str) -> None:
             print(f"   ⚠ {api} (may already be enabled): {e}")
 
 
-def ensure_connection_exists(
-    bq_client: bigquery.Client, project_id: str
-) -> str:
+def ensure_connection_exists(bq_client: bigquery.Client, project_id: str) -> str:
     """Ensure BigQuery Cloud Resource Connection exists and get its name."""
     conn_id = f"{project_id}.{BQ_LOCATION}.{BQ_CONNECTION_NAME}"
 
@@ -127,9 +125,7 @@ def ensure_connection_exists(
         return f"projects/{project_id}/locations/{BQ_LOCATION}/connections/{BQ_CONNECTION_NAME}"
 
 
-def _grant_connection_iam(
-    bq_client: bigquery.Client, project_id: str, conn_path: str
-) -> None:
+def _grant_connection_iam(bq_client: bigquery.Client, project_id: str, conn_path: str) -> None:
     """Grant Vertex AI User role to the connection's service account."""
     try:
         conn = bq_client.get_connection(conn_path)
@@ -187,9 +183,7 @@ def ensure_dataset(bq_client: bigquery.Client, dataset_id: str) -> str:
     return dataset_id
 
 
-def load_products_to_bigquery(
-    bq_client: bigquery.Client, dataset_id: str
-) -> None:
+def load_products_to_bigquery(bq_client: bigquery.Client, dataset_id: str) -> None:
     """Load ESCI products into BigQuery raw table."""
     print("📥 Loading ESCI products to BigQuery...")
 
@@ -235,9 +229,7 @@ def load_products_to_bigquery(
         autodetect=True,
     )
 
-    job = bq_client.load_table_from_dataframe(
-        df, table_id, job_config=job_config, timeout=600
-    )
+    job = bq_client.load_table_from_dataframe(df, table_id, job_config=job_config, timeout=600)
     job.result()
     print(f"   ✓ Loaded {len(df):,} products")
 
@@ -456,6 +448,7 @@ def download_and_merge_embeddings(
 
     # Cleanup temp directory
     import shutil
+
     shutil.rmtree(local_shards_dir)
 
     return df_merged
@@ -562,15 +555,11 @@ Examples:
 
         # Setup embedding model and generate
         model_id = setup_embedding_model(bq_client, BQ_DATASET_ID, args.model)
-        embeddings_table = generate_embeddings_batch(
-            bq_client, BQ_DATASET_ID, model_id, args.model
-        )
+        embeddings_table = generate_embeddings_batch(bq_client, BQ_DATASET_ID, model_id, args.model)
 
         # Export and download
         export_embeddings_to_gcs(bq_client, args.bucket, embeddings_table)
-        embeddings_df = download_and_merge_embeddings(
-            storage_client, args.bucket, ESCI_DATASET_DIR
-        )
+        embeddings_df = download_and_merge_embeddings(storage_client, args.bucket, ESCI_DATASET_DIR)
 
         # Merge with full dataset and save
         df = merge_embeddings_with_full_dataset(embeddings_df)
@@ -588,6 +577,7 @@ Examples:
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

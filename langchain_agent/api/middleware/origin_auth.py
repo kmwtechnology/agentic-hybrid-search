@@ -10,10 +10,11 @@ Provides:
 - Automatic same-origin detection on Cloud Run
 """
 
-from typing import Optional
-from fastapi import Request, HTTPException, WebSocket, status
-import re
 import logging
+import re
+from typing import Optional
+
+from fastapi import HTTPException, Request, WebSocket, status
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,10 @@ def get_allowed_origins() -> list[str]:
         List of allowed origins
     """
     return [
-        "http://localhost:5173",      # Vite dev
-        "http://localhost:5174",      # Vite dev (fallback port)
-        "http://localhost:3000",      # Alt dev
-        "http://localhost:8080",      # Dev server
+        "http://localhost:5173",  # Vite dev
+        "http://localhost:5174",  # Vite dev (fallback port)
+        "http://localhost:3000",  # Alt dev
+        "http://localhost:8080",  # Dev server
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:3000",
@@ -111,7 +112,9 @@ async def verify_same_origin(request: Request) -> bool:
     host = request.headers.get("host")
     method = request.method
 
-    logger.debug(f"Origin auth check: method={method}, origin={origin}, referer={referer}, host={host}")
+    logger.debug(
+        f"Origin auth check: method={method}, origin={origin}, referer={referer}, host={host}"
+    )
 
     # First try Origin and Referer headers
     if is_allowed_origin(origin, referer):
@@ -136,7 +139,9 @@ async def verify_same_origin(request: Request) -> bool:
             logger.debug(f"Request allowed via Cloud Run pattern: {host}")
             return True
 
-    logger.warning(f"Request blocked: origin={origin}, referer={referer}, host={host}, method={method}")
+    logger.warning(
+        f"Request blocked: origin={origin}, referer={referer}, host={host}, method={method}"
+    )
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Origin not allowed. This API is only accessible from the UI.",
@@ -161,8 +166,7 @@ async def verify_websocket_origin(websocket: WebSocket) -> bool:
 
     if not is_allowed_origin(origin, referer):
         await websocket.close(
-            code=4003,
-            reason="Origin not allowed. This API is only accessible from the UI."
+            code=4003, reason="Origin not allowed. This API is only accessible from the UI."
         )
         return False
 

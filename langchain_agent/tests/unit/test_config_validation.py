@@ -9,10 +9,11 @@ Tests that:
 """
 
 import os
-import pytest
-from unittest.mock import patch, MagicMock
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add langchain_agent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

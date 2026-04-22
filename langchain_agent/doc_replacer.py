@@ -17,7 +17,8 @@ Strategy:
 """
 
 import logging
-from typing import List, Dict, Tuple, Optional, Any
+from typing import Any, Dict, List, Optional, Tuple
+
 from langchain_core.documents import Document
 
 logger = logging.getLogger(__name__)
@@ -81,12 +82,8 @@ class DocumentReplacer:
         score = 0.0
 
         # Factor 1: Same source file (0-100 points)
-        broken_source_base = self.get_source_base(
-            broken_doc.metadata.get("source", "")
-        )
-        candidate_source_base = self.get_source_base(
-            candidate.metadata.get("source", "")
-        )
+        broken_source_base = self.get_source_base(broken_doc.metadata.get("source", ""))
+        candidate_source_base = self.get_source_base(candidate.metadata.get("source", ""))
 
         if broken_source_base and broken_source_base == candidate_source_base:
             score += 100  # Prefer same file
@@ -143,9 +140,7 @@ class DocumentReplacer:
             if not candidate.metadata.get("url"):
                 continue
 
-            score = self.calculate_replacement_score(
-                candidate, broken_doc, used_indices
-            )
+            score = self.calculate_replacement_score(candidate, broken_doc, used_indices)
 
             if score > best_score:
                 best_score = score

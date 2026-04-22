@@ -29,16 +29,21 @@ from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import pandas as pd
-from opensearchpy import helpers as os_helpers
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from opensearchpy import helpers as os_helpers
 
 from config import (
-    EMBEDDINGS_MODEL,
-    VECTOR_DIMENSION,
-    OPENSEARCH_INDEX_NAME,
     CHUNKING_STRATEGY,
+    EMBEDDINGS_MODEL,
+    OPENSEARCH_INDEX_NAME,
+    VECTOR_DIMENSION,
 )
-from vector_store import create_opensearch_client, INDEX_MAPPING, SEARCH_PIPELINE, OPENSEARCH_SEARCH_PIPELINE
+from vector_store import (
+    INDEX_MAPPING,
+    OPENSEARCH_SEARCH_PIPELINE,
+    SEARCH_PIPELINE,
+    create_opensearch_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +114,10 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
 
     # If no cached sample and force_resample, need the full products file
     if not ESCI_PRODUCTS_FILE.exists():
-        raise FileNotFoundError(f"ESCI products file not found: {ESCI_PRODUCTS_FILE}\n"
-                                f"Cached sample not available either: {sample_file}")
+        raise FileNotFoundError(
+            f"ESCI products file not found: {ESCI_PRODUCTS_FILE}\n"
+            f"Cached sample not available either: {sample_file}"
+        )
 
     # Load full dataset and filter to US English products
     logger.info(f"Loading products from {ESCI_PRODUCTS_FILE.name}...")
@@ -136,7 +143,9 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
         logger.info(f"Sampled {limit} US products (deterministic, seed=42)")
     else:
         df_sample = df_us_dedup
-        logger.info(f"Using all {len(df_us_dedup)} unique US products (limit {limit} >= dataset size)")
+        logger.info(
+            f"Using all {len(df_us_dedup)} unique US products (limit {limit} >= dataset size)"
+        )
 
     # Initialize embedding column as None (will be populated during ingestion)
     df_sample["embedding"] = None
@@ -153,23 +162,38 @@ def ensure_index_exists(client, reset_index: bool = False):
     """Create the OpenSearch index if it doesn't exist. Optionally delete existing first."""
     try:
         index_exists_before = client.indices.exists(index=OPENSEARCH_INDEX_NAME)
-        logger.info(f"[ensure_index_exists] reset_index={reset_index}, index_exists_before={index_exists_before}")
-        print(f"   [Index state] exists={index_exists_before}, reset_index={reset_index}", flush=True)
+        logger.info(
+            f"[ensure_index_exists] reset_index={reset_index}, index_exists_before={index_exists_before}"
+        )
+        print(
+            f"   [Index state] exists={index_exists_before}, reset_index={reset_index}", flush=True
+        )
 
         if reset_index and index_exists_before:
-            logger.info(f"[ensure_index_exists] Attempting to delete index '{OPENSEARCH_INDEX_NAME}'...")
+            logger.info(
+                f"[ensure_index_exists] Attempting to delete index '{OPENSEARCH_INDEX_NAME}'..."
+            )
             print(f"   Deleting existing index '{OPENSEARCH_INDEX_NAME}'...", flush=True)
             client.indices.delete(index=OPENSEARCH_INDEX_NAME)
-            logger.info(f"[ensure_index_exists] ✓ Successfully deleted index '{OPENSEARCH_INDEX_NAME}'")
+            logger.info(
+                f"[ensure_index_exists] ✓ Successfully deleted index '{OPENSEARCH_INDEX_NAME}'"
+            )
             print(f"   ✓ Deleted existing index '{OPENSEARCH_INDEX_NAME}'", flush=True)
 
             # Verify deletion
             index_exists_after_delete = client.indices.exists(index=OPENSEARCH_INDEX_NAME)
-            logger.info(f"[ensure_index_exists] Verification: index_exists_after_delete={index_exists_after_delete}")
-            print(f"   [Verification] Index exists after delete: {index_exists_after_delete}", flush=True)
+            logger.info(
+                f"[ensure_index_exists] Verification: index_exists_after_delete={index_exists_after_delete}"
+            )
+            print(
+                f"   [Verification] Index exists after delete: {index_exists_after_delete}",
+                flush=True,
+            )
         else:
             if reset_index:
-                logger.info(f"[ensure_index_exists] reset_index=true but index doesn't exist (already deleted?)")
+                logger.info(
+                    f"[ensure_index_exists] reset_index=true but index doesn't exist (already deleted?)"
+                )
                 print(f"   [Note] reset_index=true but index doesn't exist", flush=True)
 
         # Now create if needed
@@ -181,7 +205,9 @@ def ensure_index_exists(client, reset_index: bool = False):
             logger.info(f"[ensure_index_exists] ✓ Created index '{OPENSEARCH_INDEX_NAME}'")
             print(f"   ✓ Created index '{OPENSEARCH_INDEX_NAME}'", flush=True)
         else:
-            logger.info(f"[ensure_index_exists] Index '{OPENSEARCH_INDEX_NAME}' already exists (not recreated)")
+            logger.info(
+                f"[ensure_index_exists] Index '{OPENSEARCH_INDEX_NAME}' already exists (not recreated)"
+            )
             print(f"   [Note] Index '{OPENSEARCH_INDEX_NAME}' already exists", flush=True)
 
         # Create search pipeline
@@ -200,7 +226,6 @@ def ensure_index_exists(client, reset_index: bool = False):
         raise
 
 
-
 def get_indexed_product_ids(client) -> set:
     """Get set of product IDs already indexed in OpenSearch using composite aggregation pagination."""
     product_ids = set()
@@ -216,7 +241,7 @@ def get_indexed_product_ids(client) -> set:
                             "sources": [{"product_id": {"terms": {"field": "product_id"}}}],
                         }
                     }
-                }
+                },
             }
             if after_key:
                 body["aggs"]["product_ids"]["composite"]["after"] = after_key
@@ -312,58 +337,62 @@ def _ingest_batch(
     for item in have_embedding:
         chunks = chunk_text(item["text"]) if use_chunking else [item["text"]]
         for chunk_idx, chunk in enumerate(chunks):
-            actions.append({
-                "_index": OPENSEARCH_INDEX_NAME,
-                "_id": f"{item['product_id']}-{chunk_idx}",
-                "_source": {
-                    "document_id": item["product_id"],
-                    "collection_id": ESCI_COLLECTION_NAME,
-                    "source": "esci/shopping_queries_dataset",
-                    "title": item["title"],
-                    "doc_type": "product",
-                    "product_id": item["product_id"],
-                    "product_brand": item["brand"],
-                    "product_color": item["color"],
-                    "product_locale": item["locale"],
-                    "chunk_index": chunk_idx,
-                    "chunk_text": chunk,
-                    "embedding": item["cached_embedding"],
-                    "title_suggest": item["title"],
-                    "brand_suggest": item["brand"],
-                    "title_phrase": item["title"],
-                    "title_phonetic": item["title"],
-                    "brand_phonetic": item["brand"],
-                },
-            })
+            actions.append(
+                {
+                    "_index": OPENSEARCH_INDEX_NAME,
+                    "_id": f"{item['product_id']}-{chunk_idx}",
+                    "_source": {
+                        "document_id": item["product_id"],
+                        "collection_id": ESCI_COLLECTION_NAME,
+                        "source": "esci/shopping_queries_dataset",
+                        "title": item["title"],
+                        "doc_type": "product",
+                        "product_id": item["product_id"],
+                        "product_brand": item["brand"],
+                        "product_color": item["color"],
+                        "product_locale": item["locale"],
+                        "chunk_index": chunk_idx,
+                        "chunk_text": chunk,
+                        "embedding": item["cached_embedding"],
+                        "title_suggest": item["title"],
+                        "brand_suggest": item["brand"],
+                        "title_phrase": item["title"],
+                        "title_phonetic": item["title"],
+                        "brand_phonetic": item["brand"],
+                    },
+                }
+            )
 
     for i, item in enumerate(need_embedding):
         emb = new_embeddings[i]
         parquet_updates.append((item["df_idx"], emb))
         chunks = chunk_text(item["text"]) if use_chunking else [item["text"]]
         for chunk_idx, chunk in enumerate(chunks):
-            actions.append({
-                "_index": OPENSEARCH_INDEX_NAME,
-                "_id": f"{item['product_id']}-{chunk_idx}",
-                "_source": {
-                    "document_id": item["product_id"],
-                    "collection_id": ESCI_COLLECTION_NAME,
-                    "source": "esci/shopping_queries_dataset",
-                    "title": item["title"],
-                    "doc_type": "product",
-                    "product_id": item["product_id"],
-                    "product_brand": item["brand"],
-                    "product_color": item["color"],
-                    "product_locale": item["locale"],
-                    "chunk_index": chunk_idx,
-                    "chunk_text": chunk,
-                    "embedding": emb,
-                    "title_suggest": item["title"],
-                    "brand_suggest": item["brand"],
-                    "title_phrase": item["title"],
-                    "title_phonetic": item["title"],
-                    "brand_phonetic": item["brand"],
-                },
-            })
+            actions.append(
+                {
+                    "_index": OPENSEARCH_INDEX_NAME,
+                    "_id": f"{item['product_id']}-{chunk_idx}",
+                    "_source": {
+                        "document_id": item["product_id"],
+                        "collection_id": ESCI_COLLECTION_NAME,
+                        "source": "esci/shopping_queries_dataset",
+                        "title": item["title"],
+                        "doc_type": "product",
+                        "product_id": item["product_id"],
+                        "product_brand": item["brand"],
+                        "product_color": item["color"],
+                        "product_locale": item["locale"],
+                        "chunk_index": chunk_idx,
+                        "chunk_text": chunk,
+                        "embedding": emb,
+                        "title_suggest": item["title"],
+                        "brand_suggest": item["brand"],
+                        "title_phrase": item["title"],
+                        "title_phonetic": item["title"],
+                        "brand_phonetic": item["brand"],
+                    },
+                }
+            )
 
     docs_inserted = 0
     chunks_inserted = 0
@@ -377,7 +406,9 @@ def _ingest_batch(
     return docs_inserted, chunks_inserted, parquet_updates
 
 
-def _flush_embeddings_to_parquet(df: pd.DataFrame, embedding_cache: dict, sample_file: Path) -> None:
+def _flush_embeddings_to_parquet(
+    df: pd.DataFrame, embedding_cache: dict, sample_file: Path
+) -> None:
     """Write pending embeddings from embedding_cache into df and save to parquet."""
     if not embedding_cache:
         return
@@ -387,7 +418,10 @@ def _flush_embeddings_to_parquet(df: pd.DataFrame, embedding_cache: dict, sample
         df.at[df_idx, "embedding"] = emb
     try:
         df.to_parquet(sample_file)
-        print(f"   [checkpoint] Saved {len(embedding_cache):,} embeddings → {sample_file.name}", flush=True)
+        print(
+            f"   [checkpoint] Saved {len(embedding_cache):,} embeddings → {sample_file.name}",
+            flush=True,
+        )
     except Exception as e:
         logger.warning(f"Could not save embeddings to parquet: {e}")
 
@@ -424,7 +458,9 @@ def ingest_esci_products(
             df = pd.read_parquet(FULL_US_PARQUET)
         else:
             # Load all unique US products from source parquet (no arbitrary limit)
-            df = load_or_create_sample(limit=10000000, force_resample=True)  # use very high limit to get all
+            df = load_or_create_sample(
+                limit=10000000, force_resample=True
+            )  # use very high limit to get all
         sample_file = FULL_US_PARQUET  # all saves (incremental + final) go here
     else:
         print(f"   Loading {limit} product sample...")
@@ -446,19 +482,25 @@ def ingest_esci_products(
     logger.info(f"[ingest_esci_products] Found {len(indexed_ids)} products already indexed")
     print(f"   Found {len(indexed_ids)} products already in index", flush=True)
 
-    products_to_ingest = [idx for idx, row in df.iterrows()
-                          if str(row.get("product_id", "")) not in indexed_ids]
+    products_to_ingest = [
+        idx for idx, row in df.iterrows() if str(row.get("product_id", "")) not in indexed_ids
+    ]
 
     logger.info(f"[ingest_esci_products] Products to ingest: {len(products_to_ingest)}/{len(df)}")
     print(f"   Products to ingest: {len(products_to_ingest)}/{len(df)}", flush=True)
 
     if not products_to_ingest:
-        logger.warning(f"[ingest_esci_products] All {len(df)} products already indexed - skipping ingestion")
+        logger.warning(
+            f"[ingest_esci_products] All {len(df)} products already indexed - skipping ingestion"
+        )
         print(f"   ✓ All {len(df)} products already indexed in OpenSearch")
         return 0, 0
 
     total_new = len(products_to_ingest)
-    print(f"   Processing {total_new}/{len(df)} new products (batch size: {EMBEDDING_BATCH_SIZE})...", flush=True)
+    print(
+        f"   Processing {total_new}/{len(df)} new products (batch size: {EMBEDDING_BATCH_SIZE})...",
+        flush=True,
+    )
 
     # Initialize embeddings
     embeddings_model = GoogleGenerativeAIEmbeddings(
@@ -480,7 +522,10 @@ def ingest_esci_products(
 
     cached_count = sum(1 for p in prepared if p["cached_embedding"] is not None)
     need_embed_count = len(prepared) - cached_count
-    print(f"   Prepared {len(prepared)} products ({cached_count} cached embeddings, {need_embed_count} need embedding, {skipped} skipped)", flush=True)
+    print(
+        f"   Prepared {len(prepared)} products ({cached_count} cached embeddings, {need_embed_count} need embedding, {skipped} skipped)",
+        flush=True,
+    )
 
     # Ensure embedding column exists (may be missing if parquet was created without it)
     if "embedding" not in df.columns:
@@ -512,7 +557,9 @@ def ingest_esci_products(
                 break  # success
             except Exception as e:
                 error_str = str(e)
-                if ("RESOURCE_EXHAUSTED" in error_str or "429" in error_str) and attempt < max_retries - 1:
+                if (
+                    "RESOURCE_EXHAUSTED" in error_str or "429" in error_str
+                ) and attempt < max_retries - 1:
                     # Parse the API's retry delay (e.g., "retry in 7s") and use it directly
                     match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_str)
                     wait_secs = int(float(match.group(1))) + 1 if match else 30
@@ -593,18 +640,10 @@ def show_stats():
         agg_body = {
             "size": 0,
             "aggs": {
-                "collections": {
-                    "terms": {"field": "collection_id", "size": 100}
-                },
-                "doc_types": {
-                    "terms": {"field": "doc_type", "size": 100}
-                },
-                "unique_products": {
-                    "cardinality": {"field": "product_id"}
-                },
-                "by_brand": {
-                    "terms": {"field": "product_brand.keyword", "size": 20}
-                },
+                "collections": {"terms": {"field": "collection_id", "size": 100}},
+                "doc_types": {"terms": {"field": "doc_type", "size": 100}},
+                "unique_products": {"cardinality": {"field": "product_id"}},
+                "by_brand": {"terms": {"field": "product_brand.keyword", "size": 20}},
             },
         }
         response = client.search(index=OPENSEARCH_INDEX_NAME, body=agg_body)
@@ -642,7 +681,7 @@ Examples:
   python ingest_esci_products.py --resample   # Force re-sample
   python ingest_esci_products.py --all        # Ingest all US products
   python ingest_esci_products.py --stats      # Show index statistics
-        """
+        """,
     )
     parser.add_argument(
         "--limit",
@@ -673,10 +712,7 @@ Examples:
     args = parser.parse_args()
 
     # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s: %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     try:
         if args.stats:
@@ -695,6 +731,7 @@ Examples:
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

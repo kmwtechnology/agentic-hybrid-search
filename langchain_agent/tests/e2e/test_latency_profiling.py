@@ -19,32 +19,33 @@ import json
 import os
 import sys
 import time
-import pytest
-import psutil
-from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional
-from dataclasses import dataclass, asdict
-from datetime import datetime
-from statistics import mean, median, stdev
 import tracemalloc
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
+from statistics import mean, median, stdev
+from typing import Any, Dict, List, Optional, Tuple
+
+import psutil
+import pytest
 
 # Add langchain_agent to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config import (
-    VECTOR_COLLECTION_NAME,
-    EMBEDDINGS_MODEL,
-    VECTOR_DIMENSION,
-    RETRIEVER_K,
-    RETRIEVER_FETCH_K,
-    LLM_MODEL,
-    RERANKER_MODEL,
-    QUERY_EVAL_MODEL,
-)
-from vector_store import OpenSearchVectorStore
-from reranker import GeminiReranker
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
+from config import (
+    EMBEDDINGS_MODEL,
+    LLM_MODEL,
+    QUERY_EVAL_MODEL,
+    RERANKER_MODEL,
+    RETRIEVER_FETCH_K,
+    RETRIEVER_K,
+    VECTOR_COLLECTION_NAME,
+    VECTOR_DIMENSION,
+)
+from reranker import GeminiReranker
+from vector_store import OpenSearchVectorStore
 
 PROFILING_RESULTS_DIR = Path(__file__).parent.parent / "profiling_results"
 PROFILING_RESULTS_DIR.mkdir(exist_ok=True)
@@ -53,6 +54,7 @@ PROFILING_RESULTS_DIR.mkdir(exist_ok=True)
 @dataclass
 class StageTiming:
     """Timing for a single pipeline stage."""
+
     stage_name: str
     duration_ms: float
     tokens_generated: int = 0
@@ -63,6 +65,7 @@ class StageTiming:
 @dataclass
 class RequestProfile:
     """Complete profile for one request."""
+
     request_id: str
     query: str
     total_latency_ms: float
@@ -136,10 +139,7 @@ class LatencyProfiler:
 
         start = time.time()
         docs = self.vector_store.hybrid_search(
-            query=query,
-            k=RETRIEVER_K,
-            fetch_k=RETRIEVER_FETCH_K,
-            alpha=alpha
+            query=query, k=RETRIEVER_K, fetch_k=RETRIEVER_FETCH_K, alpha=alpha
         )
         duration = (time.time() - start) * 1000
 
@@ -162,10 +162,7 @@ class LatencyProfiler:
         mem_before = process.memory_info().rss / 1024 / 1024
 
         start = time.time()
-        reranked = self.reranker.compress_documents(
-            documents=docs,
-            query=query
-        )
+        reranked = self.reranker.compress_documents(documents=docs, query=query)
         duration = (time.time() - start) * 1000
 
         mem_after = process.memory_info().rss / 1024 / 1024
@@ -197,6 +194,7 @@ class LatencyProfiler:
             if alpha == 0.5:
                 try:
                     from langchain_core.documents import Document
+
                     sample_docs = [
                         Document(page_content=f"Product {i}", metadata={"source": f"doc_{i}"})
                         for i in range(min(10, doc_count))
@@ -216,7 +214,7 @@ class LatencyProfiler:
             stages=stages,
             total_tokens=total_tokens,
             model_used=LLM_MODEL,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
         )
 
         self.profiles.append(profile)
@@ -279,7 +277,9 @@ class TestStageLatencies:
         from langchain_core.documents import Document
 
         sample_docs = [
-            Document(page_content=f"Product {i}: wireless headphones", metadata={"source": f"doc_{i}"})
+            Document(
+                page_content=f"Product {i}: wireless headphones", metadata={"source": f"doc_{i}"}
+            )
             for i in range(10)
         ]
 
@@ -318,8 +318,9 @@ class TestAlphaComparison:
         semantic_timing, _ = self.profiler.profile_vector_search(query, alpha=1.0)
 
         # Lexical should be faster (no embedding, pure BM25)
-        assert lexical_timing.duration_ms < semantic_timing.duration_ms, \
-            "Lexical search should be faster than semantic"
+        assert (
+            lexical_timing.duration_ms < semantic_timing.duration_ms
+        ), "Lexical search should be faster than semantic"
 
     def test_alpha_impact_across_queries(self):
         """Test alpha parameter impact on latency."""
@@ -382,10 +383,10 @@ class TestFullPipelineProfile:
                         "latency_p95_ms": round(p95_latency, 2),
                         "latency_p99_ms": round(p99_latency, 2),
                         "total_tokens_generated": sum(p.total_tokens for p in profiles),
-                    }
+                    },
                 },
                 f,
-                indent=2
+                indent=2,
             )
 
     def test_bottleneck_identification(self):
@@ -409,7 +410,7 @@ class TestFullPipelineProfile:
                     "total_ms": round(profile.total_latency_ms, 2),
                 },
                 f,
-                indent=2
+                indent=2,
             )
 
         assert slowest_pct < 100, "Single stage shouldn't dominate entire request"
@@ -431,16 +432,15 @@ class TestMemoryProfileing:
         """Measure memory allocation by stage."""
         profile = self.profiler.profile_full_pipeline(PROFILING_QUERIES[0])
 
-        stage_memory = {
-            s.stage_name: s.memory_delta_mb
-            for s in profile.stages
-        }
+        stage_memory = {s.stage_name: s.memory_delta_mb for s in profile.stages}
 
         total_memory = sum(stage_memory.values())
 
         # Memory deltas should be reasonable
         for stage_name, delta in stage_memory.items():
-            assert delta < 100, f"Single stage memory delta should be < 100MB, got {delta}MB for {stage_name}"
+            assert (
+                delta < 100
+            ), f"Single stage memory delta should be < 100MB, got {delta}MB for {stage_name}"
 
         with open(PROFILING_RESULTS_DIR / "memory_allocation.json", "w") as f:
             json.dump(
@@ -449,12 +449,13 @@ class TestMemoryProfileing:
                     "total_mb": round(total_memory, 2),
                 },
                 f,
-                indent=2
+                indent=2,
             )
 
     def test_memory_stability(self):
         """Verify memory is stable across multiple queries."""
         import psutil
+
         process = psutil.Process(os.getpid())
 
         memory_before = process.memory_info().rss / 1024 / 1024
@@ -492,7 +493,11 @@ class TestCacheEffectiveness:
         profile2 = self.profiler.profile_full_pipeline(query)
 
         # Cache hit should be faster
-        speedup = profile1.total_latency_ms / profile2.total_latency_ms if profile2.total_latency_ms > 0 else 1
+        speedup = (
+            profile1.total_latency_ms / profile2.total_latency_ms
+            if profile2.total_latency_ms > 0
+            else 1
+        )
 
         with open(PROFILING_RESULTS_DIR / "cache_effectiveness.json", "w") as f:
             json.dump(
@@ -503,7 +508,7 @@ class TestCacheEffectiveness:
                     "cache_beneficial": speedup > 1.0,
                 },
                 f,
-                indent=2
+                indent=2,
             )
 
 
@@ -521,7 +526,7 @@ def generate_latency_report(profiles: List[RequestProfile]) -> str:
             "max_total_latency_ms": round(max([p.total_latency_ms for p in profiles]), 2),
             "min_total_latency_ms": round(min([p.total_latency_ms for p in profiles]), 2),
             "total_tokens_generated": sum([p.total_tokens for p in profiles]),
-        }
+        },
     }
 
     output_path = PROFILING_RESULTS_DIR / f"latency_report_{int(time.time())}.json"

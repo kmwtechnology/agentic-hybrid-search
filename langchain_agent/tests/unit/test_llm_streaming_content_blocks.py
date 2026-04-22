@@ -9,13 +9,15 @@ Verifies:
 - Backward compatibility with old string format
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
 from langchain_core.messages import AIMessage, BaseMessage
 
 
 class MockChunk:
     """Mock LLM streaming chunk with flexible content."""
+
     def __init__(self, content):
         self.content = content
 
@@ -41,11 +43,7 @@ class TestContentBlockExtraction:
 
     def test_extract_text_from_multiple_content_blocks(self):
         """Test extracting text from multiple content blocks."""
-        content = [
-            {"text": "First part"},
-            {"text": " second part"},
-            {"text": " third part"}
-        ]
+        content = [{"text": "First part"}, {"text": " second part"}, {"text": " third part"}]
 
         text_parts = []
         for block in content:
@@ -86,11 +84,7 @@ class TestContentBlockExtraction:
 
     def test_content_block_without_text_field(self):
         """Test ignoring blocks without 'text' field."""
-        content = [
-            {"tool_use": "some_tool"},
-            {"text": "actual text"},
-            {"metadata": "some_data"}
-        ]
+        content = [{"tool_use": "some_tool"}, {"text": "actual text"}, {"metadata": "some_data"}]
 
         text_parts = []
         for block in content:
@@ -105,7 +99,7 @@ class TestContentBlockExtraction:
         content = [
             {"text": "Calling tool: "},
             {"tool_use": {"name": "search", "input": "query"}},
-            {"text": " result follows"}
+            {"text": " result follows"},
         ]
 
         text_parts = []
@@ -134,10 +128,7 @@ class TestContentBlockExtraction:
 
     def test_special_characters_in_content_blocks(self):
         """Test special characters are preserved in text blocks."""
-        content = [
-            {"text": "Special: \n\t"},
-            {"text": "  chars: éàü"}
-        ]
+        content = [{"text": "Special: \n\t"}, {"text": "  chars: éàü"}]
 
         text_parts = []
         for block in content:
@@ -213,7 +204,7 @@ class TestStreamingChunkHandling:
             MockChunk("Hello "),
             MockChunk([{"text": "world"}]),
             MockChunk(" from "),
-            MockChunk([{"text": "Gemini"}])
+            MockChunk([{"text": "Gemini"}]),
         ]
 
         accumulated = ""
@@ -392,11 +383,7 @@ class TestEdgeCasesAndRobustness:
 
     def test_unicode_in_content_blocks(self):
         """Test unicode characters in content blocks."""
-        content = [
-            {"text": "Hello"},
-            {"text": " 你好"},
-            {"text": " مرحبا"}
-        ]
+        content = [{"text": "Hello"}, {"text": " 你好"}, {"text": " مرحبا"}]
 
         text_parts = []
         for block in content:

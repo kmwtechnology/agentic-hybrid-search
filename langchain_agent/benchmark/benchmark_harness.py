@@ -29,10 +29,10 @@ import json
 import subprocess
 import sys
 import time
-from pathlib import Path
-from typing import Dict, Any, List, Optional
 from datetime import datetime
+from pathlib import Path
 from statistics import mean
+from typing import Any, Dict, List, Optional
 
 # Results directory
 RESULTS_DIR = Path(__file__).parent.parent / "tests" / "performance_results"
@@ -50,7 +50,7 @@ class BenchmarkRunner:
         self.results: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "tests": {},
-            "summary": {}
+            "summary": {},
         }
 
     def run_pytest_suite(self, marker: str, test_class: Optional[str] = None) -> bool:
@@ -65,7 +65,9 @@ class BenchmarkRunner:
             True if all tests passed
         """
         cmd = [
-            "python", "-m", "pytest",
+            "python",
+            "-m",
+            "pytest",
             "-v",
             f"-m {marker}",
             "--tb=short",
@@ -100,7 +102,7 @@ class BenchmarkRunner:
         for marker, description in markers:
             print(f"\n{'=' * 60}")
             print(f"Running {description}...")
-            print('=' * 60)
+            print("=" * 60)
 
             try:
                 success = self.run_pytest_suite(marker)
@@ -173,7 +175,7 @@ class BenchmarkRunner:
         return {
             "status": "compared",
             "results": comparisons,
-            "passed": all(r.get("status") != "regression" for r in comparisons.values())
+            "passed": all(r.get("status") != "regression" for r in comparisons.values()),
         }
 
     def generate_html_report(self) -> str:
@@ -298,53 +300,16 @@ class BenchmarkRunner:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="Benchmark harness for Agentic Hybrid Search"
-    )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Run all benchmark suites"
-    )
-    parser.add_argument(
-        "--performance",
-        action="store_true",
-        help="Run performance tests only"
-    )
-    parser.add_argument(
-        "--load",
-        action="store_true",
-        help="Run load tests only"
-    )
-    parser.add_argument(
-        "--stress",
-        action="store_true",
-        help="Run stress tests only"
-    )
-    parser.add_argument(
-        "--profile",
-        action="store_true",
-        help="Run profiling tests only"
-    )
-    parser.add_argument(
-        "--test",
-        help="Run specific test class"
-    )
-    parser.add_argument(
-        "--compare-baseline",
-        action="store_true",
-        help="Compare against baseline"
-    )
-    parser.add_argument(
-        "--report",
-        action="store_true",
-        help="Generate HTML report"
-    )
-    parser.add_argument(
-        "--save-baseline",
-        action="store_true",
-        help="Save current run as baseline"
-    )
+    parser = argparse.ArgumentParser(description="Benchmark harness for Agentic Hybrid Search")
+    parser.add_argument("--all", action="store_true", help="Run all benchmark suites")
+    parser.add_argument("--performance", action="store_true", help="Run performance tests only")
+    parser.add_argument("--load", action="store_true", help="Run load tests only")
+    parser.add_argument("--stress", action="store_true", help="Run stress tests only")
+    parser.add_argument("--profile", action="store_true", help="Run profiling tests only")
+    parser.add_argument("--test", help="Run specific test class")
+    parser.add_argument("--compare-baseline", action="store_true", help="Compare against baseline")
+    parser.add_argument("--report", action="store_true", help="Generate HTML report")
+    parser.add_argument("--save-baseline", action="store_true", help="Save current run as baseline")
 
     args = parser.parse_args()
 

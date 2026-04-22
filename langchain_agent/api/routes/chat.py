@@ -8,9 +8,9 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -18,20 +18,20 @@ from slowapi.util import get_remote_address
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config import RATE_LIMIT_CHAT
+from api.middleware.origin_auth import verify_same_origin, verify_websocket_origin
 from api.schemas.events import (
     AgentCompleteEvent,
     AgentErrorEvent,
-    ConnectionEstablished,
     BaseEvent,
+    ConnectionEstablished,
 )
-from api.middleware.origin_auth import verify_websocket_origin, verify_same_origin
+from config import RATE_LIMIT_CHAT
 from logging_config import get_logger
 
 logger = get_logger(__name__)
 
 # Thread ID pattern: starts with letter, alphanumeric with underscores/hyphens, max 64 chars
-THREAD_ID_PATTERN = re.compile(r'^[a-zA-Z][a-zA-Z0-9_-]{0,63}$')
+THREAD_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
 
 # Initialize limiter (will use app.state.limiter)
 limiter = Limiter(key_func=get_remote_address)
@@ -57,6 +57,7 @@ class ConnectionManager:
         """Lazy load agent service to avoid slow startup."""
         if self._agent_service is None:
             from api.services.observable_agent import ObservableAgentService
+
             self._agent_service = ObservableAgentService()
         return self._agent_service
 
@@ -175,31 +176,31 @@ class ChatMessage(BaseModel):
         ...,
         min_length=1,
         max_length=4000,
-        description="User query or statement (1-4000 characters). Can be a product search, comparison, attribute filter, or follow-up question."
+        description="User query or statement (1-4000 characters). Can be a product search, comparison, attribute filter, or follow-up question.",
     )
     thread_id: Optional[str] = Field(
         None,
-        description="Conversation thread ID for resuming conversations. Format: alphanumeric, underscore, hyphen, max 64 chars. Auto-generated if omitted."
+        description="Conversation thread ID for resuming conversations. Format: alphanumeric, underscore, hyphen, max 64 chars. Auto-generated if omitted.",
     )
 
-    @field_validator('thread_id')
+    @field_validator("thread_id")
     @classmethod
     def validate_thread_id(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
         if not THREAD_ID_PATTERN.match(v):
             raise ValueError(
-                'thread_id must start with a letter and contain only '
-                'alphanumeric characters, underscores, or hyphens (max 64 chars)'
+                "thread_id must start with a letter and contain only "
+                "alphanumeric characters, underscores, or hyphens (max 64 chars)"
             )
         return v
 
-    @field_validator('message')
+    @field_validator("message")
     @classmethod
     def validate_message_content(cls, v: str) -> str:
         v = v.strip()
         if not v:
-            raise ValueError('message cannot be empty or whitespace only')
+            raise ValueError("message cannot be empty or whitespace only")
         return v
 
 
@@ -288,34 +289,45 @@ async def websocket_chat(websocket: WebSocket):
     # Load existing message count from checkpoint
     existing_count = 0
     try:
-        pool = manager.agent_service._agent.async_pool if manager.agent_service and manager.agent_service._agent else None
+        pool = (
+            manager.agent_service._agent.async_pool
+            if manager.agent_service and manager.agent_service._agent
+            else None
+        )
 
         if pool:
             async with pool.connection() as conn:
                 async with conn.cursor() as cur:
                     # Query checkpoint_blobs for existing messages
-                    await cur.execute("""
+                    await cur.execute(
+                        """
                         SELECT blob, type
                         FROM checkpoint_blobs
                         WHERE thread_id = %s
                           AND channel = 'messages'
                         ORDER BY version DESC
                         LIMIT 1
-                    """, (thread_id,))
+                    """,
+                        (thread_id,),
+                    )
 
                     blob_row = await cur.fetchone()
 
                     if blob_row and blob_row[0]:
                         from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
                         blob, blob_type = blob_row
                         serializer = JsonPlusSerializer()
                         raw_messages = serializer.loads_typed((blob_type, blob))
 
                         # Count human and AI messages with content
                         existing_count = sum(
-                            1 for msg in raw_messages
-                            if hasattr(msg, 'type') and msg.type in ('human', 'ai')
-                            and hasattr(msg, 'content') and msg.content
+                            1
+                            for msg in raw_messages
+                            if hasattr(msg, "type")
+                            and msg.type in ("human", "ai")
+                            and hasattr(msg, "content")
+                            and msg.content
                         )
     except Exception as e:
         logger.warning("message_count_load_error", thread_id=thread_id, error=str(e))
@@ -326,7 +338,7 @@ async def websocket_chat(websocket: WebSocket):
         ConnectionEstablished(
             thread_id=thread_id,
             existing_messages=existing_count,
-        )
+        ),
     )
 
     try:
@@ -373,16 +385,18 @@ async def websocket_chat(websocket: WebSocket):
                             AgentErrorEvent(
                                 error="Execution stopped by user",
                                 recoverable=True,
-                            )
+                            ),
                         )
                     except Exception as e:
-                        logger.error("agent_processing_error", thread_id=msg_thread_id, error=str(e))
+                        logger.error(
+                            "agent_processing_error", thread_id=msg_thread_id, error=str(e)
+                        )
                         await manager.emit_event(
                             msg_thread_id,
                             AgentErrorEvent(
                                 error=str(e),
                                 recoverable=True,
-                            )
+                            ),
                         )
                     finally:
                         # Clean up the task reference
@@ -397,7 +411,10 @@ async def websocket_chat(websocket: WebSocket):
         logger.info("websocket_disconnected", thread_id=thread_id)
     except Exception as e:
         import traceback
-        logger.error("websocket_error", thread_id=thread_id, error=str(e), traceback=traceback.format_exc())
+
+        logger.error(
+            "websocket_error", thread_id=thread_id, error=str(e), traceback=traceback.format_exc()
+        )
     finally:
         # Always cleanup connection and cancel any running tasks
         logger.info("websocket_cleanup", thread_id=thread_id)
@@ -413,34 +430,28 @@ class ChatRequest(BaseModel):
     """REST chat request (non-streaming fallback) with validation."""
 
     message: str = Field(
-        ...,
-        min_length=1,
-        max_length=4000,
-        description="User message content (1-4000 characters)"
+        ..., min_length=1, max_length=4000, description="User message content (1-4000 characters)"
     )
-    thread_id: Optional[str] = Field(
-        None,
-        description="Conversation thread ID (optional)"
-    )
+    thread_id: Optional[str] = Field(None, description="Conversation thread ID (optional)")
 
-    @field_validator('thread_id')
+    @field_validator("thread_id")
     @classmethod
     def validate_thread_id(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
         if not THREAD_ID_PATTERN.match(v):
             raise ValueError(
-                'thread_id must start with a letter and contain only '
-                'alphanumeric characters, underscores, or hyphens (max 64 chars)'
+                "thread_id must start with a letter and contain only "
+                "alphanumeric characters, underscores, or hyphens (max 64 chars)"
             )
         return v
 
-    @field_validator('message')
+    @field_validator("message")
     @classmethod
     def validate_message_content(cls, v: str) -> str:
         v = v.strip()
         if not v:
-            raise ValueError('message cannot be empty or whitespace only')
+            raise ValueError("message cannot be empty or whitespace only")
         return v
 
 
@@ -455,6 +466,7 @@ class Citation(BaseModel):
         }
         ```
     """
+
     label: str = Field(description="Product name or title")
     url: str = Field(description="Product URL (ASIN-based for ESCI products)")
 
@@ -482,9 +494,13 @@ class ChatResponse(BaseModel):
     """
 
     thread_id: str = Field(description="Conversation thread ID (for resuming conversations)")
-    response: str = Field(description="Agent's response text with product information and recommendations")
+    response: str = Field(
+        description="Agent's response text with product information and recommendations"
+    )
     duration_ms: float = Field(description="Total execution time in milliseconds")
-    citations: List[Citation] = Field(default=[], description="Product sources with labels and URLs")
+    citations: List[Citation] = Field(
+        default=[], description="Product sources with labels and URLs"
+    )
 
 
 @router.post("/api/chat", response_model=ChatResponse)

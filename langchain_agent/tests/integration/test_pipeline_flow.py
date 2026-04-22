@@ -11,10 +11,11 @@ Verifies:
 - Output correctness per intent
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
+from langchain_core.messages import AIMessage, HumanMessage
 
 
 @pytest.mark.integration
@@ -71,7 +72,9 @@ class TestPipelineIntentFlow:
         # Stage 2: Query Evaluation (LLM path - search uses dynamic alpha)
         # For search, alpha should be determined by LLM path, not fast path
         pipeline_state["alpha"] = 0.65  # Example dynamic alpha for semantic balance
-        pipeline_state["query_analysis"] = "Searching for specific product type with price constraint"
+        pipeline_state["query_analysis"] = (
+            "Searching for specific product type with price constraint"
+        )
         intent_optimized = pipeline_state["intent"] in ["comparison", "attribute_filter"]
         assert not intent_optimized, "Search should use LLM path, not fast path"
         assert 0.0 <= pipeline_state["alpha"] <= 1.0, "Alpha must be valid"
@@ -86,7 +89,10 @@ class TestPipelineIntentFlow:
 
         # Stage 5: Quality Gate (search threshold = 0.50)
         threshold = 0.50 if pipeline_state["intent"] == "search" else 0.55
-        if pipeline_state["reranker_max_score"] >= threshold and not pipeline_state["quality_gate_retried"]:
+        if (
+            pipeline_state["reranker_max_score"] >= threshold
+            and not pipeline_state["quality_gate_retried"]
+        ):
             quality_status = "pass"
         else:
             quality_status = "retry"
@@ -115,7 +121,9 @@ class TestPipelineIntentFlow:
 
         # Stage 2: Query Evaluation (fast path - deterministic alpha=0.60)
         pipeline_state["alpha"] = 0.60  # Fast path for comparison
-        pipeline_state["query_analysis"] = "Product comparison: prioritizing semantic search for quality differences"
+        pipeline_state["query_analysis"] = (
+            "Product comparison: prioritizing semantic search for quality differences"
+        )
         intent_optimized = pipeline_state["intent"] in ["comparison", "attribute_filter"]
         assert intent_optimized, "Comparison should use fast path"
         assert pipeline_state["alpha"] == 0.60, "Comparison should use exact alpha=0.60"
@@ -157,7 +165,9 @@ class TestPipelineIntentFlow:
 
         # Stage 2: Query Evaluation (fast path - deterministic alpha=0.25, lexical-heavy)
         pipeline_state["alpha"] = 0.25  # Fast path for attribute_filter
-        pipeline_state["query_analysis"] = "Attribute filter: prioritizing BM25 exact matching for specifications"
+        pipeline_state["query_analysis"] = (
+            "Attribute filter: prioritizing BM25 exact matching for specifications"
+        )
         intent_optimized = pipeline_state["intent"] in ["comparison", "attribute_filter"]
         assert intent_optimized, "Attribute filter should use fast path"
         assert pipeline_state["alpha"] == 0.25, "Attribute_filter should use exact alpha=0.25"
@@ -199,7 +209,9 @@ class TestPipelineIntentFlow:
 
         # Stage 2: Query Evaluation (LLM path - follow_up uses dynamic alpha)
         pipeline_state["alpha"] = 0.55  # Example dynamic alpha
-        pipeline_state["query_analysis"] = "Follow-up query: seeking alternatives with balanced search"
+        pipeline_state["query_analysis"] = (
+            "Follow-up query: seeking alternatives with balanced search"
+        )
         intent_optimized = pipeline_state["intent"] in ["comparison", "attribute_filter"]
         assert not intent_optimized, "Follow-up should use LLM path"
         assert 0.0 <= pipeline_state["alpha"] <= 1.0
@@ -282,7 +294,10 @@ class TestPipelineIntentFlow:
 
         # Stage 5: Quality Gate (first attempt)
         threshold = 0.50
-        if pipeline_state["reranker_max_score"] < threshold and not pipeline_state["quality_gate_retried"]:
+        if (
+            pipeline_state["reranker_max_score"] < threshold
+            and not pipeline_state["quality_gate_retried"]
+        ):
             # Trigger retry: adjust alpha downward
             new_alpha = max(0.0, pipeline_state["alpha"] - 0.3)
             pipeline_state["alpha"] = new_alpha
@@ -300,7 +315,10 @@ class TestPipelineIntentFlow:
         pipeline_state["quality_gate_retried"] = True
 
         # Quality gate decision on retry
-        if pipeline_state["reranker_max_score"] >= threshold or pipeline_state["quality_gate_retried"]:
+        if (
+            pipeline_state["reranker_max_score"] >= threshold
+            or pipeline_state["quality_gate_retried"]
+        ):
             quality_status = "accept"
 
         assert quality_status == "accept", "Should ACCEPT on second attempt or after retry"
@@ -425,9 +443,7 @@ class TestIntentSpecificBehavior:
         assert len(retrieved) > 0, "Retriever should return documents"
 
         # Simulate reranking (assign scores)
-        reranked_with_scores = [
-            (doc, 0.68) for doc in retrieved  # (document, relevance_score)
-        ]
+        reranked_with_scores = [(doc, 0.68) for doc in retrieved]  # (document, relevance_score)
 
         # Quality gate evaluation
         max_score = max(score for _, score in reranked_with_scores)
