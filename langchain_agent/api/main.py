@@ -32,7 +32,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from config import RATE_LIMIT_ENABLED, API_KEY
-from api.routes import health, conversations, chat, suggest
+from api.routes import health, conversations, chat, suggest, admin
 from api.middleware.auth import AuthConfigurationError
 from logging_config import configure_logging, get_logger
 
@@ -126,6 +126,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(conversations.router, prefix="/api", tags=["conversations"])
 app.include_router(suggest.router, prefix="/api", tags=["suggest"])
+app.include_router(admin.router, tags=["admin"])
 
 # Register WebSocket route
 app.include_router(chat.router, tags=["chat"])
