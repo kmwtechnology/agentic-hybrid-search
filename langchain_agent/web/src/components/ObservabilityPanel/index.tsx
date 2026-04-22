@@ -5,6 +5,7 @@
 
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import { StepsList } from './StepsList'
+import { SearchOptimizationDetails } from './SearchOptimizationDetails'
 
 export function ObservabilityPanel() {
   const { isExecuting, steps } = useObservabilityStore()
@@ -27,7 +28,15 @@ export function ObservabilityPanel() {
       {/* Content */}
       <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <div className="h-full w-full overflow-y-auto">
-          <StepsList />
+          {/* Search Optimizations Info - Always visible */}
+          <div className="px-4 pt-4">
+            <SearchOptimizationDetails />
+          </div>
+
+          {/* Execution Steps */}
+          <div className="mt-4">
+            <StepsList />
+          </div>
         </div>
       </div>
 

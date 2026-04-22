@@ -1,18 +1,22 @@
 /**
- * MessageInput - Chat input form with send button.
+ * MessageInput - Chat input form with send button, typeahead, and spell check.
  */
 
 import { useState, useRef, useCallback, useLayoutEffect, useEffect, KeyboardEvent } from 'react'
 import { Send } from 'lucide-react'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useChatStore } from '../../stores/chatStore'
+import { TypeaheadSuggestions, type Suggestion } from './TypeaheadSuggestions'
 import clsx from 'clsx'
 
 export function MessageInput() {
   const [message, setMessage] = useState('')
+  const [showTypeahead, setShowTypeahead] = useState(false)
+  const [typeaheadIndex, setTypeaheadIndex] = useState(0)
   const { sendMessage } = useWebSocket()
   const { isConnected, connectionError, inputFocusTrigger } = useChatStore()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const [textareaHeight, setTextareaHeight] = useState<number>(0)
 
   // Focus input when triggered (after streaming completes)
@@ -22,22 +26,51 @@ export function MessageInput() {
     }
   }, [inputFocusTrigger])
 
+  const handleSuggestionSelect = useCallback((suggestion: Suggestion) => {
+    // When user selects a product from typeahead, insert it into the message
+    const trimmed = message.trim()
+    const newMessage = trimmed ? `${trimmed} ${suggestion.title}` : suggestion.title
+    setMessage(newMessage)
+    setShowTypeahead(false)
+    setTypeaheadIndex(0)
+  }, [message])
+
   const handleSubmit = useCallback(() => {
     const trimmed = message.trim()
     if (!trimmed || !isConnected) return
 
+    // Close typeahead when submitting
+    setShowTypeahead(false)
     sendMessage(trimmed)
     setMessage('')
   }, [message, sendMessage, isConnected])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // Handle typeahead navigation
+      if (showTypeahead) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setTypeaheadIndex((i) => i + 1)
+          return
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setTypeaheadIndex((i) => Math.max(0, i - 1))
+          return
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          setShowTypeahead(false)
+          return
+        }
+      }
+
+      // Handle submit
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         handleSubmit()
       }
     },
-    [handleSubmit]
+    [handleSubmit, showTypeahead]
   )
 
   const canSend = message.trim() && isConnected
@@ -73,7 +106,7 @@ export function MessageInput() {
   return (
     <div className="p-4">
       <div className="flex items-stretch gap-2">
-        <div className="flex-1 relative">
+        <div className="flex-1 relative" ref={containerRef}>
           <label htmlFor="message-input" className="sr-only">
             Chat message
           </label>
@@ -81,11 +114,21 @@ export function MessageInput() {
             id="message-input"
             ref={textareaRef}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={(e) => {
+              setMessage(e.target.value)
+              // Show typeahead when user has typed at least 2 characters
+              setShowTypeahead(e.target.value.trim().length >= 2)
+              setTypeaheadIndex(0)
+            }}
             onKeyDown={handleKeyDown}
+            onFocus={() => message.trim().length >= 2 && setShowTypeahead(true)}
+            onBlur={() => {
+              // Delay closing to allow click selection
+              setTimeout(() => setShowTypeahead(false), 200)
+            }}
             placeholder={
               isConnected
-                ? "Search for products, compare brands, or ask questions..."
+                ? "Search for products, compare brands, or ask questions... (type to see suggestions)"
                 : "Connecting..."
             }
             disabled={!isConnected}
@@ -104,6 +147,14 @@ export function MessageInput() {
               minHeight: '44px',
               maxHeight: '200px',
             }}
+          />
+          {/* Typeahead suggestions dropdown */}
+          <TypeaheadSuggestions
+            query={message}
+            isOpen={showTypeahead && isConnected}
+            selectedIndex={typeaheadIndex}
+            onSelect={handleSuggestionSelect}
+            onClose={() => setShowTypeahead(false)}
           />
         </div>
 
