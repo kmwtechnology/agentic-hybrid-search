@@ -4,13 +4,15 @@ Provides endpoints to manage the search index and re-ingest data when mappings c
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 import asyncio
 
 logger = logging.getLogger(__name__)
 
+# Debug: Verify router is being created
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+logger.info(f"Admin router created with prefix: {router.prefix}")
 
 
 class ReindexRequest(BaseModel):
@@ -148,7 +150,7 @@ async def trigger_reindex(
         )
 
 
-@router.get("/health", tags=["health"])
+@router.get("/health")
 async def admin_health() -> dict:
     """Admin health check - verify system components."""
     try:
