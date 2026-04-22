@@ -51,6 +51,12 @@ const OPTIMIZATIONS: SearchOptimization[] = [
     description: 'Prioritizes matches in important fields (title, brand)',
     icon: '⭐',
   },
+  {
+    name: 'Typeahead Autocomplete',
+    status: 'enabled',
+    description: 'Edge-ngram prefix suggestions as you type (title + brand)',
+    icon: '⌨️',
+  },
 ]
 
 export function SearchOptimizationDetails() {

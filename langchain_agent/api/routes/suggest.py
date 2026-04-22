@@ -18,10 +18,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+class SuggestionItem(BaseModel):
+    """A single autocomplete suggestion."""
+
+    title: str
+    brand: Optional[str] = None
+    score: Optional[float] = None
+
+
 class SuggestResponse(BaseModel):
     """Response model for autocomplete suggestions."""
 
-    suggestions: List[str]
+    suggestions: List[SuggestionItem]
 
 
 @router.get("/suggest", response_model=SuggestResponse)
@@ -35,7 +43,8 @@ async def suggest(
         q: Query prefix to search for (e.g., "sony wh")
 
     Returns:
-        SuggestResponse with up to 8 deduplicated suggestions
+        SuggestResponse with up to 8 deduplicated suggestion objects
+        (title, optional brand, optional relevance score 0.0-1.0).
     """
     if not q or len(q.strip()) == 0:
         return SuggestResponse(suggestions=[])
@@ -43,7 +52,6 @@ async def suggest(
     try:
         client = create_opensearch_client()
 
-        # Search both title_suggest and brand_suggest fields
         body = {
             "size": 8,
             "_source": ["title", "product_brand"],
@@ -73,16 +81,25 @@ async def suggest(
         }
 
         response = client.search(index=OPENSEARCH_INDEX_NAME, body=body)
+        hits = response["hits"]["hits"]
+        max_score = response["hits"].get("max_score") or 1.0
 
-        # Extract suggestions from results, deduplicating by title
         seen_titles = set()
-        suggestions = []
-        for hit in response["hits"]["hits"]:
+        suggestions: List[SuggestionItem] = []
+        for hit in hits:
             source = hit["_source"]
             title = source.get("title", "").strip()
-            if title and title not in seen_titles:
-                seen_titles.add(title)
-                suggestions.append(title)
+            if not title or title in seen_titles:
+                continue
+            seen_titles.add(title)
+            raw_score = hit.get("_score") or 0.0
+            suggestions.append(
+                SuggestionItem(
+                    title=title,
+                    brand=(source.get("product_brand") or None),
+                    score=min(raw_score / max_score, 1.0) if max_score else None,
+                )
+            )
 
         logger.info(f"Suggest query='{q}' returned {len(suggestions)} unique suggestions")
         return SuggestResponse(suggestions=suggestions)
