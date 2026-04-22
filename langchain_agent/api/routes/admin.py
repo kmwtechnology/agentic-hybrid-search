@@ -6,7 +6,6 @@ Provides endpoints to manage the search index and re-ingest data when mappings c
 import logging
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +30,12 @@ class ReindexResponse(BaseModel):
     error: str | None = None
 
 
-async def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> ReindexResponse:
+def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> ReindexResponse:
     """
-    Perform re-indexing of OpenSearch index.
-    Runs in background task to avoid blocking the API.
+    Perform re-indexing of OpenSearch index (synchronous for BackgroundTasks).
+
+    BackgroundTasks.add_task() requires a synchronous callable. This runs inline
+    in the background thread pool, blocking other background tasks serially.
 
     Args:
         limit: Number of products to ingest
@@ -45,14 +46,10 @@ async def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -
         ReindexResponse with status and document counts
     """
     try:
-        # Import here to avoid import-time dependencies
         from ingest_esci_products import ingest_esci_products
 
         logger.info(f"Starting re-index: limit={limit}, reset_index={reset_index}")
-
-        # Run the ingestion in a thread pool to avoid blocking
-        docs, chunks = await asyncio.to_thread(
-            ingest_esci_products,
+        docs, chunks = ingest_esci_products(
             limit=limit,
             force_resample=force_resample,
             reset_index=reset_index,
@@ -69,7 +66,7 @@ async def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -
 
     except FileNotFoundError as e:
         error_msg = f"Dataset file not found: {e}"
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)
         return ReindexResponse(
             status="error",
             message="Re-index failed",
@@ -77,7 +74,7 @@ async def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -
         )
     except Exception as e:
         error_msg = f"Re-index failed: {type(e).__name__}: {e}"
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)
         return ReindexResponse(
             status="error",
             message="Re-index failed",
