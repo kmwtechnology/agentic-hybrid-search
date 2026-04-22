@@ -35,10 +35,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           cache: 'pip'
@@ -87,7 +87,7 @@ jobs:
 
       - name: Upload Phase 1 Coverage Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-phase1
           path: langchain_agent/htmlcov/
@@ -95,7 +95,7 @@ jobs:
 
       - name: Upload Phase 1 Test Results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-phase1
           path: langchain_agent/test-results-phase1.xml
@@ -137,10 +137,10 @@ jobs:
           - 9200:9200
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           cache: 'pip'
@@ -199,7 +199,7 @@ jobs:
 
       - name: Upload Phase 2 Test Results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-phase2
           path: langchain_agent/test-results-phase2.xml
@@ -210,10 +210,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           cache: 'pip'
@@ -224,32 +224,40 @@ jobs:
           pip install flake8 black isort mypy types-requests
 
       - name: Check code formatting with black
-        continue-on-error: true
         run: |
           cd langchain_agent
-          black --check . --exclude venv/ --exclude .venv
-          echo "✓ Black formatting check passed"
+          if black --check . --exclude venv/ --exclude .venv; then
+            echo "✓ Black formatting check passed"
+          else
+            echo "::warning title=Black::Formatting issues found (non-blocking). Run 'black .' locally to fix."
+          fi
 
       - name: Sort imports with isort
-        continue-on-error: true
         run: |
           cd langchain_agent
-          isort --check-only . --skip venv/ --skip .venv
-          echo "✓ isort import sorting check passed"
+          if isort --check-only . --skip venv/ --skip .venv; then
+            echo "✓ isort import sorting check passed"
+          else
+            echo "::warning title=isort::Import ordering issues found (non-blocking). Run 'isort .' locally to fix."
+          fi
 
       - name: Lint with flake8
-        continue-on-error: true
         run: |
           cd langchain_agent
-          flake8 . --exclude venv/,.venv --max-line-length=100 --count
-          echo "✓ flake8 linting check passed"
+          if flake8 . --exclude venv/,.venv --max-line-length=100 --count; then
+            echo "✓ flake8 linting check passed"
+          else
+            echo "::warning title=flake8::Lint issues found (non-blocking)."
+          fi
 
       - name: Type check with mypy
-        continue-on-error: true
         run: |
           cd langchain_agent
-          mypy main.py --ignore-missing-imports
-          echo "✓ mypy type checking passed"
+          if mypy main.py --ignore-missing-imports; then
+            echo "✓ mypy type checking passed"
+          else
+            echo "::warning title=mypy::Type errors found (non-blocking)."
+          fi
 
   build-docker:
     name: Build Docker Image
@@ -260,7 +268,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           lfs: true
 
@@ -316,7 +324,7 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -389,10 +397,10 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: "pip"
@@ -521,7 +529,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-test-results
           path: |
