@@ -78,6 +78,21 @@ def _detect_spell_correction(
     if " " in q or len(q) < 4:
         return None
 
+    # Collect tokens from top hits. If the query itself appears verbatim as
+    # a corpus token, the user is already finding real products — a "Did you
+    # mean X" banner is redundant and creates bidirectional cross-suggestion
+    # between close real words that co-occur in titles (e.g. "charger" and
+    # "charging" both appearing in the AGVEE lightning-cable title would
+    # otherwise have each query suggest the other).
+    corpus_tokens: set[str] = set()
+    for hit in top_hits[:3]:
+        title = (hit.get("_source", {}).get("title") or "").strip().lower()
+        for match in _TOKEN_RE.finditer(title):
+            corpus_tokens.add(match.group(0))
+
+    if q in corpus_tokens:
+        return None
+
     best_token: Optional[str] = None
     best_hit: Optional[dict] = None
     best_ratio = 0.0

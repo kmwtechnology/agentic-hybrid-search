@@ -138,22 +138,44 @@ def test_prefix_of_candidate_skips_spell_correction(mock_client_factory, client)
 
 
 @patch("api.routes.suggest.create_opensearch_client")
-def test_completed_word_variant_still_surfaces_spell_correction(mock_client_factory, client):
-    """Query 'charging' (not a prefix of 'Charger') should still surface the
-    corpus-present related form — the prefix-skip guard must not regress
-    this case."""
+def test_query_present_as_corpus_token_skips_spell_correction(mock_client_factory, client):
+    """When the query itself appears verbatim as a token in any top-hit
+    title, suppress spell correction. This prevents the bidirectional cross-
+    suggestion between real words that co-occur in the same titles (e.g.
+    'charger' <-> 'charging' both present in the AGVEE lightning-cable
+    title). The Suggestions section is already doing its job when the query
+    is a real corpus term."""
     mock_os = MagicMock()
     mock_os.search.return_value = _mk_response(
-        [_mk_hit("USB Wall Charger", score=8.0)],
+        [_mk_hit("Fast Long Charger Cord Charging Data Wire", score=8.0)],
         max_score=10.0,
     )
     mock_client_factory.return_value = mock_os
 
-    r = client.get("/api/suggest?q=charging")
+    for q in ("charger", "charging"):
+        r = client.get(f"/api/suggest?q={q}")
+        assert r.status_code == 200
+        assert r.json()["spell_correction"] is None, f"unexpected correction for q={q!r}"
+
+
+@patch("api.routes.suggest.create_opensearch_client")
+def test_non_corpus_misspelling_still_surfaces_spell_correction(mock_client_factory, client):
+    """Misspellings that are NOT corpus tokens must still trigger a correction
+    (e.g. 'sonie' against a 'Sony ...' title). This is the case the endpoint
+    primarily exists for — guarding against corpus-present queries should not
+    regress it."""
+    mock_os = MagicMock()
+    mock_os.search.return_value = _mk_response(
+        [_mk_hit("Sony WH-1000XM5 Wireless Headphones", score=8.0)],
+        max_score=10.0,
+    )
+    mock_client_factory.return_value = mock_os
+
+    r = client.get("/api/suggest?q=sonie")
     assert r.status_code == 200
     correction = r.json()["spell_correction"]
     assert correction is not None
-    assert correction["title"].lower() == "charger"
+    assert correction["title"].lower() == "sony"
 
 
 @patch("api.routes.suggest.create_opensearch_client")
