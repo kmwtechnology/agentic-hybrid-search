@@ -1,10 +1,21 @@
 name: Re-Index OpenSearch
 
+# Drop-and-rebuild the product index on Cloud Run.
+#
+# Flow:
+#   1. POST /api/admin/reindex — accepted synchronously, queues a background task.
+#      The handler also resets in-process job state to "queued" so polling
+#      can't be fooled by a previous run's terminal state.
+#   2. Poll /api/admin/reindex/status until status is "success" or "error".
+#      Doc count is intentionally ignored as a completion signal — the ETL
+#      may ingest fewer than `limit` documents (dedup, sample caps, etc.).
+#   3. Smoke-test the typeahead endpoint against the rebuilt index.
+
 on:
   workflow_dispatch:
     inputs:
       reset_index:
-        description: 'Reset index before re-indexing'
+        description: 'Drop and recreate the index before ingest (use true when mappings changed)'
         required: true
         default: 'true'
         type: choice
@@ -12,12 +23,14 @@ on:
           - 'true'
           - 'false'
       limit:
-        description: 'Number of products to ingest'
+        description: 'Max products to ingest (final count may be ≤ this)'
         required: true
         default: '10000'
 
 env:
   SERVICE_URL: https://agentic-hybrid-search-375500751528.us-central1.run.app
+  POLL_INTERVAL_SECONDS: 15
+  DEADLINE_MINUTES: 25
 
 jobs:
   reindex:
@@ -26,169 +39,84 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Baseline health check
-        id: baseline
-        run: |
-          HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health")
-          STATUS=$(echo "$HEALTH" | jq -r '.status // "unknown"')
-          DOCS=$(echo "$HEALTH" | jq -r '.opensearch.documents // 0')
-          INDEX=$(echo "$HEALTH" | jq -r '.opensearch.index // "unknown"')
-          echo "Service:          ${{ env.SERVICE_URL }}"
-          echo "Status:           $STATUS"
-          echo "Index:            $INDEX"
-          echo "Baseline docs:    $DOCS"
-          echo "Params:           reset_index=${{ github.event.inputs.reset_index }}, limit=${{ github.event.inputs.limit }}"
-          echo "baseline=$DOCS" >> $GITHUB_OUTPUT
-
       - name: Trigger re-index
-        id: trigger
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            "${{ env.SERVICE_URL }}/api/admin/reindex?reset_index=${{ github.event.inputs.reset_index }}&limit=${{ github.event.inputs.limit }}")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -n -1)
-          echo "HTTP $HTTP_CODE"
+          set -euo pipefail
+          RESET='${{ github.event.inputs.reset_index }}'
+          LIMIT='${{ github.event.inputs.limit }}'
+
+          echo "Service:       ${SERVICE_URL}"
+          echo "reset_index:   ${RESET}"
+          echo "limit:         ${LIMIT}"
+          echo
+
+          RESP=$(curl -sS -w "\n%{http_code}" \
+            "${SERVICE_URL}/api/admin/reindex?reset_index=${RESET}&limit=${LIMIT}")
+          HTTP=$(echo "$RESP" | tail -n 1)
+          BODY=$(echo "$RESP" | head -n -1)
+
+          echo "Trigger response (HTTP $HTTP):"
           echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Trigger failed with HTTP $HTTP_CODE"
+
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::Trigger failed with HTTP $HTTP"
             exit 1
           fi
-          STATUS=$(echo "$BODY" | jq -r '.status // "unknown"')
-          if [ "$STATUS" != "started" ]; then
-            echo "::warning::Unexpected status: $STATUS"
-          fi
 
-      - name: Monitor progress (stability-based completion)
-        id: monitor
+      - name: Wait for ETL completion
+        id: wait
         run: |
-          TARGET=${{ github.event.inputs.limit }}
-          BASELINE=${{ steps.baseline.outputs.baseline }}
-          RESET="${{ github.event.inputs.reset_index }}"
-
-          # Completion tuning
-          POLL_INTERVAL=10            # seconds between health checks
-          STABILITY_WINDOW=90         # count must be unchanged this long to be considered "done"
-          MIN_GROWTH=100              # require at least this many new docs vs. the post-reset floor
-          GRACE_BEFORE_STABILITY=60   # ignore stability for the first minute (ingest takes a moment to start)
-
-          PREV=$BASELINE
-          FLOOR=$BASELINE             # lowest observed count; resets to 0 after reset_index
-          RESET_SEEN=false
-          LAST_CHANGE_TS=$(date +%s)
+          set -euo pipefail
+          POLL=${POLL_INTERVAL_SECONDS}
+          DEADLINE=$(( $(date +%s) + DEADLINE_MINUTES * 60 ))
           START=$(date +%s)
-          DEADLINE=$((START + 25 * 60))  # 25 min upper bound
-
-          COMPLETION_REASON=""
-          FINAL_COUNT=$BASELINE
-
-          echo "[t+0s] docs=$BASELINE (baseline) | polling every ${POLL_INTERVAL}s; stability window=${STABILITY_WINDOW}s"
+          LAST=""
 
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-            sleep "$POLL_INTERVAL"
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START))
+            sleep "$POLL"
 
-            HEALTH=$(curl -s --max-time 10 "${{ env.SERVICE_URL }}/api/admin/health" || echo '{}')
-            COUNT=$(echo "$HEALTH" | jq -r '.opensearch.documents // empty')
+            BODY=$(curl -sS --max-time 10 "${SERVICE_URL}/api/admin/reindex/status" || echo '{}')
+            STATUS=$(echo "$BODY" | jq -r '.status // "unknown"')
+            ELAPSED=$(( $(date +%s) - START ))
 
-            if [ -z "$COUNT" ]; then
-              echo "[t+${ELAPSED}s] health check failed (endpoint unreachable or malformed response)"
-              continue
+            if [ "$STATUS" != "$LAST" ]; then
+              echo "[t+${ELAPSED}s] status: ${LAST:-<start>} -> ${STATUS}"
+              LAST="$STATUS"
+            elif [ $(( ELAPSED % 60 )) -lt "$POLL" ]; then
+              echo "[t+${ELAPSED}s] status: ${STATUS}"
             fi
 
-            FINAL_COUNT=$COUNT
-
-            # Detect the reset moment: count drops below baseline with reset_index=true.
-            if [ "$RESET" = "true" ] && [ "$RESET_SEEN" = "false" ] && [ "$COUNT" -lt "$BASELINE" ]; then
-              echo "[t+${ELAPSED}s] index reset detected (docs dropped $BASELINE -> $COUNT); ingesting up to $TARGET"
-              RESET_SEEN=true
-              FLOOR=$COUNT
-              PREV=$COUNT
-              LAST_CHANGE_TS=$NOW
-              continue
-            fi
-
-            # Track the lowest post-reset value as our growth baseline.
-            if [ "$COUNT" -lt "$FLOOR" ]; then
-              FLOOR=$COUNT
-            fi
-
-            if [ "$COUNT" != "$PREV" ]; then
-              DELTA=$((COUNT - PREV))
-              SIGN=$([ $DELTA -ge 0 ] && echo "+" || echo "")
-              PCT=$(awk "BEGIN {printf \"%.0f\", ($COUNT * 100.0) / $TARGET}")
-              echo "[t+${ELAPSED}s] docs=$COUNT (${SIGN}${DELTA}) ${PCT}% of target"
-              PREV=$COUNT
-              LAST_CHANGE_TS=$NOW
-            fi
-
-            GROWTH=$((COUNT - FLOOR))
-            SINCE_CHANGE=$((NOW - LAST_CHANGE_TS))
-
-            # Success path 1: genuinely reached the target.
-            if [ "$COUNT" -ge "$TARGET" ]; then
-              COMPLETION_REASON="reached target of $TARGET documents"
-              echo "[t+${ELAPSED}s] complete: $COMPLETION_REASON"
-              break
-            fi
-
-            # Success path 2: count has been stable long enough and we grew meaningfully.
-            # Skip the stability check during the initial grace period so we don't false-positive
-            # before ingest actually starts writing.
-            if [ "$ELAPSED" -ge "$GRACE_BEFORE_STABILITY" ] \
-               && [ "$SINCE_CHANGE" -ge "$STABILITY_WINDOW" ] \
-               && [ "$GROWTH" -ge "$MIN_GROWTH" ]; then
-              PCT=$(awk "BEGIN {printf \"%.1f\", ($COUNT * 100.0) / $TARGET}")
-              COMPLETION_REASON="count stable at $COUNT for ${SINCE_CHANGE}s (grew +${GROWTH} from floor ${FLOOR}, ${PCT}% of target ${TARGET})"
-              echo "[t+${ELAPSED}s] complete: $COMPLETION_REASON"
-              break
-            fi
+            case "$STATUS" in
+              success)
+                echo
+                echo "════════════════════════════════════════════════"
+                echo "Re-index completed"
+                echo "$BODY" | jq '{status, started_at, finished_at, limit, reset_index, documents_ingested, chunks_created}'
+                exit 0
+                ;;
+              error)
+                echo "::error::ETL failed"
+                echo "$BODY" | jq '.'
+                exit 1
+                ;;
+            esac
           done
 
-          if [ -z "$COMPLETION_REASON" ]; then
-            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-              GROWTH=$((FINAL_COUNT - FLOOR))
-              if [ "$GROWTH" -ge "$MIN_GROWTH" ]; then
-                COMPLETION_REASON="25-min deadline hit; treating as complete (docs=$FINAL_COUNT, grew +${GROWTH} from floor ${FLOOR})"
-                echo "::warning::${COMPLETION_REASON}"
-              else
-                echo "::error::25-minute deadline reached with insufficient growth (docs=$FINAL_COUNT, floor=$FLOOR, growth=+${GROWTH}). Ingest may have failed to start."
-                exit 1
-              fi
-            fi
-          fi
+          echo "::error::Deadline (${DEADLINE_MINUTES} min) exceeded without terminal status"
+          echo "Last status response:"
+          curl -sS "${SERVICE_URL}/api/admin/reindex/status" | jq '.' || true
+          exit 1
 
-          echo "completion_reason=$COMPLETION_REASON" >> $GITHUB_OUTPUT
-          echo "final_count=$FINAL_COUNT" >> $GITHUB_OUTPUT
-
-      - name: Typeahead smoke check
+      - name: Verify index and typeahead
+        if: success()
         run: |
-          echo "Probing /api/suggest?q=son — should return prefix matches, not random products."
-          RESP=$(curl -s "${{ env.SERVICE_URL }}/api/suggest?q=son")
-          echo "$RESP" | jq '{
+          set -euo pipefail
+          echo "Final index health:"
+          curl -sS "${SERVICE_URL}/api/admin/health" | jq '.'
+          echo
+          echo "Typeahead probe (q=son):"
+          curl -sS "${SERVICE_URL}/api/suggest?q=son" | jq '{
             count: (.suggestions | length),
             top3: (.suggestions[0:3] | map({title, brand, score})),
             spell_correction
           }'
-          # Real prefix matches should have non-zero scores. If all zeros,
-          # the title_suggest field still isn't populated.
-          ALL_ZERO=$(echo "$RESP" | jq '[.suggestions[] | .score] | all(. == 0)')
-          if [ "$ALL_ZERO" = "true" ]; then
-            echo "::warning::All suggestion scores are 0 — title_suggest may still be missing from the mapping."
-          fi
-
-      - name: Final status
-        if: always()
-        run: |
-          HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health")
-          DOCS=$(echo "$HEALTH" | jq -r '.opensearch.documents // 0')
-          REASON="${{ steps.monitor.outputs.completion_reason }}"
-          echo "════════════════════════════════════════════════════════"
-          echo "Final doc count:  $DOCS"
-          echo "Service:          ${{ env.SERVICE_URL }}"
-          if [ -n "$REASON" ]; then
-            echo "Completion:       $REASON"
-          else
-            echo "Completion:       (monitor step did not run to completion)"
-          fi
-          echo "════════════════════════════════════════════════════════"

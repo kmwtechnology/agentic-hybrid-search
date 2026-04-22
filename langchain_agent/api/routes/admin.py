@@ -4,6 +4,9 @@ Provides endpoints to manage the search index and re-ingest data when mappings c
 """
 
 import logging
+from datetime import datetime, timezone
+from threading import Lock
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
@@ -13,6 +16,37 @@ logger = logging.getLogger(__name__)
 # Debug: Verify router is being created
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger.info(f"Admin router created with prefix: {router.prefix}")
+
+
+# In-process reindex job state. The trigger endpoint resets this to "queued"
+# synchronously before returning, so polling workflows can distinguish a fresh
+# run from stale terminal state left behind by a previous invocation on the
+# same container.
+_reindex_state_lock = Lock()
+_reindex_state: dict[str, Any] = {
+    "status": "idle",  # idle | queued | running | success | error
+    "started_at": None,
+    "finished_at": None,
+    "limit": None,
+    "reset_index": None,
+    "documents_ingested": None,
+    "chunks_created": None,
+    "error": None,
+}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _update_reindex_state(**kwargs: Any) -> None:
+    with _reindex_state_lock:
+        _reindex_state.update(kwargs)
+
+
+def _read_reindex_state() -> dict[str, Any]:
+    with _reindex_state_lock:
+        return dict(_reindex_state)
 
 
 class ReindexRequest(BaseModel):
@@ -52,11 +86,19 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
         f"[perform_reindex] Starting re-index: limit={limit}, force_resample={force_resample}, reset_index={reset_index}"
     )
 
+    _update_reindex_state(
+        status="running",
+        started_at=_now_iso(),
+        finished_at=None,
+        limit=limit,
+        reset_index=reset_index,
+        documents_ingested=None,
+        chunks_created=None,
+        error=None,
+    )
+
     try:
         from ingest_esci_products import ingest_esci_products
-
-        logger.info(f"[perform_reindex] Imported ingest_esci_products successfully")
-        logger.info(f"[perform_reindex] Calling ingest_esci_products with parameters...")
 
         docs, chunks = ingest_esci_products(
             limit=limit,
@@ -64,11 +106,15 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
             reset_index=reset_index,
         )
 
-        logger.info(f"[perform_reindex] ingest_esci_products completed successfully")
         logger.info(
             f"[perform_reindex] Results: {docs} documents ingested, {chunks} chunks created"
         )
-
+        _update_reindex_state(
+            status="success",
+            finished_at=_now_iso(),
+            documents_ingested=docs,
+            chunks_created=chunks,
+        )
         return ReindexResponse(
             status="success",
             message=f"Successfully re-indexed {docs} documents into {chunks} chunks",
@@ -79,6 +125,7 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
     except FileNotFoundError as e:
         error_msg = f"Dataset file not found: {e}"
         logger.error(f"[perform_reindex] FileNotFoundError: {error_msg}", exc_info=True)
+        _update_reindex_state(status="error", finished_at=_now_iso(), error=error_msg)
         return ReindexResponse(
             status="error",
             message="Re-index failed",
@@ -87,6 +134,7 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
     except Exception as e:
         error_msg = f"Re-index failed: {type(e).__name__}: {e}"
         logger.error(f"[perform_reindex] Unexpected error: {error_msg}", exc_info=True)
+        _update_reindex_state(status="error", finished_at=_now_iso(), error=error_msg)
         return ReindexResponse(
             status="error",
             message="Re-index failed",
@@ -136,6 +184,20 @@ async def trigger_reindex(
         f"force_resample={force_resample}"
     )
 
+    # Reset state to "queued" synchronously before returning. Poll-based
+    # automation (e.g. the Re-Index OpenSearch GitHub Action) relies on this
+    # to avoid treating a previous run's terminal state as its own.
+    _update_reindex_state(
+        status="queued",
+        started_at=None,
+        finished_at=None,
+        limit=limit,
+        reset_index=reset_index,
+        documents_ingested=None,
+        chunks_created=None,
+        error=None,
+    )
+
     # Add task to background queue (FastAPI handles execution)
     background_tasks.add_task(
         perform_reindex,
@@ -147,8 +209,28 @@ async def trigger_reindex(
     return ReindexResponse(
         status="started",
         message=f"Re-index job started (limit={limit}, reset_index={reset_index}). "
-        "Check logs for progress.",
+        "Poll /api/admin/reindex/status for progress.",
     )
+
+
+@router.get("/reindex/status")
+async def reindex_status() -> dict[str, Any]:
+    """
+    Return the current state of the in-process re-index job.
+
+    Status values:
+    - `idle`    — no re-index has ever run in this container.
+    - `queued`  — trigger was accepted; the background task has not yet started.
+    - `running` — the ETL is actively ingesting documents.
+    - `success` — the ETL finished; see `documents_ingested` / `chunks_created`.
+    - `error`   — the ETL failed; see `error`.
+
+    Multi-instance caveat: state is per-container, so polling must reach the
+    same Cloud Run instance that accepted the trigger. In practice this holds
+    for low-concurrency admin workflows (default Cloud Run routing reuses the
+    warm instance), but is not guaranteed under load.
+    """
+    return _read_reindex_state()
 
 
 @router.get("/diagnose")

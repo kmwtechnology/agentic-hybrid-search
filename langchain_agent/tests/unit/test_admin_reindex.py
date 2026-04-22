@@ -6,14 +6,40 @@ Tests verify:
 2. BackgroundTasks can execute it without errors
 3. Exceptions are properly caught and logged
 4. Return values contain appropriate status/error info
+5. In-process job state transitions correctly through queued → running → success/error
+6. /api/admin/reindex/status returns the current state dict
 """
 
 import asyncio
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 
+from api.routes import admin as admin_module
 from api.routes.admin import ReindexResponse, perform_reindex, trigger_reindex
+
+
+@pytest.fixture(autouse=True)
+def _reset_reindex_state():
+    """Reset the module-level job state before and after every test."""
+    fresh = {
+        "status": "idle",
+        "started_at": None,
+        "finished_at": None,
+        "limit": None,
+        "reset_index": None,
+        "documents_ingested": None,
+        "chunks_created": None,
+        "error": None,
+    }
+    with admin_module._reindex_state_lock:
+        admin_module._reindex_state.clear()
+        admin_module._reindex_state.update(fresh)
+    yield
+    with admin_module._reindex_state_lock:
+        admin_module._reindex_state.clear()
+        admin_module._reindex_state.update(fresh)
 
 
 class TestPerformReindexSignature:
@@ -146,6 +172,118 @@ class TestReindexResponse:
         assert response.error == "Connection refused"
         assert response.documents_ingested is None
         assert response.chunks_created is None
+
+
+class TestReindexStateTransitions:
+    """Verify the in-process job state updates as the ETL progresses."""
+
+    @patch("ingest_esci_products.ingest_esci_products")
+    def test_success_transitions_state_to_success_with_counts(self, mock_ingest):
+        mock_ingest.return_value = (500, 1200)
+
+        perform_reindex(limit=500, force_resample=False, reset_index=True)
+
+        state = admin_module._read_reindex_state()
+        assert state["status"] == "success"
+        assert state["documents_ingested"] == 500
+        assert state["chunks_created"] == 1200
+        assert state["error"] is None
+        assert state["started_at"] is not None
+        assert state["finished_at"] is not None
+        assert state["limit"] == 500
+        assert state["reset_index"] is True
+
+    @patch("ingest_esci_products.ingest_esci_products")
+    def test_generic_exception_transitions_state_to_error(self, mock_ingest):
+        mock_ingest.side_effect = RuntimeError("boom")
+
+        perform_reindex(limit=100, force_resample=False, reset_index=True)
+
+        state = admin_module._read_reindex_state()
+        assert state["status"] == "error"
+        assert "RuntimeError" in state["error"]
+        assert "boom" in state["error"]
+        assert state["documents_ingested"] is None
+        assert state["finished_at"] is not None
+
+    @patch("ingest_esci_products.ingest_esci_products")
+    def test_file_not_found_transitions_state_to_error(self, mock_ingest):
+        mock_ingest.side_effect = FileNotFoundError("missing parquet")
+
+        perform_reindex(limit=100, force_resample=False, reset_index=True)
+
+        state = admin_module._read_reindex_state()
+        assert state["status"] == "error"
+        assert "missing parquet" in state["error"]
+
+
+class TestReindexEndpoint:
+    """End-to-end endpoint tests using FastAPI's TestClient."""
+
+    @pytest.fixture
+    def client(self) -> TestClient:
+        from api.main import app
+
+        return TestClient(app)
+
+    def test_status_endpoint_returns_initial_idle_state(self, client):
+        resp = client.get("/api/admin/reindex/status")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "idle"
+        assert body["documents_ingested"] is None
+        assert body["error"] is None
+
+    @patch("ingest_esci_products.ingest_esci_products")
+    def test_trigger_then_status_reflects_success(self, mock_ingest, client):
+        """End-to-end: trigger runs the background task (TestClient drains it
+        before returning), then the status endpoint reports success."""
+        mock_ingest.return_value = (42, 101)
+
+        trigger_resp = client.get("/api/admin/reindex?reset_index=true&limit=42")
+        assert trigger_resp.status_code == 200
+        assert trigger_resp.json()["status"] == "started"
+
+        status_resp = client.get("/api/admin/reindex/status")
+        assert status_resp.status_code == 200
+        state = status_resp.json()
+        assert state["status"] == "success"
+        assert state["documents_ingested"] == 42
+        assert state["chunks_created"] == 101
+        assert state["limit"] == 42
+        assert state["reset_index"] is True
+
+    @patch("ingest_esci_products.ingest_esci_products")
+    def test_trigger_resets_previous_terminal_state(self, mock_ingest, client):
+        """After a successful run, triggering again must clear the prior
+        success/error fields so polling can't mistake stale state for its
+        own run."""
+        # Seed a prior success directly in module state.
+        admin_module._update_reindex_state(
+            status="success",
+            started_at="2020-01-01T00:00:00+00:00",
+            finished_at="2020-01-01T00:05:00+00:00",
+            documents_ingested=1,
+            chunks_created=1,
+            error=None,
+        )
+
+        # New trigger: mock raises before the task completes so we can inspect
+        # state mid-flight. But TestClient drains background tasks synchronously,
+        # so we inspect the final state after the error.
+        mock_ingest.side_effect = RuntimeError("fresh failure")
+
+        client.get("/api/admin/reindex?reset_index=false&limit=5")
+        state = admin_module._read_reindex_state()
+
+        # Prior success fields must be cleared; error from the new run surfaces.
+        assert state["status"] == "error"
+        assert state["documents_ingested"] is None
+        assert state["chunks_created"] is None
+        assert "fresh failure" in state["error"]
+        # New trigger's params, not the old ones.
+        assert state["limit"] == 5
+        assert state["reset_index"] is False
 
 
 if __name__ == "__main__":
