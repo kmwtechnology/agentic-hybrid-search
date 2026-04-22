@@ -33,8 +33,6 @@ jobs:
   unit-tests:
     name: Phase 1 - Unit Tests
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - uses: actions/checkout@v4
@@ -107,8 +105,6 @@ jobs:
     name: Phase 2 - Integration Tests
     runs-on: ubuntu-latest
     needs: unit-tests
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     services:
       postgres:
@@ -212,8 +208,6 @@ jobs:
   lint-backend:
     name: Linting & Type Checks
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - uses: actions/checkout@v4
@@ -261,8 +255,6 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, lint-backend]
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
       contents: read
       id-token: write
@@ -319,8 +311,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-docker
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
       contents: read
       id-token: write
@@ -397,8 +387,6 @@ jobs:
     needs: deploy-cloud-run
     if: success()
     timeout-minutes: 15
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - uses: actions/checkout@v4
@@ -570,8 +558,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, lint-backend, build-docker, deploy-cloud-run, smoke-tests]
     if: always()
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Check workflow status
