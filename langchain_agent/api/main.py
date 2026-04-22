@@ -81,12 +81,68 @@ async def lifespan(app: FastAPI):
     logger.info("api_shutdown_complete")
 
 
+tags_metadata = [
+    {
+        "name": "health",
+        "description": (
+            "System and index health probes. `/api/health` reports Postgres + OpenSearch + "
+            "Google AI reachability; `/api/admin/health` reports current index document count."
+        ),
+    },
+    {
+        "name": "suggest",
+        "description": (
+            "Typeahead autocomplete with spell correction. Edge-ngram prefix matching on "
+            "`title_suggest` and `brand_suggest` fields, with Levenshtein + SequenceMatcher "
+            "spell correction and a distance-1 fuzzy fallback for single-character typos."
+        ),
+    },
+    {
+        "name": "conversations",
+        "description": "Conversation history CRUD (LangGraph checkpoints in Postgres).",
+    },
+    {
+        "name": "admin",
+        "description": (
+            "Operational endpoints: background reindex trigger + status polling, index "
+            "diagnostics. Used by the `reindex.yml` GitHub Actions workflow."
+        ),
+    },
+    {
+        "name": "chat",
+        "description": (
+            "Real-time streaming chat. WebSocket at `/ws/chat` is the primary surface; "
+            "a synchronous REST fallback lives at `/api/chat`."
+        ),
+    },
+]
+
 app = FastAPI(
     title="Agentic Hybrid Search API",
-    description="WebSocket-based API for e-commerce product search with hybrid search and observability",
+    description=(
+        "Production-grade RAG agent for Amazon ESCI e-commerce product search, "
+        "deployed on GCP Cloud Run.\n\n"
+        "**Features:**\n"
+        "- **Hybrid search**: BM25 + vector (RRF fusion) with dynamic alpha per intent\n"
+        "- **Intent routing**: 6 classes (search, comparison, attribute_filter, refinement, "
+        "follow_up, summary)\n"
+        "- **Reranking + quality gate**: Gemini-scored 0.0–1.0, with adaptive alpha retry\n"
+        "- **Typeahead autocomplete**: `/api/suggest` edge-ngram prefix matching with "
+        "spell correction and distance-1 fuzzy fallback\n"
+        "- **Admin reindex**: `/api/admin/reindex` background re-ingestion with polling\n"
+        "- **BM25 optimizations**: synonyms, phrase boosting, field boosting, phonetic matching\n"
+        "- **Real-time streaming**: token-by-token output over WebSocket\n\n"
+        "See [openapi.yaml](https://github.com/kmwtechnology/agentic-hybrid-search/blob/main/"
+        "langchain_agent/openapi.yaml) for the full hand-authored spec."
+    ),
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    openapi_tags=tags_metadata,
+    contact={
+        "name": "KMW Technology",
+        "url": "https://github.com/kmwtechnology/agentic-hybrid-search",
+    },
     lifespan=lifespan,
 )
 

@@ -34,12 +34,52 @@ class SuggestionItem(BaseModel):
     score: Optional[float] = None
     highlight: Optional[List[str]] = None
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "title": "Sony WH-1000XM5 Wireless Headphones",
+                "brand": "Sony",
+                "score": 0.95,
+                "highlight": ["<mark data-th>Son</mark>y WH-1000XM5 Wireless Headphones"],
+            }
+        }
+    }
+
 
 class SuggestResponse(BaseModel):
     """Response model for autocomplete suggestions."""
 
     suggestions: List[SuggestionItem]
     spell_correction: Optional[SuggestionItem] = None
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "suggestions": [
+                        {
+                            "title": "Sony WH-1000XM5 Wireless Headphones",
+                            "brand": "Sony",
+                            "score": 0.95,
+                            "highlight": [
+                                "<mark data-th>Son</mark>y WH-1000XM5 Wireless Headphones"
+                            ],
+                        }
+                    ],
+                    "spell_correction": None,
+                },
+                {
+                    "suggestions": [],
+                    "spell_correction": {
+                        "title": "nike",
+                        "brand": "Nike",
+                        "score": 0.889,
+                        "highlight": None,
+                    },
+                },
+            ]
+        }
+    }
 
 
 def _levenshtein(a: str, b: str) -> int:
@@ -141,10 +181,50 @@ def _detect_spell_correction(
     )
 
 
-@router.get("/suggest", response_model=SuggestResponse)
+@router.get(
+    "/suggest",
+    response_model=SuggestResponse,
+    summary="Typeahead autocomplete with spell correction",
+    description=(
+        "Edge-ngram prefix matching against `title_suggest` (boost 2.0) and "
+        "`brand_suggest` (boost 1.5) fields on the ESCI product index. "
+        "Returns up to `limit` deduplicated suggestions plus an optional "
+        "`spell_correction` when the query looks misspelled.\n\n"
+        "**Spell correction strategy:**\n"
+        "- Levenshtein distance + `SequenceMatcher` ratio (≥ 0.6)\n"
+        "- Confidence threshold ≥ 0.5\n"
+        "- Skipped when query is already a corpus token\n"
+        "- Skipped when query is a prefix of the candidate (e.g. `charg`→`charger`)\n\n"
+        "**Fuzzy fallback:** when the primary prefix query returns zero hits "
+        "and the query is ≥ 4 chars, runs a second search with "
+        "`fuzziness=AUTO` against `title`/`product_brand` to catch "
+        "distance-1 typos like `nikey` → `nike`.\n\n"
+        "Fails open — if OpenSearch is unreachable, returns an empty list "
+        "with HTTP 200 rather than surfacing an error to the typeahead UI."
+    ),
+    responses={
+        200: {
+            "description": "Suggestions (possibly empty) plus optional spell correction",
+        },
+        422: {
+            "description": ("Validation error — `q` must be 1–100 chars, `limit` must be 1–20"),
+        },
+    },
+)
 async def suggest(
-    q: str = Query(..., min_length=1, max_length=100, description="Query prefix for suggestions"),
-    limit: int = Query(8, ge=1, le=20, description="Max suggestions to return"),
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Query prefix for suggestions",
+        examples=["sony", "nikey", "wire"],
+    ),
+    limit: int = Query(
+        8,
+        ge=1,
+        le=20,
+        description="Max suggestions to return (1-20, default 8)",
+    ),
 ) -> SuggestResponse:
     """
     Get autocomplete suggestions for product titles and brands.
