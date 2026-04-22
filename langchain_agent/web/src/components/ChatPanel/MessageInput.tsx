@@ -154,7 +154,6 @@ export function MessageInput() {
             isOpen={showTypeahead && isConnected}
             selectedIndex={typeaheadIndex}
             onSelect={handleSuggestionSelect}
-            onClose={() => setShowTypeahead(false)}
           />
         </div>
 
