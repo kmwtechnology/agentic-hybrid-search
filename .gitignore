@@ -212,12 +212,10 @@ langchain_agent/chroma_db/chroma.sqlite3
 langchain_agent/.claude/
 CLAUDE.md
 
-# esci directory - commit 10K sample but exclude full dataset
+# esci directory - full dataset and other samples excluded, 10K sample included
 esci/shopping_queries_dataset/shopping_queries_dataset_products.parquet
 esci/shopping_queries_dataset/esci_products_full_us.parquet
-# Ignore all sample parquets EXCEPT the 10K
-esci/shopping_queries_dataset/esci_products_sample_*.parquet
+esci/shopping_queries_dataset/esci_products_sample_[0-9]*.parquet
+esci/shopping_queries_dataset/esci_products_sample_[a-z]*.parquet
+# except the 10K
 !esci/shopping_queries_dataset/esci_products_sample_10000.parquet
-# Also track the directory structure
-!esci/
-!esci/shopping_queries_dataset/
