@@ -1,10 +1,6 @@
-name: Re-index OpenSearch
+name: Re-Index OpenSearch
 
 on:
-  workflow_run:
-    workflows: ["Build & Deploy"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       reset_index:
@@ -27,21 +23,13 @@ jobs:
   reindex:
     name: Re-index OpenSearch
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event_name == 'workflow_run')
 
     steps:
-      - name: Determine re-index parameters
+      - name: Set re-index parameters
         id: params
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "reset_index=${{ github.event.inputs.reset_index }}" >> $GITHUB_OUTPUT
-            echo "limit=${{ github.event.inputs.limit }}" >> $GITHUB_OUTPUT
-          else
-            echo "reset_index=true" >> $GITHUB_OUTPUT
-            echo "limit=10000" >> $GITHUB_OUTPUT
-          fi
+          echo "reset_index=${{ github.event.inputs.reset_index }}" >> $GITHUB_OUTPUT
+          echo "limit=${{ github.event.inputs.limit }}" >> $GITHUB_OUTPUT
 
       - name: Trigger re-index
         id: reindex
