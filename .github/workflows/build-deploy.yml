@@ -53,7 +53,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          dockerfile: ./langchain_agent/Dockerfile
+          file: ./langchain_agent/Dockerfile
           push: false
           tags: |
             ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
@@ -64,7 +64,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          dockerfile: ./langchain_agent/Dockerfile
+          file: ./langchain_agent/Dockerfile
           push: true
           tags: |
             ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
