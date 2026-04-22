@@ -212,5 +212,8 @@ langchain_agent/chroma_db/chroma.sqlite3
 langchain_agent/.claude/
 CLAUDE.md
 
-# esci directory - large parquet data files should not be committed
-esci/
+# esci directory - commit 10K sample but exclude full dataset
+esci/shopping_queries_dataset/shopping_queries_dataset_products.parquet
+esci/shopping_queries_dataset/esci_products_full_us.parquet
+esci/shopping_queries_dataset/esci_products_sample_*.parquet
+!esci/shopping_queries_dataset/esci_products_sample_10000.parquet

@@ -28,8 +28,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY langchain_agent/*.py ./
 COPY langchain_agent/api/ ./api/
 
-# Create ESCI dataset directory (parquet file is optional — will be cached/downloaded on first use via admin/reindex)
+# Create ESCI dataset directory and copy 10K sample with pre-computed embeddings
 RUN mkdir -p /app/esci/shopping_queries_dataset
+COPY esci/shopping_queries_dataset/esci_products_sample_10000.parquet /app/esci/shopping_queries_dataset/
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/web/dist ./web/dist
