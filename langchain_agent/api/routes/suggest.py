@@ -232,11 +232,7 @@ async def suggest(
                             "bool": {
                                 "should": [
                                     {"match": {"title": {"query": q, "fuzziness": "AUTO"}}},
-                                    {
-                                        "match": {
-                                            "product_brand": {"query": q, "fuzziness": "AUTO"}
-                                        }
-                                    },
+                                    {"match": {"product_brand": {"query": q, "fuzziness": "AUTO"}}},
                                 ],
                                 "minimum_should_match": 1,
                                 "filter": [{"term": {"collection_id": "esci_products"}}],
