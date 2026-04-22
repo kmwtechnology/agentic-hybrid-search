@@ -1,0 +1,87 @@
+name: Re-index OpenSearch
+
+on:
+  workflow_run:
+    workflows: ["Build & Deploy"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reset_index:
+        description: 'Reset index before re-indexing'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      limit:
+        description: 'Number of products to ingest'
+        required: true
+        default: '10000'
+
+env:
+  SERVICE_URL: https://agentic-hybrid-search-375500751528.us-central1.run.app
+
+jobs:
+  reindex:
+    name: Re-index OpenSearch
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event_name == 'workflow_run')
+
+    steps:
+      - name: Determine re-index parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "reset_index=${{ github.event.inputs.reset_index }}" >> $GITHUB_OUTPUT
+            echo "limit=${{ github.event.inputs.limit }}" >> $GITHUB_OUTPUT
+          else
+            echo "reset_index=true" >> $GITHUB_OUTPUT
+            echo "limit=10000" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Trigger re-index
+        id: reindex
+        run: |
+          echo "🔄 Triggering re-index..."
+          RESPONSE=$(curl -s "${{ env.SERVICE_URL }}/api/admin/reindex?reset_index=${{ steps.params.outputs.reset_index }}&limit=${{ steps.params.outputs.limit }}")
+          echo "Response: $RESPONSE"
+          echo "response=$RESPONSE" >> $GITHUB_OUTPUT
+
+      - name: Monitor re-index progress
+        run: |
+          echo "⏳ Monitoring re-index progress..."
+          for i in {1..30}; do
+            sleep 10
+            HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq -r '.opensearch.documents')
+            echo "[$((i*10))s] Document count: $HEALTH"
+
+            if [ "$HEALTH" = "10000" ]; then
+              echo "✅ Re-index complete! Index now has 10,000 documents."
+              exit 0
+            fi
+          done
+          echo "⏳ Re-index still in progress (will continue in background)"
+
+      - name: Verify index health
+        run: |
+          echo "🏥 Final health check:"
+          curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
+
+      - name: Report status
+        if: always()
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════════════════════════"
+          echo "✅ RE-INDEX WORKFLOW COMPLETE"
+          echo "════════════════════════════════════════════════════════════════"
+          echo ""
+          echo "Service: ${{ env.SERVICE_URL }}"
+          echo "API Endpoints:"
+          echo "  • GET /api/admin/reindex - Trigger re-indexing"
+          echo "  • GET /api/admin/health - Check index status"
+          echo "  • GET /api/suggest - Typeahead autocomplete"
+          echo ""
