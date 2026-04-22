@@ -29,6 +29,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v1
