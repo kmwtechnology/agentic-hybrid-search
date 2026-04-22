@@ -1,12 +1,12 @@
-# Stage 1: Build React frontend
+# Stage 1: Build React frontend (context is repo root, so use langchain_agent/web/)
 FROM node:20-slim AS frontend-builder
 
 WORKDIR /app/web
 
-COPY web/package.json web/package-lock.json* ./
+COPY langchain_agent/web/package.json langchain_agent/web/package-lock.json* ./
 RUN npm ci
 
-COPY web/ ./
+COPY langchain_agent/web/ ./
 # Use empty VITE_API_URL so production builds use relative URLs (same-domain requests)
 RUN VITE_API_URL="" npm run build
 
@@ -20,13 +20,17 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt ./
+# Install Python dependencies (context is repo root, so prefix with langchain_agent/)
+COPY langchain_agent/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application source
-COPY *.py ./
-COPY api/ ./api/
+# Copy application source (context is repo root, so prefix with langchain_agent/)
+COPY langchain_agent/*.py ./
+COPY langchain_agent/api/ ./api/
+
+# Copy ESCI sample dataset (cached parquet for re-indexing without full 1GB dataset)
+RUN mkdir -p /app/esci/shopping_queries_dataset
+COPY esci/shopping_queries_dataset/esci_products_sample_10000.parquet /app/esci/shopping_queries_dataset/
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/web/dist ./web/dist

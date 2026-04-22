@@ -95,11 +95,8 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
         DataFrame with sampled products (may include cached 'embedding' column)
 
     Raises:
-        FileNotFoundError: If main products parquet file not found
+        FileNotFoundError: If neither cached sample nor full products file exists
     """
-    if not ESCI_PRODUCTS_FILE.exists():
-        raise FileNotFoundError(f"ESCI products file not found: {ESCI_PRODUCTS_FILE}")
-
     sample_file = ESCI_DATASET_DIR / f"esci_products_sample_{limit}.parquet"
 
     # Return cached sample if it exists and not forcing resample
@@ -109,6 +106,11 @@ def load_or_create_sample(limit: int = DEFAULT_LIMIT, force_resample: bool = Fal
         has_embeddings = "embedding" in df_sample.columns
         logger.info(f"  Products: {len(df_sample)}, Embeddings cached: {has_embeddings}")
         return df_sample
+
+    # If no cached sample and force_resample, need the full products file
+    if not ESCI_PRODUCTS_FILE.exists():
+        raise FileNotFoundError(f"ESCI products file not found: {ESCI_PRODUCTS_FILE}\n"
+                                f"Cached sample not available either: {sample_file}")
 
     # Load full dataset and filter to US English products
     logger.info(f"Loading products from {ESCI_PRODUCTS_FILE.name}...")
