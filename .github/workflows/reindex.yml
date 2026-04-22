@@ -23,128 +23,116 @@ jobs:
   reindex:
     name: Re-index OpenSearch
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Set re-index parameters
-        id: params
+      - name: Baseline health check
+        id: baseline
         run: |
-          echo "reset_index=${{ github.event.inputs.reset_index }}" >> $GITHUB_OUTPUT
-          echo "limit=${{ github.event.inputs.limit }}" >> $GITHUB_OUTPUT
+          HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health")
+          STATUS=$(echo "$HEALTH" | jq -r '.status // "unknown"')
+          DOCS=$(echo "$HEALTH" | jq -r '.opensearch.documents // 0')
+          INDEX=$(echo "$HEALTH" | jq -r '.opensearch.index // "unknown"')
+          echo "Service:          ${{ env.SERVICE_URL }}"
+          echo "Status:           $STATUS"
+          echo "Index:            $INDEX"
+          echo "Baseline docs:    $DOCS"
+          echo "Params:           reset_index=${{ github.event.inputs.reset_index }}, limit=${{ github.event.inputs.limit }}"
+          echo "baseline=$DOCS" >> $GITHUB_OUTPUT
 
       - name: Trigger re-index
-        id: reindex
+        id: trigger
         run: |
-          echo "🔄 Triggering re-index with reset_index=${{ steps.params.outputs.reset_index }}, limit=${{ steps.params.outputs.limit }}"
-          echo ""
-
-          RESPONSE=$(curl -v "${{ env.SERVICE_URL }}/api/admin/reindex?reset_index=${{ steps.params.outputs.reset_index }}&limit=${{ steps.params.outputs.limit }}" 2>&1)
-          echo "Full response:"
-          echo "$RESPONSE"
-          echo ""
-
-          HTTP_CODE=$(echo "$RESPONSE" | grep "< HTTP" | awk '{print $3}')
-          echo "HTTP Status: $HTTP_CODE"
-
-          # Extract just the JSON body
-          JSON=$(echo "$RESPONSE" | tail -1)
-          echo "JSON Response:"
-          echo "$JSON" | jq '.' 2>/dev/null || echo "$JSON"
-          echo ""
-          echo "response=$JSON" >> $GITHUB_OUTPUT
-
-      - name: Monitor re-index progress
-        run: |
-          echo "⏳ Monitoring re-index progress (checking every 10s for 5 minutes)..."
-          echo ""
-
-          PREV_COUNT=0
-          STUCK_COUNTER=0
-
-          for i in {1..30}; do
-            sleep 10
-
-            HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health")
-            DOC_COUNT=$(echo "$HEALTH" | jq -r '.opensearch.documents // "error"')
-            STATUS=$(echo "$HEALTH" | jq -r '.status // "unknown"')
-
-            echo "[$((i*10))s] Documents: $DOC_COUNT | Status: $STATUS"
-
-            # Check if stuck (no progress for 2+ checks)
-            if [ "$DOC_COUNT" = "$PREV_COUNT" ] && [ "$DOC_COUNT" != "error" ]; then
-              STUCK_COUNTER=$((STUCK_COUNTER + 1))
-              if [ $STUCK_COUNTER -ge 2 ]; then
-                echo "⚠️  WARNING: Document count stuck at $DOC_COUNT for 20+ seconds"
-              fi
-            else
-              STUCK_COUNTER=0
-            fi
-
-            PREV_COUNT=$DOC_COUNT
-
-            if [ "$DOC_COUNT" = "10000" ]; then
-              echo ""
-              echo "✅ RE-INDEX COMPLETE! Index now has 10,000 documents."
-              echo "Full health status:"
-              echo "$HEALTH" | jq '.'
-              exit 0
-            fi
-
-            if [ "$DOC_COUNT" = "error" ]; then
-              echo "❌ ERROR: Could not retrieve document count"
-              echo "Full health response:"
-              echo "$HEALTH" | jq '.'
-            fi
-          done
-          echo ""
-          echo "⏳ Re-index still in progress after 5 minutes (will continue in background)"
-          echo "Final health check:"
-          curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
-
-      - name: Diagnose re-index failure
-        run: |
-          echo "🔍 Attempting to diagnose re-index issue..."
-          echo ""
-
-          # Check if API is responding
-          echo "1️⃣  Testing API connectivity..."
-          curl -s -I "${{ env.SERVICE_URL }}/api/admin/health" | head -3
-          echo ""
-
-          # Check current index state
-          echo "2️⃣  Current index state:"
-          curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
-          echo ""
-
-          # Attempt a fresh re-index call to see if there's an error in the response
-          echo "3️⃣  Testing re-index endpoint (fresh call):"
-          FRESH_RESPONSE=$(curl -s "${{ env.SERVICE_URL }}/api/admin/reindex?reset_index=false&limit=100")
-          echo "$FRESH_RESPONSE" | jq '.'
-          echo ""
-
-          # Check for error in response
-          ERROR=$(echo "$FRESH_RESPONSE" | jq -r '.error // empty')
-          if [ -n "$ERROR" ]; then
-            echo "❌ ERROR DETECTED:"
-            echo "$ERROR"
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            "${{ env.SERVICE_URL }}/api/admin/reindex?reset_index=${{ github.event.inputs.reset_index }}&limit=${{ github.event.inputs.limit }}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          echo "HTTP $HTTP_CODE"
+          echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Trigger failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+          STATUS=$(echo "$BODY" | jq -r '.status // "unknown"')
+          if [ "$STATUS" != "started" ]; then
+            echo "::warning::Unexpected status: $STATUS"
           fi
 
-      - name: Verify index health
+      - name: Monitor progress (emit only on change)
         run: |
-          echo ""
-          echo "🏥 Final health check:"
-          curl -s "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
+          TARGET=${{ github.event.inputs.limit }}
+          BASELINE=${{ steps.baseline.outputs.baseline }}
+          RESET="${{ github.event.inputs.reset_index }}"
+          PREV=$BASELINE
+          RESET_SEEN=false
+          START=$(date +%s)
+          DEADLINE=$((START + 25 * 60))  # 25 min
 
-      - name: Report status
+          # Initial line so logs aren't empty for the first poll interval.
+          echo "[t+0s] docs=$BASELINE (baseline) | polling every 20s until ingest_completes or deadline"
+
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            sleep 20
+            NOW=$(date +%s)
+            ELAPSED=$((NOW - START))
+
+            HEALTH=$(curl -s --max-time 10 "${{ env.SERVICE_URL }}/api/admin/health" || echo '{}')
+            COUNT=$(echo "$HEALTH" | jq -r '.opensearch.documents // empty')
+
+            if [ -z "$COUNT" ]; then
+              echo "[t+${ELAPSED}s] health check failed (endpoint unreachable or malformed response)"
+              continue
+            fi
+
+            # Detect the reset moment: count drops to 0 or below baseline with reset_index=true.
+            if [ "$RESET" = "true" ] && [ "$RESET_SEEN" = "false" ] && [ "$COUNT" -lt "$BASELINE" ]; then
+              echo "[t+${ELAPSED}s] 🔄 index reset detected (docs dropped $BASELINE -> $COUNT); ingesting up to $TARGET"
+              RESET_SEEN=true
+              PREV=$COUNT
+              continue
+            fi
+
+            if [ "$COUNT" != "$PREV" ]; then
+              DELTA=$((COUNT - PREV))
+              SIGN=$([ $DELTA -ge 0 ] && echo "+" || echo "")
+              PCT=$(awk "BEGIN {printf \"%.0f\", ($COUNT * 100.0) / $TARGET}")
+              echo "[t+${ELAPSED}s] docs=$COUNT (${SIGN}${DELTA}) ${PCT}%"
+              PREV=$COUNT
+            fi
+
+            # Success criteria: reached target, or (when not resetting) grew past baseline by at least target.
+            if [ "$COUNT" -ge "$TARGET" ]; then
+              echo "[t+${ELAPSED}s] ✅ reached target of $TARGET documents"
+              break
+            fi
+          done
+
+          if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+            echo "::warning::25-minute deadline reached; ingestion may still be running in the background."
+          fi
+
+      - name: Typeahead smoke check
+        run: |
+          echo "Probing /api/suggest?q=son — should return prefix matches, not random products."
+          RESP=$(curl -s "${{ env.SERVICE_URL }}/api/suggest?q=son")
+          echo "$RESP" | jq '{
+            count: (.suggestions | length),
+            top3: (.suggestions[0:3] | map({title, brand, score})),
+            spell_correction
+          }'
+          # Real prefix matches should have non-zero scores. If all zeros,
+          # the title_suggest field still isn't populated.
+          ALL_ZERO=$(echo "$RESP" | jq '[.suggestions[] | .score] | all(. == 0)')
+          if [ "$ALL_ZERO" = "true" ]; then
+            echo "::warning::All suggestion scores are 0 — title_suggest may still be missing from the mapping."
+          fi
+
+      - name: Final status
         if: always()
         run: |
-          echo ""
-          echo "════════════════════════════════════════════════════════════════"
-          echo "✅ RE-INDEX WORKFLOW COMPLETE"
-          echo "════════════════════════════════════════════════════════════════"
-          echo ""
-          echo "Service: ${{ env.SERVICE_URL }}"
-          echo "API Endpoints:"
-          echo "  • GET /api/admin/reindex - Trigger re-indexing"
-          echo "  • GET /api/admin/health - Check index status"
-          echo "  • GET /api/suggest - Typeahead autocomplete"
-          echo ""
+          HEALTH=$(curl -s "${{ env.SERVICE_URL }}/api/admin/health")
+          DOCS=$(echo "$HEALTH" | jq -r '.opensearch.documents // 0')
+          echo "════════════════════════════════════════════════════════"
+          echo "Final doc count: $DOCS"
+          echo "Service:         ${{ env.SERVICE_URL }}"
+          echo "════════════════════════════════════════════════════════"
