@@ -2,8 +2,7 @@
 
 A production-grade **LangGraph RAG agent** for Amazon ESCI e-commerce product search.
 Combines hybrid retrieval (vector + BM25 via RRF), LLM-based reranking, intent
-routing, and real-time WebSocket streaming. Also ships a **Product Comparison
-Writer** mode that generates five formats of marketing content. Deployed on
+routing, and real-time WebSocket streaming. Deployed on
 **GCP Cloud Run** with Google Gemini.
 
 ## Quick Start
@@ -38,7 +37,6 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
 - **Quality gate** — if max reranker score < 0.5, adjusts alpha ±0.3 and retries once
 - **Conversational query rewriting** — resolves pronouns, comparatives, and short attribute questions using conversation history
 - **Refinement with context validation** — "make them waterproof" narrows the prior result set; category/document-overlap scoring resets context when the user pivots
-- **Product Comparison Writer** — 5 content formats (social, blog, technical article, tutorial, comprehensive docs)
 - **Typeahead autocomplete** — `GET /api/suggest` edge-ngram prefix matching on product titles + brands with spell correction (Levenshtein + SequenceMatcher), fuzzy fallback for single-character typos, and a three-section UI (Did you mean? / Suggestions / Recent Searches)
 - **Admin reindex API** — `GET /api/admin/reindex` triggers a background ESCI re-ingestion; `GET /api/admin/reindex/status` polls progress; `GET /api/admin/health` reports index health and doc count
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase boosting, field boosting, and phonetic matching (double_metaphone via the `analysis-phonetic` plugin), displayed in the observability panel's "Search Optimizations" card
@@ -207,16 +205,6 @@ Compare Sony WH-1000XM5 vs Bose QuietComfort 45
 Summarize what we've discussed so far
 ```
 
-**Product Comparison Writer (documentation requests):**
-
-```text
-Write a LinkedIn post about the top wireless earbuds of 2025     → social_post (~6s)
-Create a buying guide for mechanical keyboards                    → blog_post (~20s)
-Write a technical comparison of OLED vs LED monitors              → technical_article (~25s)
-Create a tutorial for choosing the right running shoe             → tutorial (~20s)
-Document all product categories in home electronics               → comprehensive_docs (~50s)
-```
-
 ## Observability Panel
 
 The web UI streams typed Pydantic events over WebSocket for every stage:
@@ -227,7 +215,6 @@ The web UI streams typed Pydantic events over WebSocket for every stage:
 - **Hybrid Search** — vector + BM25 candidates with scores
 - **Reranker** — per-document 0.0–1.0 relevance and top-K selection
 - **Quality Gate** — pass / retry / α adjusted
-- **Content Generation** — content type, progress, word/char counts (writer mode)
 - **LLM Streaming** — token-by-token output with timing
 
 Event schemas live in `langchain_agent/api/schemas/events.py` and must stay
@@ -265,7 +252,6 @@ agentic-hybrid-search/
 │   ├── config.py                 # All configuration constants
 │   ├── vector_store.py           # OpenSearchVectorStore + retriever (RRF fusion)
 │   ├── reranker.py               # GeminiReranker (Pydantic-validated scoring)
-│   ├── content_generators.py     # 5-format content generation
 │   ├── link_verifier.py          # URL validation w/ TTL cache
 │   ├── embedding_cache.py        # Query embedding cache
 │   ├── ingest_esci_products.py   # ESCI ingestion (deterministic sampling)

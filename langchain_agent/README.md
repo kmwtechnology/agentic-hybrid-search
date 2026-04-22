@@ -1,20 +1,15 @@
 # Agentic Hybrid Search — E-Commerce Product Search Agent
 
-A production-grade LangGraph agent with two specialized capabilities:
-**RAG Q&A** and **Product Comparison Writer**. Both modes share the same
-data layer, LangGraph graph, and frontend. Uses Google Gemini for LLM
-inference and embeddings, OpenSearch for hybrid vector + BM25 search, and
-PostgreSQL for LangGraph checkpoints.
+A production-grade LangGraph RAG agent for e-commerce product discovery. Uses Google Gemini for LLM inference and embeddings, OpenSearch for hybrid vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 
 **Capabilities:**
 
-- **RAG Q&A** — 6-intent classification, hybrid retrieval, LLM reranking, and a quality gate that retries on low-relevance hits. Data is the Amazon ESCI / Shopping Queries Dataset.
-- **Product Comparison Writer** — 5 content types, classified automatically and routed to specialized generators:
-  - **Social post** (100–300 words, 1 retrieval pass, ~6 s)
-  - **Blog post** (1000–2000 words, 2 passes, ~20 s)
-  - **Technical article** (800–1500 words, 3 passes, ~25 s)
-  - **Tutorial** (~1000 words, 2 passes, ~20 s)
-  - **Comprehensive docs** (2500+ words, 5 passes, ~50 s)
+- **6-intent classification** — `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`. Keyword fast-path + LLM fallback.
+- **Hybrid retrieval** — vector (768-dim Gemini embeddings) + BM25, fused via RRF (k=60), with dynamic α per intent.
+- **LLM reranking** — Gemini Flash Lite scores query-product relevance 0.0–1.0.
+- **Quality gate** — retries once with α ±0.3 if max reranker score < 0.5.
+- **Real-time streaming** — token-by-token WebSocket output with full observability events.
+- Data is the Amazon ESCI / Shopping Queries Dataset.
 
 **Stack:**
 
@@ -191,16 +186,6 @@ Any cheaper options?                  ← follow-up
 Summarize our conversation
 ```
 
-**Product Comparison Writer:**
-
-```text
-Write a LinkedIn post about the top wireless earbuds of 2025
-Create a buying guide for mechanical keyboards
-Write a technical comparison of OLED vs LED monitors
-Create a tutorial for choosing the right running shoe
-Document all product categories in home electronics
-```
-
 ---
 
 ## Configuration
@@ -249,17 +234,6 @@ RERANKER_TOP_K=10           # Final top-K
 ENABLE_QUERY_EVALUATION=true
 QUERY_EVAL_TIMEOUT_MS=3000
 ```
-
-### Content generation
-
-```bash
-ENABLE_CONTENT_TYPE_CLASSIFICATION=true
-```
-
-When enabled, documentation-style requests are routed to the Product
-Comparison Writer; the content type classifier picks one of the five
-generators. Disable for RAG-only deployments (writer requests fall back
-to the RAG Q&A pipeline).
 
 ### Intent routing
 
@@ -406,11 +380,7 @@ WebSocket:
 | `hybrid_search_start` / `hybrid_search_result` | Candidates + scores |
 | `reranker_start` / `reranker_progress` / `reranker_result` | Per-doc 0.0–1.0 |
 | `quality_gate` | pass / retry / α adjusted |
-| `content_type_classification` | Content type, target length, tone |
-| `social_post_progress` / `blog_post_progress` / `article_progress` / `tutorial_progress` | Per-type generation progress |
 | `llm_response_start` / `llm_response_chunk` | Token streaming |
-| `content_complete` | Word/char counts |
-| `doc_outline` / `doc_section_progress` / `doc_complete` | Comprehensive docs pipeline |
 | `agent_complete` | Final response + citations |
 
 Schemas in [api/schemas/events.py](api/schemas/events.py) must stay in sync
@@ -433,21 +403,6 @@ START → intent_classifier
   ├── summary                  → summary → agent → END
   └── clarify (confidence<0.7) → agent (requests disambiguation) → END
 ```
-
-Documentation requests bifurcate inside the generator pipeline via the
-content-type classifier:
-
-```text
-documentation request → content_type_classifier
-  ├── social_post          → social generator           (1 pass, ~6 s)
-  ├── blog_post            → blog generator             (2 passes, ~20 s)
-  ├── technical_article    → article generator          (3 passes, ~25 s)
-  ├── tutorial             → tutorial generator         (2 passes, ~20 s)
-  └── comprehensive_docs   → doc planner → gatherer → synthesizer (5 passes, ~50 s)
-```
-
-All generators stream: `LLMResponseStartEvent` (placeholder) →
-`LLMResponseChunkEvent` (tokens) → `ContentCompleteEvent` (final counts).
 
 ### Hybrid Search
 
@@ -602,7 +557,6 @@ langchain_agent/
 ├── exceptions.py          # Custom exception hierarchy
 ├── vector_store.py        # OpenSearchVectorStore + retriever (RRF)
 ├── reranker.py            # GeminiReranker (Pydantic-validated scoring)
-├── content_generators.py  # 5-format content generation
 ├── embedding_cache.py     # Thread-safe query embedding cache
 ├── link_verifier.py       # URL validation w/ TTL cache
 ├── doc_replacer.py        # Broken-link replacement

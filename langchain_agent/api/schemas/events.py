@@ -549,111 +549,6 @@ class DocumentReplacementEvent(BaseEvent):
 
 
 # ============================================================================
-# CONFIG BUILDER EVENTS
-# ============================================================================
-
-# ============================================================================
-# DOCUMENTATION WRITER EVENTS
-# ============================================================================
-
-
-class DocOutlineEvent(BaseEvent):
-    """Emitted when documentation outline is created."""
-
-    type: Literal["doc_outline"] = "doc_outline"
-    node: Literal["doc_planner"] = "doc_planner"
-    sections: List[str]
-    total_components: int
-
-
-class DocSectionProgressEvent(BaseEvent):
-    """Emitted as content is gathered for each documentation section."""
-
-    type: Literal["doc_section_progress"] = "doc_section_progress"
-    node: Literal["doc_gatherer"] = "doc_gatherer"
-    section_title: str
-    sections_complete: int
-    sections_total: int
-    components_gathered: int
-
-
-class DocCompleteEvent(BaseEvent):
-    """Emitted when documentation generation is complete."""
-
-    type: Literal["doc_complete"] = "doc_complete"
-    node: Literal["doc_synthesizer"] = "doc_synthesizer"
-    total_sections: int
-    total_components_documented: int
-    document_length_chars: int
-
-
-# ============================================================================
-# CONTENT TYPE CLASSIFICATION EVENTS
-# ============================================================================
-
-
-class ContentTypeClassificationEvent(BaseEvent):
-    """Emitted when content type is classified for documentation request."""
-
-    type: Literal["content_type_classification"] = "content_type_classification"
-    node: Literal["content_type_classifier"] = "content_type_classifier"
-    content_type: str  # social_post, blog_post, technical_article, tutorial, comprehensive_docs
-    confidence: float  # 0.0-1.0
-    target_length: int  # Target word count
-    tone: str  # engaging, narrative, technical, instructional, reference
-    retrieval_depth: int  # Number of retrieval passes (1-5)
-    temperature: float  # LLM temperature for generation
-
-
-class SocialPostProgressEvent(BaseEvent):
-    """Emitted during social post generation."""
-
-    type: Literal["social_post_progress"] = "social_post_progress"
-    node: Literal["social_content_generator"] = "social_content_generator"
-    stage: Literal["retrieval", "generation"]
-    message: str
-
-
-class BlogPostProgressEvent(BaseEvent):
-    """Emitted during blog post generation."""
-
-    type: Literal["blog_post_progress"] = "blog_post_progress"
-    node: Literal["blog_content_generator"] = "blog_content_generator"
-    stage: Literal["outline", "retrieval_pass_1", "retrieval_pass_2", "generation"]
-    message: str
-
-
-class ArticleProgressEvent(BaseEvent):
-    """Emitted during technical article generation."""
-
-    type: Literal["article_progress"] = "article_progress"
-    node: Literal["article_content_generator"] = "article_content_generator"
-    stage: Literal[
-        "outline", "retrieval_pass_1", "retrieval_pass_2", "retrieval_pass_3", "generation"
-    ]
-    message: str
-
-
-class TutorialProgressEvent(BaseEvent):
-    """Emitted during tutorial generation."""
-
-    type: Literal["tutorial_progress"] = "tutorial_progress"
-    node: Literal["tutorial_generator"] = "tutorial_generator"
-    stage: Literal["outline", "concept_retrieval", "example_retrieval", "generation"]
-    message: str
-
-
-class ContentCompleteEvent(BaseEvent):
-    """Emitted when content generation is complete."""
-
-    type: Literal["content_complete"] = "content_complete"
-    node: str  # Node name that generated the content
-    content_type: str  # Type of content generated
-    content_length_words: int
-    content_length_chars: int
-
-
-# ============================================================================
 # CLARIFICATION EVENTS
 # ============================================================================
 
@@ -732,15 +627,6 @@ AgentEvent = (
     | MetricsEvent
     | LinkVerificationEvent
     | DocumentReplacementEvent
-    | DocOutlineEvent
-    | ContentTypeClassificationEvent
-    | SocialPostProgressEvent
-    | BlogPostProgressEvent
-    | ArticleProgressEvent
-    | TutorialProgressEvent
-    | ContentCompleteEvent
     | ClarificationRequestedEvent
     | ClarificationResolvedEvent
-    | DocSectionProgressEvent
-    | DocCompleteEvent
 )

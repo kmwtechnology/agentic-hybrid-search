@@ -184,10 +184,6 @@ __all__ = [
     "CHECKPOINT_SELECTIVE_SERIALIZATION",
     "CHECKPOINT_KEEP_VERSIONS",
     "CHECKPOINT_COMPACTION_DAYS",
-    # Content Type Classification
-    "ENABLE_CONTENT_TYPE_CLASSIFICATION",
-    "CONTENT_TYPE_CLASSIFIER_MODEL",
-    "CONTENT_TYPE_CLARIFICATION_THRESHOLD",
 ]
 
 # ============================================================================
@@ -530,24 +526,3 @@ CHECKPOINT_KEEP_VERSIONS = 3
 
 # Compact checkpoints older than this many days
 CHECKPOINT_COMPACTION_DAYS = 7
-
-# ============================================================================
-# CONTENT TYPE CLASSIFICATION CONFIGURATION
-# ============================================================================
-
-# Enable Content Type Classification (for product content generation)
-# When enabled, documentation_request intent routes to classifier first
-# When disabled, documentation_request routes directly to doc_planner
-ENABLE_CONTENT_TYPE_CLASSIFICATION = (
-    os.getenv("ENABLE_CONTENT_TYPE_CLASSIFICATION", "true").lower() == "true"
-)
-
-# Content type classifier model (reuses lightweight query evaluator model)
-CONTENT_TYPE_CLASSIFIER_MODEL = os.getenv("CONTENT_TYPE_CLASSIFIER_MODEL", QUERY_EVAL_MODEL)
-
-# Confidence threshold for content type clarification
-# When classifier confidence < threshold, ask user to clarify
-# Default: 0.90 (90%) - balances accuracy vs interruption
-CONTENT_TYPE_CLARIFICATION_THRESHOLD = float(
-    os.getenv("CONTENT_TYPE_CLARIFICATION_THRESHOLD", "0.90")
-)

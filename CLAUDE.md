@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Features dual-mode capabilities: **RAG Q&A** (hybrid search, reranking, intent routing) and **Product Comparison Writer** (multi-format content generation). Real-time streaming via WebSocket, conversational product discovery. Deployed on GCP Cloud Run with Google Gemini AI.
+**Agentic Hybrid Search** — a production-grade LangGraph RAG agent for Amazon ESCI e-commerce product search. Hybrid BM25 + vector retrieval with dynamic alpha per intent, reranking with quality gate, and real-time WebSocket streaming. Deployed on GCP Cloud Run with Google Gemini AI.
 
 ## Repository Layout
 
@@ -15,7 +15,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `exceptions.py` — Exception hierarchy, all inherit from `AgenticHybridSearchError`
   - `vector_store.py` — `OpenSearchVectorStore` + `OpenSearchRetriever` with RRF fusion
   - `reranker.py` — `GeminiReranker` with Pydantic-validated 0.0–1.0 scoring
-  - `content_generators.py` — Multi-format content generation (social posts, blog posts, technical articles, tutorials, comprehensive docs)
   - `link_verifier.py` — URL validation with thread-safe cache (60-min TTL)
   - `embedding_cache.py` — Query embedding cache for performance
   - `retry_utils.py` — Retry logic utilities
@@ -51,30 +50,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `web/` — Skeleton web app (separate from `langchain_agent/web/`, less developed)
 - `esci/` — Amazon Shopping Queries Dataset (external data source, not actively developed)
 
-## Dual-Mode Pipeline
+## Pipeline
 
-The agent supports two primary modes accessed via intent routing:
+The agent handles product search and question answering via six intent classes:
+- `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`
 
-### Mode 1: RAG Q&A (Default)
-Handles product search and question answering:
-- Intent: `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`
-- Retrieves and reranks relevant products
-- Generates conversational responses with citations
-- Real-time streaming via WebSocket
-
-### Mode 2: Product Comparison Writer
-Generates multi-format marketing content (via `content_generators.py`):
-- **Social Posts**: LinkedIn/Twitter content (100-300 words, 1 pass, ~6s)
-- **Blog Posts**: Narrative articles (1000-2000 words, 2 passes, ~20s)
-- **Technical Articles**: Deep-dive analysis (800-1500 words, 3 passes, ~25s)
-- **Tutorials**: Step-by-step guides (1000 words, 2 passes, ~20s)
-- **Comprehensive Docs**: Full reference (2500+ words, 5 passes, ~50s)
-
-Both modes share:
-- Vector store (OpenSearch with Gemini embeddings)
-- Checkpoint storage (PostgreSQL)
-- LangGraph core orchestration
-- Frontend UI and WebSocket streaming
+Each query is classified, evaluated for optimal hybrid-search α, retrieved, reranked, gated on quality, and answered with citations — all streamed over WebSocket. See `ARCHITECTURE.md` for node-by-node detail.
 
 ## Common Commands
 
@@ -187,9 +168,6 @@ Pipeline emits typed Pydantic events over WebSocket for real-time UI visualizati
 - `QueryExpansionEvent` — Vague query expanded with context
 - `OpenSearchQueryEvent` — Full query details (DSL, alpha, intent, applied filters)
 - `LLMResponseChunkEvent` — Token-by-token streaming output
-- `ContentTypeClassificationEvent` — Content type classified (for writer mode)
-- `SocialPostProgressEvent`, `BlogPostProgressEvent`, `ArticleProgressEvent`, `TutorialProgressEvent` — Content generation progress events
-- `ContentCompleteEvent` — Content generation finished
 - `ClarificationRequestedEvent` — Low-confidence intent requires user clarification
 - `ClarificationResolvedEvent` — Clarification provided by user
 
@@ -509,7 +487,7 @@ gcloud run services describe agentic-hybrid-search \
 - **Test organization**:
   - `tests/unit/` — Isolated component tests (intent classifier, reranker, query evaluator, etc.)
   - `tests/integration/` — Service integration (retriever + reranker, full pipeline)
-  - `tests/e2e/` — End-to-end scenarios (all intents, conversation flows, content generation)
+  - `tests/e2e/` — End-to-end scenarios (all intents, conversation flows)
 
 ## Environment
 

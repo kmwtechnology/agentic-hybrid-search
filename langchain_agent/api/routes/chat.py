@@ -258,8 +258,6 @@ async def websocket_chat(websocket: WebSocket):
         - `QualityGateEvent` — Quality validation results
         - `QueryExpansionEvent` — Vague query expansion with context
         - `LLMResponseChunkEvent` — Token-by-token output streaming
-        - `ContentTypeClassificationEvent` — Content mode (RAG Q&A vs Writer)
-        - `SocialPostProgressEvent`, `BlogPostProgressEvent`, etc. — Content generation
         - `AgentCompleteEvent` — Execution finished with response and citations
         - `AgentErrorEvent` — Error occurred (recoverable or fatal)
         - `ClarificationRequestedEvent` — Intent classification too uncertain

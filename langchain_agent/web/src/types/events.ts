@@ -325,79 +325,6 @@ export interface DocumentReplacementEvent extends BaseEvent {
   documents_after_replacement: number
 }
 
-// Documentation writer events
-export interface DocOutlineEvent extends BaseEvent {
-  type: 'doc_outline'
-  node: 'doc_planner'
-  sections: string[]
-  total_components: number
-}
-
-export interface DocSectionProgressEvent extends BaseEvent {
-  type: 'doc_section_progress'
-  node: 'doc_gatherer'
-  section_title: string
-  sections_complete: number
-  sections_total: number
-  components_gathered: number
-}
-
-export interface DocCompleteEvent extends BaseEvent {
-  type: 'doc_complete'
-  node: 'doc_synthesizer'
-  total_sections: number
-  total_components_documented: number
-  document_length_chars: number
-}
-
-// Content type classification events
-export interface ContentTypeClassificationEvent extends BaseEvent {
-  type: 'content_type_classification'
-  node: 'content_type_classifier'
-  content_type: 'social_post' | 'blog_post' | 'technical_article' | 'tutorial' | 'comprehensive_docs'
-  confidence: number
-  target_length: number
-  tone: string
-  retrieval_depth: number
-  temperature: number
-}
-
-export interface SocialPostProgressEvent extends BaseEvent {
-  type: 'social_post_progress'
-  node: 'social_content_generator'
-  stage: 'retrieval' | 'generation'
-  message: string
-}
-
-export interface BlogPostProgressEvent extends BaseEvent {
-  type: 'blog_post_progress'
-  node: 'blog_content_generator'
-  stage: 'outline' | 'retrieval_pass_1' | 'retrieval_pass_2' | 'generation'
-  message: string
-}
-
-export interface ArticleProgressEvent extends BaseEvent {
-  type: 'article_progress'
-  node: 'article_content_generator'
-  stage: 'outline' | 'retrieval_pass_1' | 'retrieval_pass_2' | 'retrieval_pass_3' | 'generation'
-  message: string
-}
-
-export interface TutorialProgressEvent extends BaseEvent {
-  type: 'tutorial_progress'
-  node: 'tutorial_generator'
-  stage: 'outline' | 'concept_retrieval' | 'example_retrieval' | 'generation'
-  message: string
-}
-
-export interface ContentCompleteEvent extends BaseEvent {
-  type: 'content_complete'
-  node: string
-  content_type: string
-  content_length_words: number
-  content_length_chars: number
-}
-
 // Clarification events
 export interface ClarificationRequestedEvent extends BaseEvent {
   type: 'clarification_requested'
@@ -461,15 +388,6 @@ export type AgentEvent =
   | ConfidenceScoreEvent
   | LinkVerificationEvent
   | DocumentReplacementEvent
-  | DocOutlineEvent
-  | DocSectionProgressEvent
-  | DocCompleteEvent
-  | ContentTypeClassificationEvent
-  | SocialPostProgressEvent
-  | BlogPostProgressEvent
-  | ArticleProgressEvent
-  | TutorialProgressEvent
-  | ContentCompleteEvent
   | ClarificationRequestedEvent
   | ClarificationResolvedEvent
 

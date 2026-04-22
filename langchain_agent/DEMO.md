@@ -20,7 +20,6 @@ Open browser to **http://localhost:5173** and keep DevTools hidden (press `F12` 
 - **Hybrid Search** (2 min): Demonstrate α (alpha) weighting
 - **Quality Gate Retry** (2 min): Trigger low-confidence → retry
 - **Observable Events** (1 min): Real-time pipeline visualization
-- **Content Generation** (3 min): Multi-format content generation
 - **Q&A** (balance of time)
 
 ---
@@ -284,102 +283,7 @@ Then immediately: `Make them waterproof` (refinement)
 
 ---
 
-## Part 6: Content Generation (Multi-Format) (3 min)
-
-**Narration**:
-
-> "Beyond Q&A, the agent can generate multi-format content. Let me show you."
-
-### Content Format 1: Social Post
-
-**Send**: `Write a LinkedIn post about the best wireless earbuds of 2025`
-
-**Expected**: Generates 100–300 word engaging post in ~5 seconds
-
-**Observe**:
-- Content Type Classification step
-- Content Writer step with progress (word count, % complete)
-- Token streaming in real-time
-- Final polished post suitable for LinkedIn
-
-**Narration**:
-
-> "**Social Post** — concise, engaging, ~200 words. Great for LinkedIn/Twitter. The agent retrieves product info, generates with a conversational tone, and streams output in real-time."
-
----
-
-### Content Format 2: Blog Post
-
-**Send**: `Create a buying guide for mechanical keyboards`
-
-**Expected**: Generates 1000–2000 word narrative article in ~15–20 seconds
-
-**Observe**:
-- Content Writer step shows progress (longer generation time)
-- Word count climbing in real-time
-- Narrative structure: intro, key features, comparison, recommendations, conclusion
-
-**Narration**:
-
-> "**Blog Post** — deeper, narrative-driven, ~1500 words. Includes storytelling, examples, and multi-point comparisons. Takes longer to generate but reads like a human writer."
-
----
-
-### Content Format 3: Technical Article
-
-**Send**: `Write a technical article comparing OLED vs LED monitors`
-
-**Expected**: Generates 800–1500 word technical deep-dive in ~20–25 seconds
-
-**Observe**:
-- Technical tone (vs. conversational)
-- Implementation details, technical specs, performance metrics
-- Code/configuration snippets if relevant
-- Lower temperature (0.5) for precision
-
-**Narration**:
-
-> "**Technical Article** — for engineer audiences. Lower temperature (0.5) ensures accuracy. Includes technical specs, performance data, and implementation details. More precise than blog posts."
-
----
-
-### Content Format 4: Tutorial
-
-**Send**: `Create a tutorial for choosing the right running shoe`
-
-**Expected**: Generates 1000-word step-by-step guide in ~18–22 seconds
-
-**Observe**:
-- Step-by-step structure
-- Actionable advice
-- Measurement instructions, fit guidance
-- Lower temperature for precise instructions
-
-**Narration**:
-
-> "**Tutorial** — instructional, step-by-step. Each step is actionable. Readers can follow along to solve a specific problem. Temperature is low (0.4) for precise instructions."
-
----
-
-### Bonus: Comprehensive Docs
-
-**Send**: `Document everything about e-commerce products` (or similar broad request)
-
-**Expected**: Generates 2500+ word reference guide in ~40–50 seconds
-
-**Observe**:
-- Longest content generation
-- Multi-pass generation (5 passes per config)
-- Table of contents, sections, appendices
-- Most comprehensive format
-
-**Narration**:
-
-> "**Comprehensive Docs** — for complete reference material. This can take a minute to generate, but produces production-quality documentation suitable for product sites or wikis."
-
----
-
-## Part 7: Q&A (Balance of Time)
+## Part 6: Q&A (Balance of Time)
 
 ### Likely Questions & Answers
 
@@ -417,7 +321,7 @@ A: The current reranker uses LLM-based scoring (no fine-tuning needed). But you 
 
 ---
 
-## Part 8: Closing Remarks (1 min)
+## Part 7: Closing Remarks (1 min)
 
 **Narration**:
 
@@ -427,7 +331,6 @@ A: The current reranker uses LLM-based scoring (no fine-tuning needed). But you 
 > 2. **Dynamic alpha** — adapts semantic/lexical balance
 > 3. **Quality gates** — automatically retries if confidence is low
 > 4. **Observable events** — gives visibility into every decision
-> 5. **Multi-format generation** — one agent, five content types
 >
 > The architecture is fully documented in the GitHub repo: comprehensive docstrings, ARCHITECTURE.md for deep-dives, and CONTRIBUTING.md for extending it.
 >
@@ -462,10 +365,6 @@ make dev
 - Check WebSocket connection (DevTools → Network → WS)
 - Verify `GOOGLE_API_KEY` is set
 
-### If content generation hangs:
-- Verify `GOOGLE_API_KEY` is valid
-- Check token limits in config.py
-
 ---
 
 ## Tips for Smooth Delivery
@@ -483,14 +382,12 @@ make dev
 
 ### Quick Demo (5–8 min)
 - Intent: search + comparison + quality gate retry
-- Skip content generation
 - Focus on hybrid search & quality gate
 
 ### Full Demo (15–20 min)
 - All 6 intents
 - Hybrid search
 - Quality gate retry
-- Content generation (1–2 formats)
 
 ### Deep-Dive Demo (30+ min)
 - All of above
