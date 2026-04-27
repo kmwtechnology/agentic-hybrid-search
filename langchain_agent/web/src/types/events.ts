@@ -374,7 +374,7 @@ export interface ConfidenceProxy {
   confidence_label: ConfidenceLabel
 }
 
-export type PipelineStageName = 'bm25' | 'hybrid' | 'reranked'
+export type PipelineStageName = 'stock_bm25' | 'bm25' | 'hybrid' | 'reranked'
 
 export interface LatencyStage {
   stage: PipelineStageName
@@ -388,6 +388,7 @@ export interface PipelineSummaryEvent extends BaseEvent {
   has_ground_truth: boolean
   query: string
   optimizations: Record<string, boolean>
+  stock_bm25?: StageMetrics | null
   bm25?: StageMetrics | null
   hybrid?: StageMetrics | null
   reranked?: StageMetrics | null

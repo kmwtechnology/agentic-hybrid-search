@@ -278,8 +278,14 @@ class TestCountRankChanges:
 
 
 class TestLatencyCostBenefit:
+    @staticmethod
+    def _stages(*triples):
+        return [{"stage": n, "latency_ms": lat, "ndcg": ndcg} for n, lat, ndcg in triples]
+
     def test_no_ground_truth(self):
-        rows = latency_cost_benefit(20, 50, 200)
+        rows = latency_cost_benefit(
+            self._stages(("bm25", 20, None), ("hybrid", 50, None), ("reranked", 200, None))
+        )
         assert len(rows) == 3
         assert rows[0]["stage"] == "bm25"
         assert rows[2]["stage"] == "reranked"
@@ -287,17 +293,33 @@ class TestLatencyCostBenefit:
             assert row["ndcg_lift_per_100ms"] is None
 
     def test_ground_truth_lift_per_100ms(self):
-        # BM25=20ms, ndcg=0.6 — Hybrid=50ms, ndcg=0.7 — Reranked=200ms, ndcg=0.8
-        # Hybrid lift: (0.7-0.6)/(50-20) * 100 = 0.333
-        # Reranked lift: (0.8-0.7)/(200-50) * 100 = 0.067
-        rows = latency_cost_benefit(20, 50, 200, bm25_ndcg=0.6, hybrid_ndcg=0.7, rerank_ndcg=0.8)
-        assert rows[0]["ndcg_lift_per_100ms"] is None  # BM25 has no prior
+        # BM25=20ms 0.6, Hybrid=50ms 0.7, Reranked=200ms 0.8
+        rows = latency_cost_benefit(
+            self._stages(("bm25", 20, 0.6), ("hybrid", 50, 0.7), ("reranked", 200, 0.8))
+        )
+        assert rows[0]["ndcg_lift_per_100ms"] is None
         assert rows[1]["ndcg_lift_per_100ms"] == pytest.approx(0.3333, abs=0.001)
         assert rows[2]["ndcg_lift_per_100ms"] == pytest.approx(0.0667, abs=0.001)
 
     def test_partial_ground_truth(self):
-        # Only BM25 has ndcg, others None — Hybrid still gets None lift
-        rows = latency_cost_benefit(20, 50, 200, bm25_ndcg=0.6)
+        # Only BM25 has ndcg → later rows have no comparison baseline
+        rows = latency_cost_benefit(
+            self._stages(("bm25", 20, 0.6), ("hybrid", 50, None), ("reranked", 200, None))
+        )
+        assert all(r["ndcg_lift_per_100ms"] is None for r in rows)
+
+    def test_four_stages_with_stock_bm25(self):
+        # Stock=15ms 0.4, your-BM25=25ms 0.5, Hybrid=60ms 0.65, Reranked=200ms 0.7
+        rows = latency_cost_benefit(
+            self._stages(
+                ("stock_bm25", 15, 0.4),
+                ("bm25", 25, 0.5),
+                ("hybrid", 60, 0.65),
+                ("reranked", 200, 0.7),
+            )
+        )
+        assert len(rows) == 4
         assert rows[0]["ndcg_lift_per_100ms"] is None
-        assert rows[1]["ndcg_lift_per_100ms"] is None
-        assert rows[2]["ndcg_lift_per_100ms"] is None
+        assert rows[1]["ndcg_lift_per_100ms"] == pytest.approx(1.0, abs=0.001)
+        assert rows[2]["ndcg_lift_per_100ms"] == pytest.approx(0.4286, abs=0.001)
+        assert rows[3]["ndcg_lift_per_100ms"] == pytest.approx(0.0357, abs=0.001)

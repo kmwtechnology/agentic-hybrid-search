@@ -2134,17 +2134,32 @@ Respond with JSON only. No other text."""
             )
             return docs, (time.time() - t0) * 1000.0
 
+        def _stock_bm25_call() -> Tuple[List[Document], float]:
+            # Vanilla BM25 reference — ignores all optimization toggles. Gives
+            # the Pipeline Quality Summary card a fixed anchor so users can
+            # see what their fuzzy/synonyms/phonetic toggles actually buy.
+            t0 = time.time()
+            docs = self.vector_store.stock_bm25_search(
+                query,
+                k=RETRIEVER_FETCH_K,
+                filters=attribute_filters,
+            )
+            return docs, (time.time() - t0) * 1000.0
+
         retrieve_start = time.time()
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with ThreadPoolExecutor(max_workers=3) as pool:
             hybrid_future = pool.submit(_hybrid_call)
             bm25_future = pool.submit(_bm25_call)
+            stock_future = pool.submit(_stock_bm25_call)
             results, retriever_latency_ms = hybrid_future.result()
             bm25_results, bm25_latency_ms = bm25_future.result()
+            stock_bm25_results, stock_bm25_latency_ms = stock_future.result()
         retrieve_elapsed = time.time() - retrieve_start
 
         logger.info(
             f"Retriever: hybrid={len(results)} docs ({retriever_latency_ms:.0f}ms), "
             f"bm25={len(bm25_results)} docs ({bm25_latency_ms:.0f}ms), "
+            f"stock_bm25={len(stock_bm25_results)} docs ({stock_bm25_latency_ms:.0f}ms), "
             f"wall={retrieve_elapsed:.3f}s"
         )
 
@@ -2224,8 +2239,10 @@ Respond with JSON only. No other text."""
             "retrieved_documents": results,
             "pre_rerank_documents": list(results),
             "bm25_documents": bm25_results,
+            "stock_bm25_documents": stock_bm25_results,
             "judgments": judgments,
             "bm25_latency_ms": bm25_latency_ms,
+            "stock_bm25_latency_ms": stock_bm25_latency_ms,
             "retriever_latency_ms": retriever_latency_ms,
             "prior_search_documents": prior_search_documents,
             "prior_search_intent": prior_search_intent,

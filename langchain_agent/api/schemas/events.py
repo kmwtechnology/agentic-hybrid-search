@@ -481,7 +481,7 @@ class StageMetrics(BaseModel):
 class LatencyStage(BaseModel):
     """One row of the per-stage latency / lift table."""
 
-    stage: Literal["bm25", "hybrid", "reranked"]
+    stage: Literal["stock_bm25", "bm25", "hybrid", "reranked"]
     latency_ms: float
     ndcg: Optional[float] = None
     ndcg_lift_per_100ms: Optional[float] = None
@@ -521,8 +521,12 @@ class PipelineSummaryEvent(BaseEvent):
     query: str
     optimizations: Dict[str, bool] = {}
 
-    # Ground-truth layout (one of these three may be None when the stage
-    # didn't run — e.g., reranker disabled).
+    # Ground-truth layout. Up to four rows:
+    #   * stock_bm25 — vanilla BM25 reference (always present, ignores toggles)
+    #   * bm25      — BM25 with the user's optimization toggles applied
+    #   * hybrid    — vector + BM25 (omitted when ``hybrid:false`` toggle)
+    #   * reranked  — reranker output (omitted when ``reranking:false`` toggle)
+    stock_bm25: Optional[StageMetrics] = None
     bm25: Optional[StageMetrics] = None
     hybrid: Optional[StageMetrics] = None
     reranked: Optional[StageMetrics] = None

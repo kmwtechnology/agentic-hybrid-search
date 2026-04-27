@@ -20,8 +20,10 @@ def _state(**overrides):
         "pre_rerank_documents": [],
         "post_rerank_documents": [],
         "bm25_documents": [],
+        "stock_bm25_documents": [],
         "judgments": None,
         "bm25_latency_ms": 0.0,
+        "stock_bm25_latency_ms": 0.0,
         "retriever_latency_ms": 0.0,
         "reranker_latency_ms": 0.0,
     }
@@ -36,16 +38,19 @@ class TestPipelineSummary:
         # No docs at all (e.g. summary intent) — nothing to summarize.
         assert self.svc._build_pipeline_summary(_state(), {}) is None
 
-    def test_ground_truth_layout_populates_three_stages(self):
+    def test_ground_truth_layout_populates_four_stages(self):
         pre = [_doc("A", reranker_score=0.9), _doc("B", reranker_score=0.7)]
         post = [_doc("B", reranker_score=0.95), _doc("A", reranker_score=0.6)]
         bm25 = [_doc("A"), _doc("C")]
+        stock = [_doc("A")]
         state = _state(
             pre_rerank_documents=pre,
             post_rerank_documents=post,
             bm25_documents=bm25,
+            stock_bm25_documents=stock,
             judgments={"A": 4.0, "B": 1.0, "C": 0.1},
             bm25_latency_ms=25.0,
+            stock_bm25_latency_ms=20.0,
             retriever_latency_ms=60.0,
             reranker_latency_ms=200.0,
         )
@@ -53,14 +58,41 @@ class TestPipelineSummary:
         assert event is not None
         assert event.has_ground_truth is True
         assert event.confidence is None
+        assert event.stock_bm25 is not None and event.stock_bm25.judged_count == 1
         assert event.bm25 is not None and event.bm25.judged_count == 2
         assert event.hybrid is not None and event.hybrid.judged_count == 2
         assert event.reranked is not None
-        # Latency table always present, lift filled per stage
+        # Four-row latency table; first row has no lift (no prior stage)
         stages = {row.stage: row for row in event.latency}
-        assert stages["bm25"].ndcg_lift_per_100ms is None  # no prior stage
+        assert {"stock_bm25", "bm25", "hybrid", "reranked"} == set(stages.keys())
+        assert stages["stock_bm25"].ndcg_lift_per_100ms is None
+        assert stages["bm25"].ndcg_lift_per_100ms is not None
         assert stages["hybrid"].ndcg_lift_per_100ms is not None
         assert stages["reranked"].ndcg_lift_per_100ms is not None
+
+    def test_hybrid_off_hides_hybrid_row(self):
+        # When optimizations.hybrid is False, the hybrid row would be a
+        # duplicate of bm25 (the hybrid call routed to plain BM25 with the
+        # user's toggles). Card hides it.
+        bm25 = [_doc("A"), _doc("B")]
+        stock = [_doc("A")]
+        state = _state(
+            pre_rerank_documents=bm25,  # hybrid:false ⇒ pre_rerank == bm25
+            bm25_documents=bm25,
+            stock_bm25_documents=stock,
+            judgments={"A": 4.0, "B": 1.0},
+            bm25_latency_ms=20.0,
+            stock_bm25_latency_ms=18.0,
+            retriever_latency_ms=22.0,
+        )
+        event = self.svc._build_pipeline_summary(state, {"hybrid": False})
+        assert event is not None
+        assert event.stock_bm25 is not None
+        assert event.bm25 is not None
+        assert event.hybrid is None  # hidden by toggle
+        assert event.reranked is None  # no rerank latency
+        stages = {row.stage for row in event.latency}
+        assert "hybrid" not in stages
 
     def test_no_ground_truth_uses_confidence_proxy(self):
         pre = [_doc("A"), _doc("B")]

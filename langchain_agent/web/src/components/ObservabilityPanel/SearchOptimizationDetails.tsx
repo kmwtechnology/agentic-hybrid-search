@@ -5,7 +5,7 @@
  * sent to the backend with each chat message.
  */
 
-import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
 import {
@@ -83,7 +83,11 @@ export function SearchOptimizationDetails() {
   const [isExpanded, setIsExpanded] = useState(false)
   const optimizations = useOptimizationsStore((s) => s.optimizations)
   const toggle = useOptimizationsStore((s) => s.toggle)
-  const reset = useOptimizationsStore((s) => s.reset)
+  const setAll = useOptimizationsStore((s) => s.setAll)
+
+  // Master toggle state — "all on" only when every flag is on. Mixed state
+  // also reads as off so the next click sets everything on (predictable).
+  const allOn = Object.values(optimizations).every(Boolean)
 
   // Pull the optimizations actually applied to the most recent search so the
   // user can confirm what hit OpenSearch (vs. what they have toggled now).
@@ -157,16 +161,36 @@ export function SearchOptimizationDetails() {
           )}
 
           <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-500">
-            <div className="flex items-center justify-between mb-2">
-              <p>💡 <strong>Tip:</strong> Click any row to toggle it; the next query reflects your choices.</p>
+            <div className="flex items-center justify-between mb-2 gap-3">
+              <p className="flex-1">💡 <strong>Tip:</strong> Click any row to toggle it; the next query reflects your choices.</p>
               <button
                 type="button"
-                onClick={reset}
-                className="ml-2 inline-flex items-center gap-1 text-gray-400 hover:text-gray-200 transition-colors"
-                title="Reset all to defaults"
+                role="switch"
+                aria-checked={allOn}
+                onClick={() => setAll(!allOn)}
+                className={clsx(
+                  'shrink-0 inline-flex items-center gap-2 px-2 py-1 rounded-md border transition-colors',
+                  allOn
+                    ? 'border-emerald-700/60 bg-emerald-900/30 text-emerald-200 hover:bg-emerald-900/50'
+                    : 'border-gray-700 bg-gray-800/50 text-gray-300 hover:bg-gray-800'
+                )}
+                title={allOn ? 'Turn all optimizations OFF' : 'Turn all optimizations ON'}
               >
-                <RotateCcw className="w-3 h-3" />
-                Reset
+                <span className="text-[11px] uppercase tracking-wide">All</span>
+                <span
+                  className={clsx(
+                    'w-7 h-3.5 rounded-full transition-colors relative',
+                    allOn ? 'bg-emerald-500' : 'bg-gray-600'
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      'absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all',
+                      allOn ? 'left-4' : 'left-0.5'
+                    )}
+                  />
+                </span>
+                <span className="text-[11px] font-medium">{allOn ? 'On' : 'Off'}</span>
               </button>
             </div>
             <p>Try searching for:</p>

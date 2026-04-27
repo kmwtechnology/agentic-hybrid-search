@@ -234,9 +234,11 @@ class ObservableAgentService:
                 "user_query": "",
                 "pre_rerank_documents": [],
                 "bm25_documents": [],
+                "stock_bm25_documents": [],
                 "post_rerank_documents": [],
                 "judgments": None,
                 "bm25_latency_ms": 0.0,
+                "stock_bm25_latency_ms": 0.0,
                 "retriever_latency_ms": 0.0,
                 "reranker_latency_ms": 0.0,
             }
@@ -276,8 +278,10 @@ class ObservableAgentService:
                         "user_query",
                         "pre_rerank_documents",
                         "bm25_documents",
+                        "stock_bm25_documents",
                         "judgments",
                         "bm25_latency_ms",
+                        "stock_bm25_latency_ms",
                         "retriever_latency_ms",
                         "reranker_latency_ms",
                     ):
@@ -364,46 +368,61 @@ class ObservableAgentService:
         """
         pre_rerank = pipeline_state.get("pre_rerank_documents") or []
         bm25_docs = pipeline_state.get("bm25_documents") or []
+        stock_bm25_docs = pipeline_state.get("stock_bm25_documents") or []
         post_rerank = pipeline_state.get("post_rerank_documents") or []
-        if not pre_rerank and not bm25_docs and not post_rerank:
+        if not pre_rerank and not bm25_docs and not post_rerank and not stock_bm25_docs:
             return None
 
         query = pipeline_state.get("user_query") or ""
         judgments = pipeline_state.get("judgments")
 
+        # User toggles drive which rows we render. Hybrid row is redundant
+        # when ``hybrid:false`` (the hybrid call routed to plain BM25 with
+        # toggles, identical to the bm25 row). Reranked row only matters
+        # when reranking actually ran (latency > 0).
+        hybrid_on = optimizations.get("hybrid", True)
+        rerank_latency = float(pipeline_state.get("reranker_latency_ms") or 0.0)
+        show_hybrid = hybrid_on
+        show_rerank = rerank_latency > 0
+
         bm25_latency = float(pipeline_state.get("bm25_latency_ms") or 0.0)
+        stock_bm25_latency = float(pipeline_state.get("stock_bm25_latency_ms") or 0.0)
         # Hybrid stage's "incremental" latency is the part not already paid by
         # BM25 (they ran in parallel, so the wall-clock cost of hybrid was
         # max(hybrid, bm25)). Use the raw retriever_latency_ms — it represents
         # what the hybrid stage would cost on its own.
         hybrid_latency = float(pipeline_state.get("retriever_latency_ms") or 0.0)
-        rerank_latency = float(pipeline_state.get("reranker_latency_ms") or 0.0)
 
+        stock_bm25_ids = [doc.metadata.get("product_id", "") for doc in stock_bm25_docs]
         bm25_ids = [doc.metadata.get("product_id", "") for doc in bm25_docs]
         hybrid_ids = [doc.metadata.get("product_id", "") for doc in pre_rerank]
         rerank_ids = [doc.metadata.get("product_id", "") for doc in post_rerank]
 
-        bm25_metrics = hybrid_metrics = rerank_metrics = None
-        bm25_ndcg = hybrid_ndcg = rerank_ndcg = None
+        stock_bm25_metrics = bm25_metrics = hybrid_metrics = rerank_metrics = None
+        stock_bm25_ndcg = bm25_ndcg = hybrid_ndcg = rerank_ndcg = None
         confidence = None
 
         if judgments:
-            # Ground-truth layout: compute IR metrics for each stage we have.
+            # Ground-truth layout: compute IR metrics for each visible stage.
+            if stock_bm25_ids:
+                stage = compute_stage_metrics(stock_bm25_ids, judgments)
+                stock_bm25_metrics = StageMetricsModel(**stage.to_dict())
+                stock_bm25_ndcg = stage.ndcg10
             if bm25_ids:
                 stage = compute_stage_metrics(bm25_ids, judgments)
                 bm25_metrics = StageMetricsModel(**stage.to_dict())
                 bm25_ndcg = stage.ndcg10
-            if hybrid_ids:
+            if hybrid_ids and show_hybrid:
                 stage = compute_stage_metrics(hybrid_ids, judgments)
                 hybrid_metrics = StageMetricsModel(**stage.to_dict())
                 hybrid_ndcg = stage.ndcg10
-            if rerank_ids and rerank_latency > 0:
+            if rerank_ids and show_rerank:
                 stage = compute_stage_metrics(rerank_ids, judgments)
                 rerank_metrics = StageMetricsModel(**stage.to_dict())
                 rerank_ndcg = stage.ndcg10
         else:
-            # Fallback: use reranker scores (post-rerank) when available, else
-            # fall back to retrieval scores from the pre-rerank stage.
+            # Fallback: confidence proxy from reranker scores (or retrieval
+            # scores when reranker is off).
             scores: List[float] = []
             for doc in post_rerank:
                 score = doc.metadata.get("reranker_score")
@@ -418,20 +437,28 @@ class ObservableAgentService:
             proxy = confidence_from_scores(scores, rank_changes_count=rank_changes)
             confidence = ConfidenceProxyModel(**proxy.to_dict())
 
-        latency_rows = latency_cost_benefit(
-            bm25_latency,
-            hybrid_latency,
-            rerank_latency,
-            bm25_ndcg=bm25_ndcg,
-            hybrid_ndcg=hybrid_ndcg,
-            rerank_ndcg=rerank_ndcg,
-        )
+        # Build latency table ordered by pipeline progression. Stages omitted
+        # when they didn't run or when toggles hide them.
+        latency_inputs: List[Dict[str, Any]] = [
+            {"stage": "stock_bm25", "latency_ms": stock_bm25_latency, "ndcg": stock_bm25_ndcg},
+            {"stage": "bm25", "latency_ms": bm25_latency, "ndcg": bm25_ndcg},
+        ]
+        if show_hybrid:
+            latency_inputs.append(
+                {"stage": "hybrid", "latency_ms": hybrid_latency, "ndcg": hybrid_ndcg}
+            )
+        if show_rerank:
+            latency_inputs.append(
+                {"stage": "reranked", "latency_ms": rerank_latency, "ndcg": rerank_ndcg}
+            )
+        latency_rows = latency_cost_benefit(latency_inputs)
         latency = [LatencyStage(**row) for row in latency_rows]
 
         return PipelineSummaryEvent(
             has_ground_truth=judgments is not None,
             query=query,
             optimizations=optimizations,
+            stock_bm25=stock_bm25_metrics,
             bm25=bm25_metrics,
             hybrid=hybrid_metrics,
             reranked=rerank_metrics,

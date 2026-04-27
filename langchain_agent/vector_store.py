@@ -660,6 +660,51 @@ class OpenSearchVectorStore:
         """
         return self._text_search(query, k=k, filters=filters, optimizations=optimizations)
 
+    def stock_bm25_search(
+        self,
+        query: str,
+        k: int = 20,
+        filters: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Document]:
+        """Vanilla BM25 reference — ignores all optimization toggles.
+
+        Standard analyzer (no stemming, no synonyms), multi_match against
+        ``title`` + ``chunk_text`` only, no fuzziness, no phonetic fields,
+        no phrase boost, no field boost. This is the fixed anchor row of
+        the Pipeline Quality Summary card so users can see what their
+        BM25 toggles actually buy them on top of vanilla.
+        """
+        try:
+            filter_list = [{"term": {"collection_id": self.collection_id}}]
+            if filters:
+                filter_list.extend(filters)
+
+            body = {
+                "size": k,
+                "_source": {"excludes": ["embedding"]},
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": ["title", "chunk_text"],
+                                    "type": "best_fields",
+                                    "analyzer": "standard",
+                                }
+                            }
+                        ],
+                        "filter": filter_list,
+                    }
+                },
+            }
+
+            response = self.client.search(index=self.index_name, body=body)
+            return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
+        except Exception as e:
+            logger.error(f"Error during stock BM25 search: {e}")
+            return []
+
     def lookup_judgments(
         self,
         query: str,

@@ -45,10 +45,15 @@ function fmtLift(n: number | null | undefined): string {
 }
 
 const STAGE_LABEL: Record<LatencyStage['stage'], string> = {
-  bm25: 'BM25 baseline',
+  stock_bm25: 'Stock BM25',
+  bm25: 'Your BM25',
   hybrid: 'Hybrid (vec+BM25)',
   reranked: 'Reranked',
 }
+
+// Subset of optimization keys that reshape the BM25 multi_match query.
+// When any of these are off, "Your BM25" reflects a degraded build vs Stock.
+const BM25_TUNING_KEYS = ['fuzzy', 'synonyms', 'phonetic', 'phrase_boost', 'field_boost'] as const
 
 const CONFIDENCE_TONE: Record<ConfidenceLabel, { dot: string; chip: string; text: string }> = {
   high: {
@@ -86,21 +91,19 @@ function MetricCell({ label, value, hint }: { label: string; value: string; hint
 function StageRow({
   name,
   stage,
+  badge,
 }: {
   name: string
   stage: StageMetrics | null | undefined
+  badge?: React.ReactNode
 }) {
-  if (!stage) {
-    return (
-      <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-gray-800/40 border border-gray-700/50">
-        <span className="text-sm text-gray-300 font-medium">{name}</span>
-        <span className="text-xs text-gray-500">not run</span>
-      </div>
-    )
-  }
+  if (!stage) return null
   return (
-    <div className="grid grid-cols-[7rem_repeat(4,1fr)_auto] items-center gap-3 px-3 py-2 rounded-md bg-gray-800/40 border border-gray-700/50">
-      <span className="text-sm text-gray-100 font-medium">{name}</span>
+    <div className="grid grid-cols-[8rem_repeat(4,1fr)_auto] items-center gap-3 px-3 py-2 rounded-md bg-gray-800/40 border border-gray-700/50">
+      <span className="text-sm text-gray-100 font-medium flex items-center gap-1.5">
+        {name}
+        {badge}
+      </span>
       <MetricCell label="NDCG@10" value={fmt(stage.ndcg10, 3)} />
       <MetricCell label="MRR" value={fmt(stage.mrr, 3)} />
       <MetricCell label="Recall@20" value={fmt(stage.recall20, 3)} />
@@ -209,7 +212,12 @@ export function PipelineSummaryCard() {
             <SummaryHeadline summary={summary} />
             {summary.has_ground_truth ? (
               <div className="space-y-2">
-                <StageRow name="BM25" stage={summary.bm25} />
+                <StageRow name="Stock BM25" stage={summary.stock_bm25} />
+                <StageRow
+                  name="Your BM25"
+                  stage={summary.bm25}
+                  badge={<DegradedBadge optimizations={summary.optimizations} />}
+                />
                 <StageRow name="Hybrid" stage={summary.hybrid} />
                 <StageRow name="Reranked" stage={summary.reranked} />
               </div>
@@ -298,6 +306,19 @@ function ConfidenceCard({ summary }: { summary: PipelineSummaryEvent }) {
         />
       </div>
     </div>
+  )
+}
+
+function DegradedBadge({ optimizations }: { optimizations: Record<string, boolean> }) {
+  const off = BM25_TUNING_KEYS.filter((k) => optimizations[k] === false)
+  if (off.length === 0) return null
+  return (
+    <span
+      className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border bg-amber-900/40 text-amber-200 border-amber-700/50"
+      title={`These BM25 optimizations are off: ${off.join(', ')}. "Your BM25" reflects the degraded build.`}
+    >
+      ⚠ {off.length} off
+    </span>
   )
 }
 

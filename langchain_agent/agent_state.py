@@ -138,11 +138,17 @@ class CustomAgentState(TypedDict, total=False):
     # Pure BM25 baseline ranking (top fetch_k). Same query, same filters,
     # but no vector search — used as the apples-to-apples baseline.
     bm25_documents: List[Document]
+    # Stock/vanilla BM25 reference. Ignores all optimization toggles —
+    # standard analyzer, title + chunk_text only. Always present, gives
+    # the Pipeline Quality Summary card a fixed anchor for measuring the
+    # value of fuzzy/synonyms/phonetic/etc.
+    stock_bm25_documents: List[Document]
     # ESCI ground-truth judgments for the user's query, looked up from
     # the esci_judgments index. None when the query is novel; the UI
     # falls back to the confidence proxy in that case.
     judgments: Optional[Dict[str, float]]
     # Per-stage wall-clock latency in milliseconds.
     bm25_latency_ms: float
+    stock_bm25_latency_ms: float
     retriever_latency_ms: float
     reranker_latency_ms: float

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 # ---------------------------------------------------------------------------
 # Core metric primitives
@@ -286,34 +286,30 @@ def count_rank_changes(
 
 
 def latency_cost_benefit(
-    bm25_ms: float,
-    hybrid_ms: float,
-    rerank_ms: float,
-    *,
-    bm25_ndcg: Optional[float] = None,
-    hybrid_ndcg: Optional[float] = None,
-    rerank_ndcg: Optional[float] = None,
-) -> List[Dict[str, float]]:
-    """Build a list of ``{stage, latency_ms, ndcg_lift_per_100ms}`` rows.
+    stages: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Compute lift-per-100ms over a sequence of pipeline stages.
 
-    The lift-per-100ms framing answers the recurring product question
-    "is the reranker worth its cost?" — at a glance we can see whether
-    the slow stage is also the lift stage.
+    Args:
+        stages: Ordered list of ``{"stage": str, "latency_ms": float,
+            "ndcg": Optional[float]}`` dicts. Order matters — each stage's
+            lift is computed against the previous stage with a known NDCG.
 
-    ``ndcg_lift_per_100ms`` is None when ground truth is missing.
+    Returns:
+        A copy of ``stages`` with an ``ndcg_lift_per_100ms`` value added
+        to each row (None when either the current or previous stage is
+        missing ground-truth NDCG).
+
+    The lift framing answers "is each stage worth its cost?" — at a
+    glance we can see whether the slow stage is also the lift stage.
     """
-    rows: List[Dict[str, float]] = []
-    rows.append({"stage": "bm25", "latency_ms": bm25_ms, "ndcg": bm25_ndcg})
-    rows.append({"stage": "hybrid", "latency_ms": hybrid_ms, "ndcg": hybrid_ndcg})
-    rows.append({"stage": "reranked", "latency_ms": rerank_ms, "ndcg": rerank_ndcg})
+    rows: List[Dict[str, Any]] = [dict(s) for s in stages]
 
-    # Compute marginal ndcg lift / 100ms vs the previous stage when both
-    # have ground-truth scores.
     prev_ndcg: Optional[float] = None
     prev_latency: float = 0.0
     for row in rows:
         ndcg_now = row.get("ndcg")
-        latency_now = row["latency_ms"]
+        latency_now = row.get("latency_ms", 0.0)
         if ndcg_now is not None and prev_ndcg is not None:
             delta_ndcg = ndcg_now - prev_ndcg
             delta_latency = max(latency_now - prev_latency, 1e-6)
