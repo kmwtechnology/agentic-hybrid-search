@@ -33,6 +33,7 @@ from api.schemas.events import (
     BaseEvent,
     ConfidenceProxy,
     ConversationContextEvent,
+    GenerationJudgment,
     HybridSearchStartEvent,
     IntentClassificationEvent,
     LatencyStage,
@@ -237,6 +238,7 @@ class ObservableAgentService:
                 "stock_bm25_documents": [],
                 "post_rerank_documents": [],
                 "judgments": None,
+                "judgment": None,
                 "bm25_latency_ms": 0.0,
                 "stock_bm25_latency_ms": 0.0,
                 "retriever_latency_ms": 0.0,
@@ -280,6 +282,7 @@ class ObservableAgentService:
                         "bm25_documents",
                         "stock_bm25_documents",
                         "judgments",
+                        "judgment",
                         "bm25_latency_ms",
                         "stock_bm25_latency_ms",
                         "retriever_latency_ms",
@@ -454,6 +457,15 @@ class ObservableAgentService:
         latency_rows = latency_cost_benefit(latency_inputs)
         latency = [LatencyStage(**row) for row in latency_rows]
 
+        # Generation row — built from llm_judge_node output (already a dict).
+        generation: Optional[GenerationJudgment] = None
+        judgment_dict = pipeline_state.get("judgment")
+        if judgment_dict:
+            try:
+                generation = GenerationJudgment(**judgment_dict)
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.warning("Failed to coerce judgment dict: %s", exc)
+
         return PipelineSummaryEvent(
             has_ground_truth=judgments is not None,
             query=query,
@@ -463,6 +475,7 @@ class ObservableAgentService:
             hybrid=hybrid_metrics,
             reranked=rerank_metrics,
             confidence=confidence,
+            generation=generation,
             latency=latency,
         )
 

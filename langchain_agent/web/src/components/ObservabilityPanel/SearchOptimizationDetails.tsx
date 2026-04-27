@@ -77,6 +77,13 @@ const OPTIMIZATIONS: OptimizationDef[] = [
     description: 'Synthesizes a conversational answer; off → plain search-results list',
     icon: '🤖',
   },
+  {
+    key: 'llm_judge',
+    name: 'LLM-as-Judge (Generation Quality)',
+    description:
+      'Pairwise judge of the synthesized response vs the raw list — adds Generation row to the Pipeline Quality Summary card. Requires LLM Response Generation. Adds ~1–2s.',
+    icon: '⚖️',
+  },
 ]
 
 export function SearchOptimizationDetails() {
@@ -121,18 +128,30 @@ export function SearchOptimizationDetails() {
         <div className="mt-3 space-y-2">
           {OPTIMIZATIONS.map((opt) => {
             const enabled = optimizations[opt.key]
+            // llm_judge depends on llm. When LLM is off, the judge has nothing
+            // to compare, so the toggle is disabled with a hint.
+            const requiresLlm = opt.key === 'llm_judge'
+            const blockedByLlm = requiresLlm && !optimizations.llm
             return (
               <button
                 key={opt.key}
                 type="button"
-                onClick={() => toggle(opt.key)}
-                aria-pressed={enabled}
+                onClick={() => !blockedByLlm && toggle(opt.key)}
+                aria-pressed={enabled && !blockedByLlm}
+                disabled={blockedByLlm}
+                title={
+                  blockedByLlm
+                    ? 'Enable LLM Response Generation first — the judge needs a synthesized response to compare against the raw list.'
+                    : undefined
+                }
                 className={clsx(
-                  'w-full text-left p-2 rounded text-sm transition-colors cursor-pointer',
+                  'w-full text-left p-2 rounded text-sm transition-colors',
                   'focus:outline-none focus:ring-2 focus:ring-blue-500/50',
-                  enabled
-                    ? 'bg-green-900/20 border border-green-800/50 hover:bg-green-900/30'
-                    : 'bg-gray-700/20 border border-gray-700/50 hover:bg-gray-700/30'
+                  blockedByLlm
+                    ? 'bg-gray-800/40 border border-gray-700/50 opacity-50 cursor-not-allowed'
+                    : enabled
+                      ? 'bg-green-900/20 border border-green-800/50 hover:bg-green-900/30 cursor-pointer'
+                      : 'bg-gray-700/20 border border-gray-700/50 hover:bg-gray-700/30 cursor-pointer'
                 )}
               >
                 <div className="flex items-start gap-2">

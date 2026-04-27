@@ -19,6 +19,8 @@ import { useState } from 'react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import type {
   ConfidenceLabel,
+  GenerationJudgment,
+  GenerationVerdict,
   LatencyStage,
   PipelineSummaryEvent,
   StageMetrics,
@@ -54,6 +56,21 @@ const STAGE_LABEL: Record<LatencyStage['stage'], string> = {
 // Subset of optimization keys that reshape the BM25 multi_match query.
 // When any of these are off, "Your BM25" reflects a degraded build vs Stock.
 const BM25_TUNING_KEYS = ['fuzzy', 'synonyms', 'phonetic', 'phrase_boost', 'field_boost'] as const
+
+const VERDICT_TONE: Record<GenerationVerdict, { chip: string; label: string }> = {
+  llm_better: {
+    chip: 'bg-emerald-900/40 text-emerald-200 border-emerald-700/50',
+    label: 'LLM judged BETTER',
+  },
+  tied: {
+    chip: 'bg-gray-800/60 text-gray-200 border-gray-600',
+    label: 'Tied',
+  },
+  llm_worse: {
+    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
+    label: 'LLM judged WORSE',
+  },
+}
 
 const CONFIDENCE_TONE: Record<ConfidenceLabel, { dot: string; chip: string; text: string }> = {
   high: {
@@ -224,6 +241,7 @@ export function PipelineSummaryCard() {
             ) : (
               <ConfidenceCard summary={summary} />
             )}
+            {summary.generation && <GenerationCard judgment={summary.generation} />}
             <LatencyTable rows={summary.latency} />
             <FootnoteText summary={summary} />
           </div>
@@ -304,6 +322,63 @@ function ConfidenceCard({ summary }: { summary: PipelineSummaryEvent }) {
           value={`${c.rank_changes_count}`}
           hint="How many top-10 positions changed pre/post reranker"
         />
+      </div>
+    </div>
+  )
+}
+
+function GenerationCard({ judgment }: { judgment: GenerationJudgment }) {
+  const tone = VERDICT_TONE[judgment.verdict]
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wide text-gray-400">
+          Generation (LLM-as-judge)
+        </span>
+        <span
+          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${tone.chip}`}
+        >
+          {tone.label}
+        </span>
+      </div>
+      <div className="rounded-md border border-gray-700/50 bg-gray-800/40 p-3 space-y-2">
+        <p className="text-xs text-gray-200 leading-snug italic">
+          “{judgment.pairwise_justification}”
+        </p>
+        <div className="grid grid-cols-4 gap-3">
+          <MetricCell
+            label="Faithful"
+            value={fmt(judgment.faithfulness, 2)}
+            hint="1.0 = every claim grounded in retrieved docs (no hallucinations)"
+          />
+          <MetricCell
+            label="Relevance"
+            value={fmt(judgment.answer_relevance, 2)}
+            hint="How well the response addresses the user's query intent"
+          />
+          <MetricCell
+            label="Citations"
+            value={fmt(judgment.citation_accuracy, 2)}
+            hint="If the response cites products, the citations match what it says about them"
+          />
+          <MetricCell
+            label="Coverage"
+            value={fmt(judgment.context_utilization, 2)}
+            hint="Fraction of retrieved products meaningfully referenced"
+          />
+        </div>
+        {judgment.hallucinations.length > 0 && (
+          <div className="border-t border-gray-700/50 pt-2 space-y-1">
+            <span className="text-[11px] uppercase tracking-wide text-rose-300">
+              Hallucinations flagged ({judgment.hallucinations.length})
+            </span>
+            <ul className="text-xs text-rose-200/90 list-disc list-inside space-y-0.5">
+              {judgment.hallucinations.map((h, i) => (
+                <li key={i}>{h}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   )

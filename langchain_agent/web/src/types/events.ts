@@ -374,6 +374,18 @@ export interface ConfidenceProxy {
   confidence_label: ConfidenceLabel
 }
 
+export type GenerationVerdict = 'llm_better' | 'tied' | 'llm_worse'
+
+export interface GenerationJudgment {
+  verdict: GenerationVerdict
+  pairwise_justification: string
+  faithfulness: number
+  answer_relevance: number
+  citation_accuracy: number
+  context_utilization: number
+  hallucinations: string[]
+}
+
 export type PipelineStageName = 'stock_bm25' | 'bm25' | 'hybrid' | 'reranked'
 
 export interface LatencyStage {
@@ -393,6 +405,7 @@ export interface PipelineSummaryEvent extends BaseEvent {
   hybrid?: StageMetrics | null
   reranked?: StageMetrics | null
   confidence?: ConfidenceProxy | null
+  generation?: GenerationJudgment | null
   latency: LatencyStage[]
 }
 

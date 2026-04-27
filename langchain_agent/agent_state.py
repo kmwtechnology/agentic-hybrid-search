@@ -152,3 +152,9 @@ class CustomAgentState(TypedDict, total=False):
     stock_bm25_latency_ms: float
     retriever_latency_ms: float
     reranker_latency_ms: float
+    # LLM-as-judge output (set by llm_judge_node when both ``llm:on`` and
+    # ``llm_judge:on`` toggles are active). Stored as a plain dict so it
+    # survives LangGraph checkpoint serialization without importing the
+    # judge module here.
+    judgment: Optional[Dict[str, object]]
+    judge_latency_ms: float

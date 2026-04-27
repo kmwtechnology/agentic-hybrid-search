@@ -18,6 +18,7 @@ export type OptimizationKey =
   | 'typeahead'
   | 'reranking'
   | 'llm'
+  | 'llm_judge'
 
 export type Optimizations = Record<OptimizationKey, boolean>
 
@@ -31,6 +32,7 @@ const DEFAULT_OPTIMIZATIONS: Optimizations = {
   typeahead: true,
   reranking: true,
   llm: true,
+  llm_judge: false,  // off by default — adds a 1-2s extra LLM call per query
 }
 
 interface OptimizationsState {
@@ -63,8 +65,8 @@ export const useOptimizationsStore = create<OptimizationsState>()(
     {
       name: 'search-optimizations',
       // Bump on additive flag changes:
-      //   v2 added `reranking`; v3 added `llm`.
-      version: 3,
+      //   v2 added `reranking`; v3 added `llm`; v4 added `llm_judge`.
+      version: 4,
       // Merge persisted state with current defaults so newly added flags
       // appear enabled instead of `undefined`, and unknown keys from older
       // schemas are dropped (we only keep keys that exist in the defaults).

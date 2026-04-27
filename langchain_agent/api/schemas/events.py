@@ -497,6 +497,23 @@ class ConfidenceProxy(BaseModel):
     confidence_label: Literal["high", "medium", "low"]
 
 
+class GenerationJudgment(BaseModel):
+    """LLM-as-judge result for the agent's synthesized response.
+
+    Mirrors ``judge.JudgmentResult`` in shape. Polarity is normalized so
+    ``verdict="llm_better"`` always means the synthesized response wins
+    against the deterministic raw-list baseline.
+    """
+
+    verdict: Literal["llm_better", "tied", "llm_worse"]
+    pairwise_justification: str
+    faithfulness: float
+    answer_relevance: float
+    citation_accuracy: float
+    context_utilization: float
+    hallucinations: List[str] = []
+
+
 class PipelineSummaryEvent(BaseEvent):
     """End-of-pipeline retrieval-quality summary.
 
@@ -533,6 +550,11 @@ class PipelineSummaryEvent(BaseEvent):
 
     # Fallback layout
     confidence: Optional[ConfidenceProxy] = None
+
+    # LLM-as-judge result (only when both ``optimizations.llm`` and
+    # ``optimizations.llm_judge`` are on). Adds the "Generation" row to
+    # the card with a pairwise verdict + 4 absolute scores + hallucinations.
+    generation: Optional[GenerationJudgment] = None
 
     # Latency cost/benefit framing — always present
     latency: List[LatencyStage] = []

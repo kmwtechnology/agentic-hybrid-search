@@ -44,6 +44,7 @@ from pydantic import BaseModel
 # Import extracted modules
 from agent_state import CustomAgentState
 from doc_replacer import DocumentReplacer
+from judge import LLMJudge
 from link_verifier import LinkVerifier
 from reranker import GeminiReranker
 from vector_store import OpenSearchVectorStore
@@ -419,6 +420,10 @@ class EcommerceSearchAgent:
                 print(f"✓ Reranker warmup complete ({warmup_time:.3f}s)")
         else:
             self.reranker = None
+
+        # Lazy LLM-as-judge — only constructed when first needed (judge node
+        # only runs when user toggles llm_judge:on AND llm:on).
+        self.judge: Optional[LLMJudge] = None
 
         # Checkpointer will be created asynchronously via create_async_checkpointer()
         # This is required because AsyncPostgresSaver needs a running event loop
@@ -1962,6 +1967,80 @@ Respond with JSON only. No other text."""
             logger.debug(f"Could not emit event immediately: {e}, queueing instead")
             self.event_queue.append(event)
 
+    def llm_judge_node(self, state: CustomAgentState) -> Dict[str, Any]:
+        """
+        LLM-as-judge for the Pipeline Quality Summary "Generation" stage.
+
+        Compares the agent's synthesized response (whatever was just produced
+        by ``agent_node``) against the deterministic raw-list response that
+        ``optimizations.llm:false`` would have produced, and emits a
+        structured ``JudgmentResult`` with a pairwise verdict + 4 absolute
+        scores + hallucination list.
+
+        Skipped (returns ``judgment=None``) when:
+          * ``optimizations.llm_judge`` is False (per-query toggle), OR
+          * ``optimizations.llm`` is False (nothing to judge — the raw list
+            IS the response), OR
+          * ``intent == "summary"`` (no retrieval, nothing to compare), OR
+          * No retrieved documents.
+        """
+        opts = state.get("optimizations") or {}
+        llm_on = opts.get("llm", True)
+        judge_on = opts.get("llm_judge", False)
+        intent = state.get("intent", "search")
+        documents = state.get("retrieved_documents") or []
+
+        if not (llm_on and judge_on) or intent == "summary" or not documents:
+            return {"judgment": None, "judge_latency_ms": 0.0}
+
+        # Pull the agent's just-produced response from the message history.
+        llm_response = ""
+        for msg in reversed(state["messages"]):
+            if isinstance(msg, AIMessage) and msg.content and not getattr(msg, "tool_calls", None):
+                content = msg.content
+                if isinstance(content, list):
+                    text_parts = []
+                    for block in content:
+                        if isinstance(block, dict) and "text" in block:
+                            text_parts.append(block["text"])
+                    llm_response = "".join(text_parts)
+                else:
+                    llm_response = content
+                break
+
+        if not llm_response:
+            logger.debug("llm_judge_node: no agent response found, skipping judge")
+            return {"judgment": None, "judge_latency_ms": 0.0}
+
+        # Compute the deterministic baseline that llm:false would have produced.
+        query = state.get("user_query", "")
+        baseline = self._format_search_results(documents, query)
+
+        # Lazy-init the judge so users who never enable it pay no startup cost.
+        if self.judge is None:
+            from config import JUDGE_MODEL  # local import to avoid circular at module load
+
+            self.judge = LLMJudge(model_name=JUDGE_MODEL)
+
+        t0 = time.time()
+        try:
+            result = self.judge.judge(query, documents, llm_response, baseline)
+        except Exception as exc:
+            logger.warning("llm_judge_node failed: %s", exc, exc_info=True)
+            return {"judgment": None, "judge_latency_ms": (time.time() - t0) * 1000.0}
+
+        elapsed_ms = (time.time() - t0) * 1000.0
+        logger.info(
+            "llm_judge_node: verdict=%s, faithfulness=%.2f, in %.0fms",
+            result.verdict,
+            result.faithfulness,
+            elapsed_ms,
+        )
+        return {
+            "judgment": result.model_dump(),
+            "judge_latency_ms": elapsed_ms,
+        }
+
     def summary_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
         Generate a conversation summary when the user intent is to summarize history.
@@ -2632,6 +2711,7 @@ Respond with JSON only. No other text."""
         workflow.add_node("reranker", self.reranker_node)
         workflow.add_node("quality_gate", self.quality_gate_node)
         workflow.add_node("agent", self.agent_node)
+        workflow.add_node("llm_judge", self.llm_judge_node)
 
         # Set entry point
         workflow.set_entry_point("intent_classifier")
@@ -2658,7 +2738,8 @@ Respond with JSON only. No other text."""
         )
 
         # Agent is the final step
-        workflow.add_edge("agent", END)
+        workflow.add_edge("agent", "llm_judge")
+        workflow.add_edge("llm_judge", END)
 
         # Compile with checkpointer
         self.app = workflow.compile(checkpointer=self.checkpointer)

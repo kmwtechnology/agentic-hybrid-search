@@ -137,6 +137,54 @@ class TestPipelineSummary:
         assert event.hybrid is not None
         assert event.reranked is None  # latency==0 → don't claim a reranked stage
 
+    def test_generation_judgment_populates_card(self):
+        # When llm_judge produced a judgment dict in state, the card should
+        # surface it as a GenerationJudgment Pydantic model.
+        bm25 = [_doc("A"), _doc("B")]
+        state = _state(
+            pre_rerank_documents=bm25,
+            post_rerank_documents=bm25,
+            bm25_documents=bm25,
+            stock_bm25_documents=[_doc("A")],
+            judgments={"A": 4.0, "B": 1.0},
+            judgment={
+                "verdict": "llm_better",
+                "pairwise_justification": "LLM clearly explains the tradeoffs.",
+                "faithfulness": 0.95,
+                "answer_relevance": 0.90,
+                "citation_accuracy": 1.0,
+                "context_utilization": 0.7,
+                "hallucinations": [],
+            },
+            bm25_latency_ms=20.0,
+            stock_bm25_latency_ms=18.0,
+            retriever_latency_ms=50.0,
+            reranker_latency_ms=180.0,
+        )
+        event = self.svc._build_pipeline_summary(state, {"hybrid": True, "llm_judge": True})
+        assert event is not None
+        assert event.generation is not None
+        assert event.generation.verdict == "llm_better"
+        assert event.generation.faithfulness == 0.95
+        assert event.generation.hallucinations == []
+
+    def test_no_judgment_means_no_generation_row(self):
+        bm25 = [_doc("A")]
+        state = _state(
+            pre_rerank_documents=bm25,
+            post_rerank_documents=bm25,
+            bm25_documents=bm25,
+            stock_bm25_documents=bm25,
+            judgments={"A": 4.0},
+            judgment=None,  # llm_judge toggled off → no judgment in state
+            bm25_latency_ms=20.0,
+            stock_bm25_latency_ms=18.0,
+            retriever_latency_ms=50.0,
+        )
+        event = self.svc._build_pipeline_summary(state, {"hybrid": True})
+        assert event is not None
+        assert event.generation is None
+
     def test_falls_back_to_retrieval_score_when_no_reranker_score(self):
         # If reranker is toggled off, post_rerank == pre_rerank with retrieval_score
         pre = [
