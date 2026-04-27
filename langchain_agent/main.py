@@ -1618,9 +1618,21 @@ Return ONLY a JSON object (use null for missing attributes):
             confidence = result.confidence
             clarifying_questions = result.clarifying_questions
 
-            # If confidence is below threshold, switch to clarify intent
+            # If confidence is below threshold, switch to clarify intent — UNLESS
+            # there's already a product search in the conversation, in which case
+            # the new message is almost certainly a follow_up/refinement (audience,
+            # situation, or vague expansion). Asking for clarification mid-thread
+            # is jarring and discards the user's context.
             CONFIDENCE_THRESHOLD = 0.7
             if confidence < CONFIDENCE_THRESHOLD and clarifying_questions:
+                prior_human_msgs = [m for m in messages if isinstance(m, HumanMessage)]
+                has_prior_context = len(prior_human_msgs) > 1
+                if has_prior_context:
+                    logger.info(
+                        f"Low confidence ({confidence:.2f}) but prior context exists — "
+                        f"downgrading clarify to follow_up"
+                    )
+                    return "follow_up", reasoning, confidence, []
                 logger.info(f"Low confidence ({confidence:.2f}), will ask for clarification")
                 return "clarify", reasoning, confidence, clarifying_questions
 
@@ -1666,9 +1678,10 @@ CRITICAL - CHECK THESE KEYWORDS FIRST (in order):
 2. Does message contain "summarize", "recap", "summary", "what have we covered"? → summary (ALWAYS)
 3. Does message compare two or more products? ("Compare X vs Y", "Which is better: X or Y?", "How does X compare to Y?") → comparison (ALWAYS)
 4. Does message add a NEW constraint to a PRIOR product search in this conversation? ("they should also be waterproof", "make them under $100", "only in leather", "but size 10", "can they also be breathable?") AND prior search exists in history? → refinement (ALWAYS - takes priority over attribute_filter when prior search exists)
-5. Does message request products with specific attributes (standalone, no prior context)? ("Show me X in [color/size/brand]", "Find X with [attribute]", "X under/over [price]") → attribute_filter (ALWAYS)
-6. Is message vague expansion? ("more", "show", "tell me", "alternatives", "cheaper", "similar", "other options") → follow_up (ALWAYS)
-7. Everything else (general product searches) → search (DEFAULT)
+5. Does message add SITUATIONAL or AUDIENCE context to a prior product search? ("my coworkers will be there", "it's an outdoor event", "the venue is fancy", "I'm 5'8\"", "I'll be the host", "it's a daytime event") AND prior search exists? → refinement (ALWAYS — context narrows the prior search even without an explicit product attribute)
+6. Does message request products with specific attributes (standalone, no prior context)? ("Show me X in [color/size/brand]", "Find X with [attribute]", "X under/over [price]") → attribute_filter (ALWAYS)
+7. Is message vague expansion? ("more", "show", "tell me", "alternatives", "cheaper", "similar", "other options") → follow_up (ALWAYS)
+8. Everything else (general product searches) → search (DEFAULT)
 
 IMPORTANT FOR E-COMMERCE:
 - "Find wireless headphones" → search (general discovery)
@@ -1676,8 +1689,12 @@ IMPORTANT FOR E-COMMERCE:
 - "Show me headphones in blue under $100" → attribute_filter (specific attributes, standalone)
 - "Oh, they should also be waterproof" (after boot search) → refinement (constraint added to prior search)
 - "Make them under $100" (after showing options) → refinement (narrowing prior search)
+- "My coworkers will all be there" (after dress search) → refinement (audience context narrows the prior search)
+- "It's an outdoor event" (after attire search) → refinement (situational context narrows the prior search)
 - "But they need to be waterproof" (no prior context) → attribute_filter (standalone filter)
 - "Tell me more about those" → follow_up (vague expansion)
+
+WHEN PRIOR PRODUCT SEARCH EXISTS, prefer follow_up or refinement over clarify — even if the new message is short or doesn't name a product. Only fall back to clarify when the message is genuinely incomprehensible in the surrounding context.
 
 AVAILABLE INTENTS: {intents_str}
 
