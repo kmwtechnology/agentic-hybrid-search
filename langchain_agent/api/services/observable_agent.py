@@ -17,25 +17,21 @@ warnings.filterwarnings(
 
 import asyncio
 import logging
+import sys
 import time
+from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-# Get logger for this module
-logger = logging.getLogger(__name__)
-
-import sys
-from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+# pylint: disable=wrong-import-position  # sys.path tweak above is required first
 from api.schemas.events import (
     AgentCompleteEvent,
     AgentErrorEvent,
     BaseEvent,
     ConversationContextEvent,
-    HybridSearchResultEvent,
     HybridSearchStartEvent,
     IntentClassificationEvent,
     LLMReasoningChunkEvent,
@@ -45,23 +41,20 @@ from api.schemas.events import (
     MetricsEvent,
     NodeEndEvent,
     NodeStartEvent,
-    OpenSearchQueryEvent,
     QualityGateEvent,
     QueryEvaluationEvent,
-    QueryExpansionEvent,
     RerankedDocument,
     RerankerResultEvent,
-    RerankerStartEvent,
-    SearchCandidate,
     SummaryEvent,
     ToolCallEvent,
 )
 from config import (
     ENABLE_RERANKING,
-    RERANKER_MODEL,
     RETRIEVER_FETCH_K,
 )
 from main import EcommerceSearchAgent
+
+logger = logging.getLogger(__name__)
 
 # Type alias for emit callback
 EmitCallback = Callable[[BaseEvent], Coroutine[Any, Any, None]]
@@ -854,11 +847,16 @@ class ObservableAgentService:
 
     async def _generate_title(
         self,
-        thread_id: str,
+        _thread_id: str,
         user_message: str,
-        response: Optional[str],
+        _response: Optional[str],
     ) -> Optional[str]:
-        """Generate and save a conversation title."""
+        """Generate and save a conversation title.
+
+        `_thread_id` and `_response` are accepted for API symmetry with the
+        upstream call site but the agent already has the thread_id internally
+        and synthesizes the title from the prior conversation state.
+        """
         try:
             loop = asyncio.get_event_loop()
             # update_conversation_title() uses the internally set thread_id
@@ -867,7 +865,7 @@ class ObservableAgentService:
             # Return a generated title from the user message for the WebSocket event
             # (the actual title is saved to DB by update_conversation_title)
             return user_message[:50].strip() if user_message else None
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error generating title: {e}")
             return None
 

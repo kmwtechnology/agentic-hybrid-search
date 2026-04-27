@@ -23,14 +23,29 @@ Powered by:
 
 import json
 import logging
+import os
 import sys
 import time
 import uuid
 import warnings
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import httpx
 import psycopg
+from langchain_core.documents import Document
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.graph import END, StateGraph
+from psycopg_pool import AsyncConnectionPool, ConnectionPool
+from pydantic import BaseModel
+
+# Import extracted modules
+from agent_state import CustomAgentState
+from doc_replacer import DocumentReplacer
+from link_verifier import LinkVerifier
+from reranker import GeminiReranker
+from vector_store import OpenSearchVectorStore
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -42,20 +57,6 @@ warnings.filterwarnings(
     message="Core Pydantic V1 functionality isn't compatible with Python 3.14",
     category=UserWarning,
 )
-
-from langchain_core.documents import Document
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from langgraph.graph import END, StateGraph
-from psycopg_pool import AsyncConnectionPool, ConnectionPool
-
-# Import extracted modules
-from agent_state import CustomAgentState
-from doc_replacer import DocumentReplacer
-from link_verifier import LinkVerifier
-from reranker import GeminiReranker
-from vector_store import OpenSearchRetriever, OpenSearchVectorStore
 
 # Import event types for observability
 try:
@@ -92,13 +93,10 @@ except ImportError:
 # ============================================================================
 # LANGSMITH TRACING (Optional - enable with LANGSMITH_API_KEY env var)
 # ============================================================================
-import os
 
 if os.getenv("LANGSMITH_API_KEY"):
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
     os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGSMITH_PROJECT", "agentic-hybrid-search")
-
-from pydantic import BaseModel
 
 
 class AlphaEstimation(BaseModel):
@@ -129,15 +127,9 @@ from config import (
     MAX_CONTEXT_TOKENS,
     MESSAGES_TO_KEEP_FULL,
     MIN_MESSAGES_FOR_COMPACTION,
-    POSTGRES_DB,
-    POSTGRES_HOST,
-    POSTGRES_PASSWORD,
-    POSTGRES_PORT,
-    POSTGRES_USER,
     QUERY_EVAL_MAX_TOKENS,
     QUERY_EVAL_MODEL,
     QUERY_EVAL_TEMPERATURE,
-    QUERY_EVAL_TIMEOUT_MS,
     RERANKER_FETCH_K,
     RERANKER_MODEL,
     RERANKER_TOP_K,
@@ -145,7 +137,6 @@ from config import (
     RETRIEVER_ALPHA,
     RETRIEVER_FETCH_K,
     RETRIEVER_K,
-    RETRIEVER_SEARCH_TYPE,
     SEARCH_DEFAULTS,
     TOKEN_CHAR_RATIO,
     VECTOR_COLLECTION_NAME,

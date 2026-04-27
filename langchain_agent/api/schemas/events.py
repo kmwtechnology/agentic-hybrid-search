@@ -57,8 +57,9 @@ class ConnectionEstablished(BaseEvent):
     existing_messages: int = 0
 
 
-class ConnectionError(BaseEvent):
-    """Sent when connection fails."""
+class ConnectionErrorEvent(BaseEvent):
+    """Sent when connection fails. Renamed from ``ConnectionError`` to avoid
+    shadowing the built-in exception type."""
 
     type: Literal["connection_error"] = "connection_error"
     error: str
@@ -125,9 +126,9 @@ class QueryEvaluationEvent(BaseEvent):
         # Lexical-heavy for alpha < 0.3, balanced for 0.3-0.7, semantic-heavy for > 0.7
         if alpha < 0.3 and strategy != "lexical-heavy":
             raise ValueError(f"alpha={alpha} suggests lexical-heavy search, not '{strategy}'")
-        elif 0.3 <= alpha < 0.7 and strategy != "balanced":
+        if 0.3 <= alpha < 0.7 and strategy != "balanced":
             raise ValueError(f"alpha={alpha} suggests balanced search, not '{strategy}'")
-        elif alpha >= 0.7 and strategy != "semantic-heavy":
+        if alpha >= 0.7 and strategy != "semantic-heavy":
             raise ValueError(f"alpha={alpha} suggests semantic-heavy search, not '{strategy}'")
         return strategy
 
