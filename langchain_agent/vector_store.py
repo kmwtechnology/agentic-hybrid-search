@@ -362,8 +362,7 @@ class OpenSearchVectorStore:
 
         if field_boost:
             fields = [
-                f"{name}^{boost}" if boost != 1.0 else name
-                for name, boost in candidate_fields
+                f"{name}^{boost}" if boost != 1.0 else name for name, boost in candidate_fields
             ]
         else:
             fields = [name for name, _ in candidate_fields]

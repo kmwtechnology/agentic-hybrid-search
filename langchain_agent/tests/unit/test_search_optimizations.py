@@ -23,7 +23,6 @@ import pytest
 
 from vector_store import OpenSearchRetriever, OpenSearchVectorStore
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -279,9 +278,7 @@ class TestHybridSearchRouting:
         args = rrf.call_args.args
         assert args[-1] == {"hybrid": True, "fuzzy": False}
 
-    def test_alpha_zero_routes_to_text_search_regardless_of_hybrid_flag(
-        self, monkeypatch
-    ):
+    def test_alpha_zero_routes_to_text_search_regardless_of_hybrid_flag(self, monkeypatch):
         store = _make_store()
         text_search = MagicMock(return_value=[])
         rrf = MagicMock()
@@ -313,9 +310,7 @@ class TestHybridSearchRouting:
         monkeypatch.setattr(store, "similarity_search", sim)
         monkeypatch.setattr(store, "_text_search", text_search)
 
-        store.hybrid_search(
-            "q", k=4, fetch_k=20, alpha=1.0, optimizations={"hybrid": False}
-        )
+        store.hybrid_search("q", k=4, fetch_k=20, alpha=1.0, optimizations={"hybrid": False})
 
         text_search.assert_called_once()
         sim.assert_not_called()
@@ -605,20 +600,25 @@ class TestChatWebSocketValidation:
     re-implement the same logic here as a black-box check so the contract
     is pinned by tests."""
 
-    _ALLOWED = frozenset({
-        "hybrid", "fuzzy", "synonyms", "phonetic", "phrase_boost",
-        "field_boost", "typeahead", "reranking", "llm",
-    })
+    _ALLOWED = frozenset(
+        {
+            "hybrid",
+            "fuzzy",
+            "synonyms",
+            "phonetic",
+            "phrase_boost",
+            "field_boost",
+            "typeahead",
+            "reranking",
+            "llm",
+        }
+    )
 
     def _coerce(self, raw):
         """Mirror the WS handler's coercion to verify the contract."""
         if not isinstance(raw, dict):
             return None
-        return {
-            k: bool(v)
-            for k, v in raw.items()
-            if isinstance(k, str) and k in self._ALLOWED
-        }
+        return {k: bool(v) for k, v in raw.items() if isinstance(k, str) and k in self._ALLOWED}
 
     def test_unknown_keys_are_dropped(self):
         out = self._coerce({"hybrid": True, "evil": True, "x" * 1000: True})

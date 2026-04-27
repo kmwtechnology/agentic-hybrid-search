@@ -841,8 +841,11 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 "Try a different keyword or relax your filters."
             )
 
-        header = f"### Search results for *{user_query}*  \n*{len(documents)} products*\n\n" \
-            if user_query else f"### Search results  \n*{len(documents)} products*\n\n"
+        header = (
+            f"### Search results for *{user_query}*  \n*{len(documents)} products*\n\n"
+            if user_query
+            else f"### Search results  \n*{len(documents)} products*\n\n"
+        )
 
         rows = []
         for i, doc in enumerate(documents, 1):
@@ -996,7 +999,9 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents), default=0.0
         )
         MIN_CITATION_RELEVANCE = 0.10  # Don't cite docs below 10% relevance
-        reranker_skipped_for_citations = state.get("optimizations", {}).get("reranking", True) is False
+        reranker_skipped_for_citations = (
+            state.get("optimizations", {}).get("reranking", True) is False
+        )
 
         if reranker_skipped_for_citations or max_relevance >= MIN_CITATION_RELEVANCE:
             for i, doc in enumerate(retrieved_documents, 1):
@@ -2217,7 +2222,9 @@ Respond with JSON only. No other text."""
             return {
                 "retrieved_documents": retrieved_documents,
                 "reranker_max_score": 1.0 if not reranking_opt else 0.0,
-                "quality_gate_retried": True if not reranking_opt else state.get("quality_gate_retried", False),
+                "quality_gate_retried": (
+                    True if not reranking_opt else state.get("quality_gate_retried", False)
+                ),
                 "intent": intent,
             }
 

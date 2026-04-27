@@ -371,10 +371,19 @@ async def websocket_chat(websocket: WebSocket):
                 # the known allowlist of keys so a hostile client can't inflate
                 # checkpoint state with arbitrary JSON. Unknown keys are dropped
                 # silently. Mirror this list in optimizationsStore.ts.
-                _ALLOWED_OPTIMIZATIONS = frozenset({
-                    "hybrid", "fuzzy", "synonyms", "phonetic", "phrase_boost",
-                    "field_boost", "typeahead", "reranking", "llm",
-                })
+                _ALLOWED_OPTIMIZATIONS = frozenset(
+                    {
+                        "hybrid",
+                        "fuzzy",
+                        "synonyms",
+                        "phonetic",
+                        "phrase_boost",
+                        "field_boost",
+                        "typeahead",
+                        "reranking",
+                        "llm",
+                    }
+                )
                 raw_optimizations = data.get("optimizations")
                 msg_optimizations: Optional[Dict[str, bool]] = None
                 if isinstance(raw_optimizations, dict):
