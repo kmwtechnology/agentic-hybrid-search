@@ -4,6 +4,7 @@
  */
 
 import { useObservabilityStore } from '../../stores/observabilityStore'
+import { PipelineSummaryCard } from './PipelineSummaryCard'
 import { StepsList } from './StepsList'
 import { SearchOptimizationDetails } from './SearchOptimizationDetails'
 
@@ -36,6 +37,11 @@ export function ObservabilityPanel() {
           {/* Execution Steps */}
           <div className="mt-4">
             <StepsList />
+          </div>
+
+          {/* End-of-pipeline retrieval-quality summary */}
+          <div className="mt-4">
+            <PipelineSummaryCard />
           </div>
         </div>
       </div>

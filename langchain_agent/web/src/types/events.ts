@@ -352,6 +352,49 @@ export interface ClarificationResolvedEvent extends BaseEvent {
   user_response: string
 }
 
+// ============================================================================
+// PIPELINE QUALITY SUMMARY
+// ============================================================================
+
+export interface StageMetrics {
+  ndcg10: number
+  mrr: number
+  recall20: number
+  precision10: number
+  judged_count: number
+}
+
+export type ConfidenceLabel = 'high' | 'medium' | 'low'
+
+export interface ConfidenceProxy {
+  top1_score: number
+  score_gap: number
+  score_variance: number
+  rank_changes_count: number
+  confidence_label: ConfidenceLabel
+}
+
+export type PipelineStageName = 'bm25' | 'hybrid' | 'reranked'
+
+export interface LatencyStage {
+  stage: PipelineStageName
+  latency_ms: number
+  ndcg?: number | null
+  ndcg_lift_per_100ms?: number | null
+}
+
+export interface PipelineSummaryEvent extends BaseEvent {
+  type: 'pipeline_summary'
+  has_ground_truth: boolean
+  query: string
+  optimizations: Record<string, boolean>
+  bm25?: StageMetrics | null
+  hybrid?: StageMetrics | null
+  reranked?: StageMetrics | null
+  confidence?: ConfidenceProxy | null
+  latency: LatencyStage[]
+}
+
 // Union type of all events
 export type AgentEvent =
   | ConnectionEstablished
@@ -384,6 +427,7 @@ export type AgentEvent =
   | ResponseImprovementEvent
   | AgentCompleteEvent
   | AgentErrorEvent
+  | PipelineSummaryEvent
   | TokenBudgetEvent
   | CacheHitEvent
   | ConfidenceScoreEvent

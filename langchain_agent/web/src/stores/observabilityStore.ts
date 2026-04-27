@@ -9,6 +9,7 @@ import type {
   NodeName,
   NodeStatus,
   ObservabilityStep,
+  PipelineSummaryEvent,
   QueryEvaluationEvent,
   DocumentGradingSummaryEvent,
   ResponseGradingEvent,
@@ -38,6 +39,7 @@ interface ObservabilityState {
   rerankedDocuments: RerankedDocument[]
   documentGradingSummary: DocumentGradingSummaryEvent | null
   responseGrading: ResponseGradingEvent | null
+  pipelineSummary: PipelineSummaryEvent | null
 
   // Search status for interim messages ('idle' | 'running' | 'done')
   searchStatus: 'idle' | 'running' | 'done'
@@ -77,6 +79,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
   rerankedDocuments: [],
   documentGradingSummary: null,
   responseGrading: null,
+  pipelineSummary: null,
   searchStatus: 'idle',
   rerankerStatus: 'idle',
   searchProgressMessage: null,
@@ -167,6 +170,10 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
 
       case 'response_grading':
         set({ responseGrading: event as ResponseGradingEvent })
+        break
+
+      case 'pipeline_summary':
+        set({ pipelineSummary: event as PipelineSummaryEvent })
         break
 
       case 'search_progress':
@@ -291,6 +298,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     rerankedDocuments: [],
     documentGradingSummary: null,
     responseGrading: null,
+    pipelineSummary: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
     expandedSteps: new Set(),
