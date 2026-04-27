@@ -132,6 +132,7 @@ __all__ = [
     "ENABLE_QUERY_EVAL_CACHE",
     "QUERY_EVAL_CACHE_MAX_SIZE",
     "QUERY_EVAL_MODEL",
+    "JUDGE_MODEL",
     "QUERY_EVAL_TEMPERATURE",
     "QUERY_EVAL_MAX_TOKENS",
     # Quality gate configuration
@@ -327,6 +328,9 @@ QUERY_EVAL_CACHE_MAX_SIZE = 100
 
 # Query evaluator model settings (lightweight alpha estimator)
 QUERY_EVAL_MODEL = os.getenv("QUERY_EVAL_MODEL", "gemini-3.1-flash-lite-preview")
+# LLM-as-judge for the Pipeline Quality Summary "Generation" stage. Distinct
+# from the agent's main LLM to reduce self-preference bias.
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", "gemini-3.1-flash-lite-preview")
 QUERY_EVAL_TEMPERATURE = float(os.getenv("QUERY_EVAL_TEMPERATURE", "0"))
 QUERY_EVAL_MAX_TOKENS = int(os.getenv("QUERY_EVAL_MAX_TOKENS", "1024"))
 

@@ -382,6 +382,7 @@ async def websocket_chat(websocket: WebSocket):
                         "typeahead",
                         "reranking",
                         "llm",
+                        "llm_judge",
                     }
                 )
                 raw_optimizations = data.get("optimizations")

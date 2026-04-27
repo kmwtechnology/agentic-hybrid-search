@@ -16,6 +16,7 @@ import { SearchDetails } from './details/SearchDetails'
 import { LLMAgentDetails } from './details/LLMAgentDetails'
 import { IntentClassifierDetails } from './details/IntentClassifierDetails'
 import { SummaryDetails } from './details/SummaryDetails'
+import { LlmJudgeDetails } from './details/LlmJudgeDetails'
 import clsx from 'clsx'
 
 interface StepCardProps {
@@ -167,6 +168,9 @@ function StepDetails({ step }: { step: ObservabilityStep }) {
       const summaryEvent = step.events.find(isSummaryEvent)
       return <SummaryDetails event={summaryEvent} status={step.status} />
     }
+
+    case 'llm_judge':
+      return <LlmJudgeDetails step={step} />
 
     default:
       return (

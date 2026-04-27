@@ -464,6 +464,109 @@ class AgentErrorEvent(BaseEvent):
 
 
 # ============================================================================
+# PIPELINE QUALITY SUMMARY (offline IR metrics + cost-benefit framing)
+# ============================================================================
+
+
+class StageMetrics(BaseModel):
+    """Offline IR metrics for a single retrieval stage."""
+
+    ndcg10: float
+    mrr: float
+    recall20: float
+    precision10: float
+    judged_count: int  # how many returned items had a ground-truth judgment
+
+
+class LatencyStage(BaseModel):
+    """One row of the per-stage latency / lift table."""
+
+    stage: Literal["stock_bm25", "bm25", "hybrid", "reranked"]
+    latency_ms: float
+    ndcg: Optional[float] = None
+    ndcg_lift_per_100ms: Optional[float] = None
+
+
+class ConfidenceProxy(BaseModel):
+    """Self-referential signal used when no ESCI ground truth exists."""
+
+    top1_score: float
+    score_gap: float
+    score_variance: float
+    rank_changes_count: int
+    confidence_label: Literal["high", "medium", "low"]
+
+
+class GenerationJudgment(BaseModel):
+    """LLM-as-judge result for the agent's synthesized response.
+
+    Mirrors ``judge.JudgmentResult`` in shape. Polarity is normalized so
+    ``verdict="llm_better"`` always means the synthesized response wins
+    against the deterministic raw-list baseline.
+    """
+
+    verdict: Literal["llm_better", "tied", "llm_worse"]
+    pairwise_justification: str
+    faithfulness: float
+    answer_relevance: float
+    citation_accuracy: float
+    context_utilization: float
+    hallucinations: List[str] = []
+
+
+class PipelineSummaryEvent(BaseEvent):
+    """End-of-pipeline retrieval-quality summary.
+
+    Emits two layouts:
+
+      * ``has_ground_truth=True``: ``bm25``/``hybrid``/``reranked`` are
+        populated with offline IR metrics (NDCG@10, MRR, Recall@20,
+        Precision@10) computed against ESCI judgments. The frontend
+        renders the BM25→Hybrid→Reranked progression to make the value
+        of each pipeline stage visible at a glance.
+      * ``has_ground_truth=False``: ``confidence`` carries a self-
+        referential proxy (top-1 reranker score, gap, variance, rank
+        churn, label). The card calls out that the metrics are not
+        offline-truth, so users don't conflate the two.
+
+    ``latency`` is always populated; ``ndcg_lift_per_100ms`` is only
+    filled for stages where ground truth was available.
+    """
+
+    type: Literal["pipeline_summary"] = "pipeline_summary"
+    has_ground_truth: bool
+    query: str
+    optimizations: Dict[str, bool] = {}
+
+    # Ground-truth layout. Up to four rows:
+    #   * stock_bm25 — vanilla BM25 reference (always present, ignores toggles)
+    #   * bm25      — BM25 with the user's optimization toggles applied
+    #   * hybrid    — vector + BM25 (omitted when ``hybrid:false`` toggle)
+    #   * reranked  — reranker output (omitted when ``reranking:false`` toggle)
+    stock_bm25: Optional[StageMetrics] = None
+    bm25: Optional[StageMetrics] = None
+    hybrid: Optional[StageMetrics] = None
+    reranked: Optional[StageMetrics] = None
+
+    # Fallback layout
+    confidence: Optional[ConfidenceProxy] = None
+
+    # LLM-as-judge result (only when both ``optimizations.llm`` and
+    # ``optimizations.llm_judge`` are on). Adds the "Generation" row to
+    # the card with a pairwise verdict + 4 absolute scores + hallucinations.
+    generation: Optional[GenerationJudgment] = None
+    # When auto-correction (Layer 3a) fires, ``generation`` carries the
+    # post-retry judgment and these fields carry the original (flagged)
+    # judgment + corrected response text so the UI can show before/after.
+    original_generation: Optional[GenerationJudgment] = None
+    hallucination_retry_used: bool = False
+    corrected_response: Optional[str] = None
+
+    # Latency cost/benefit framing — always present
+    latency: List[LatencyStage] = []
+
+
+# ============================================================================
 # TOKEN BUDGET EVENTS
 # ============================================================================
 
@@ -625,6 +728,7 @@ AgentEvent = (
     | ResponseImprovementEvent
     | AgentCompleteEvent
     | AgentErrorEvent
+    | PipelineSummaryEvent
     | TokenBudgetEvent
     | CacheHitEvent
     | ConfidenceScoreEvent

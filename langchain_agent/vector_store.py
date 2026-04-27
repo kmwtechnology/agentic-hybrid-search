@@ -644,6 +644,114 @@ class OpenSearchVectorStore:
             logger.error(f"Error during text search: {e}")
             return []
 
+    def bm25_only_search(
+        self,
+        query: str,
+        k: int = 20,
+        filters: Optional[List[Dict[str, Any]]] = None,
+        optimizations: Optional[Dict[str, bool]] = None,
+    ) -> List[Document]:
+        """Public BM25-only search used as the baseline for relevancy metrics.
+
+        Honors the same per-feature optimization toggles as hybrid so the
+        comparison is apples-to-apples (e.g. fuzzy + synonyms still apply
+        if they're on for the active hybrid query). The ``hybrid`` toggle
+        itself is ignored — this method is the BM25 baseline.
+        """
+        return self._text_search(query, k=k, filters=filters, optimizations=optimizations)
+
+    def stock_bm25_search(
+        self,
+        query: str,
+        k: int = 20,
+        filters: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Document]:
+        """Vanilla BM25 reference — ignores all optimization toggles.
+
+        Standard analyzer (no stemming, no synonyms), multi_match against
+        ``title`` + ``chunk_text`` only, no fuzziness, no phonetic fields,
+        no phrase boost, no field boost. This is the fixed anchor row of
+        the Pipeline Quality Summary card so users can see what their
+        BM25 toggles actually buy them on top of vanilla.
+        """
+        try:
+            filter_list = [{"term": {"collection_id": self.collection_id}}]
+            if filters:
+                filter_list.extend(filters)
+
+            body = {
+                "size": k,
+                "_source": {"excludes": ["embedding"]},
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": ["title", "chunk_text"],
+                                    "type": "best_fields",
+                                    "analyzer": "standard",
+                                }
+                            }
+                        ],
+                        "filter": filter_list,
+                    }
+                },
+            }
+
+            response = self.client.search(index=self.index_name, body=body)
+            return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
+        except Exception as e:
+            logger.error(f"Error during stock BM25 search: {e}")
+            return []
+
+    def lookup_judgments(
+        self,
+        query: str,
+        *,
+        index_name: str = "esci_judgments",
+        locale: str = "us",
+    ) -> Optional[Dict[str, float]]:
+        """Look up ESCI ground-truth judgments for ``query``.
+
+        Returns ``{product_id: relevance_score}`` when a matching query
+        exists in the judgments index, else ``None``. Matching is exact
+        on the lowercased keyword so a missing match silently fails over
+        to the self-referential confidence proxy in the UI.
+        """
+        if not query:
+            return None
+        try:
+            response = self.client.search(
+                index=index_name,
+                body={
+                    "size": 1,
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"term": {"query.keyword": query.strip().lower()}},
+                                {"term": {"locale": locale}},
+                            ]
+                        }
+                    },
+                },
+            )
+        except Exception as exc:
+            # Index may not exist yet (e.g. local dev without ingestion).
+            # Treat as a fallback signal, not an error.
+            logger.debug("Judgments lookup failed: %s", exc)
+            return None
+
+        hits = response.get("hits", {}).get("hits", [])
+        if not hits:
+            return None
+        source = hits[0].get("_source", {})
+        return {
+            entry["product_id"]: float(entry.get("relevance", 0.0))
+            for entry in source.get("judgments", [])
+            if entry.get("product_id")
+        }
+
     @staticmethod
     def _hit_to_document(hit: dict, retrieval_score: Optional[float] = None) -> Document:
         """Convert an OpenSearch hit to a LangChain Document.

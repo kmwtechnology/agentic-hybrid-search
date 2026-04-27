@@ -352,6 +352,66 @@ export interface ClarificationResolvedEvent extends BaseEvent {
   user_response: string
 }
 
+// ============================================================================
+// PIPELINE QUALITY SUMMARY
+// ============================================================================
+
+export interface StageMetrics {
+  ndcg10: number
+  mrr: number
+  recall20: number
+  precision10: number
+  judged_count: number
+}
+
+export type ConfidenceLabel = 'high' | 'medium' | 'low'
+
+export interface ConfidenceProxy {
+  top1_score: number
+  score_gap: number
+  score_variance: number
+  rank_changes_count: number
+  confidence_label: ConfidenceLabel
+}
+
+export type GenerationVerdict = 'llm_better' | 'tied' | 'llm_worse'
+
+export interface GenerationJudgment {
+  verdict: GenerationVerdict
+  pairwise_justification: string
+  faithfulness: number
+  answer_relevance: number
+  citation_accuracy: number
+  context_utilization: number
+  hallucinations: string[]
+}
+
+export type PipelineStageName = 'stock_bm25' | 'bm25' | 'hybrid' | 'reranked'
+
+export interface LatencyStage {
+  stage: PipelineStageName
+  latency_ms: number
+  ndcg?: number | null
+  ndcg_lift_per_100ms?: number | null
+}
+
+export interface PipelineSummaryEvent extends BaseEvent {
+  type: 'pipeline_summary'
+  has_ground_truth: boolean
+  query: string
+  optimizations: Record<string, boolean>
+  stock_bm25?: StageMetrics | null
+  bm25?: StageMetrics | null
+  hybrid?: StageMetrics | null
+  reranked?: StageMetrics | null
+  confidence?: ConfidenceProxy | null
+  generation?: GenerationJudgment | null
+  original_generation?: GenerationJudgment | null
+  hallucination_retry_used?: boolean
+  corrected_response?: string | null
+  latency: LatencyStage[]
+}
+
 // Union type of all events
 export type AgentEvent =
   | ConnectionEstablished
@@ -384,6 +444,7 @@ export type AgentEvent =
   | ResponseImprovementEvent
   | AgentCompleteEvent
   | AgentErrorEvent
+  | PipelineSummaryEvent
   | TokenBudgetEvent
   | CacheHitEvent
   | ConfidenceScoreEvent
@@ -434,6 +495,7 @@ export type NodeName =
   | 'agent'
   | 'intent_classifier'
   | 'summary'
+  | 'llm_judge'
 
 // Node status for UI
 export type NodeStatus = 'idle' | 'running' | 'complete' | 'error'

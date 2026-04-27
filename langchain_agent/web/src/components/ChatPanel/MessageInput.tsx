@@ -58,9 +58,19 @@ export function MessageInput() {
     [submitQuery]
   )
 
-  // Dropdown is eligible to open when input is long enough OR input is empty
-  // and we have recent searches to show.
-  const typeaheadEligible = useCallback(
+  // Dropdown is eligible to open in two distinct cases:
+  //   1. Typed input crosses TYPEAHEAD_MIN_CHARS — fires from onChange/onFocus
+  //      so the user gets live suggestions while typing.
+  //   2. Empty input + recent searches — only when the user explicitly
+  //      clicks back into the textarea (handled by onClick below).
+  // We deliberately don't open the recent-searches dropdown on programmatic
+  // focus (e.g. the auto-focus that fires after a query completes) because
+  // it surprises the user when they're scrolling other panels.
+  const typeaheadEligibleOnType = useCallback(
+    (value: string) => value.trim().length >= TYPEAHEAD_MIN_CHARS,
+    []
+  )
+  const typeaheadEligibleOnClick = useCallback(
     (value: string) => {
       const trimmed = value.trim()
       if (trimmed.length >= TYPEAHEAD_MIN_CHARS) return true
@@ -160,11 +170,12 @@ export function MessageInput() {
             value={message}
             onChange={(e) => {
               setMessage(e.target.value)
-              setShowTypeahead(typeaheadEligible(e.target.value))
+              setShowTypeahead(typeaheadEligibleOnType(e.target.value))
               setTypeaheadIndex(-1)
             }}
             onKeyDown={handleKeyDown}
-            onFocus={() => setShowTypeahead(typeaheadEligible(message))}
+            onFocus={() => setShowTypeahead(typeaheadEligibleOnType(message))}
+            onClick={() => setShowTypeahead(typeaheadEligibleOnClick(message))}
             onBlur={() => {
               // Delay closing to allow click selection (handled by onMouseDown preventDefault too).
               setTimeout(() => setShowTypeahead(false), 200)

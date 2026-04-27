@@ -42,7 +42,8 @@ export function GuidePage() {
               <li>✓ Product comparison and attribute filtering</li>
               <li>✓ Real-time streaming responses with citations</li>
               <li>✓ Conversation memory and resumption</li>
-              <li>✓ Multi-format content generation (social posts, blog articles, tutorials)</li>
+              <li>✓ Per-query search optimization toggles (9 flags) — fuzzy, synonyms, phonetic, phrase boost, field boost, hybrid, typeahead, reranker, LLM</li>
+              <li>✓ Pipeline Quality Summary card — offline NDCG/MRR/Recall@20/Precision@10 vs an ESCI ground-truth baseline, with latency cost-benefit framing</li>
               <li>✓ Full pipeline observability with real-time events</li>
             </ul>
           </div>
@@ -105,6 +106,18 @@ export function GuidePage() {
               <p className="text-sm text-gray-600">Watch the entire pipeline execute in real-time with typed events</p>
               <p className="text-xs text-gray-500 mt-1">Search → Rerank → Quality Gate → LLM, plus token-by-token streaming</p>
             </div>
+
+            <div className="border-l-4 border-indigo-500 pl-4">
+              <h4 className="font-semibold text-gray-900">Search Optimization Toggles</h4>
+              <p className="text-sm text-gray-600">Flip any of 9 search features on or off per query and watch the pipeline respond live.</p>
+              <p className="text-xs text-gray-500 mt-1">Hybrid · Fuzzy · Synonyms · Phonetic · Phrase boost · Field boost · Typeahead · Reranker · LLM. Skipped stages collapse out of the panel automatically.</p>
+            </div>
+
+            <div className="border-l-4 border-yellow-500 pl-4">
+              <h4 className="font-semibold text-gray-900">Pipeline Quality Summary</h4>
+              <p className="text-sm text-gray-600">End-of-pipeline scorecard rendered as the last card in the Observability panel.</p>
+              <p className="text-xs text-gray-500 mt-1">When the query is in ESCI: BM25 → Hybrid → Reranked NDCG@10 / MRR / Recall@20 / Precision@10 with latency lift-per-100ms. Otherwise: a self-referential confidence proxy.</p>
+            </div>
           </div>
         </div>
       ),
@@ -139,6 +152,86 @@ export function GuidePage() {
               <li className="flex gap-2"><span>📋</span> Click citations to see full product details on Amazon</li>
               <li className="flex gap-2"><span>⚙️</span> Watch the Observability panel to understand why results were ranked this way</li>
             </ul>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'search-optimizations',
+      title: '🎛️ Search Optimization Toggles',
+      content: (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            The Observability panel exposes 9 per-query toggles that flip individual search features on or off. Changes apply to the <em>next</em> query you send and the panel reflects what actually ran (skipped stages collapse).
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">hybrid</code> — vector + BM25 fusion. Off ⇒ pure BM25.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">fuzzy</code> — adds <code>fuzziness: AUTO</code> to multi_match.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">synonyms</code> — query-time synonym expansion via the <code>english_analyzer</code>.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">phonetic</code> — adds <code>title_phonetic</code> / <code>brand_phonetic</code> fields.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">phrase_boost</code> — adds the <code>title_phrase</code> field with a 2.5× boost.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">field_boost</code> — keeps per-field <code>^N</code> weights. Off ⇒ all fields equal.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">typeahead</code> — frontend autocomplete suggestions.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">reranking</code> — Gemini LLM reranker. Off ⇒ retriever order is final.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">llm</code> — agent generation. Off ⇒ deterministic markdown product list.</div>
+          </div>
+
+          <div className="bg-blue-50 border-l-4 border-blue-500 p-3 mt-4 text-sm">
+            <p className="font-semibold text-blue-900">Try this:</p>
+            <ol className="text-blue-900 list-decimal list-inside mt-1 space-y-1">
+              <li>Run "sonie headphones" with everything on — fuzzy catches the typo.</li>
+              <li>Toggle <code>fuzzy</code> off and re-run — results degrade noticeably.</li>
+              <li>Toggle <code>reranking</code> off — the Reranker step disappears from the panel and the Pipeline Quality Summary's Reranked stage drops out too.</li>
+              <li>Toggle <code>llm</code> off — agent renders raw markdown product list with retrieval scores instead of a synthesized answer.</li>
+            </ol>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Toggles persist to <code>localStorage</code> via Zustand (<code>search-optimizations</code>) so they survive reloads. Reset with the <em>Reset</em> action on the Search Optimizations card.
+          </p>
+        </div>
+      ),
+    },
+    {
+      id: 'pipeline-summary',
+      title: '📈 Pipeline Quality Summary',
+      content: (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            The last card in the Observability panel scores every retrieval against ESCI ground truth (when the query exists) or a self-referential confidence proxy (when it doesn't). It's how you tell — at a glance — whether each stage of the pipeline is earning its latency.
+          </p>
+
+          <h4 className="font-semibold text-gray-900 mt-2">Ground-truth layout</h4>
+          <p className="text-sm text-gray-600">
+            Three rows — <strong>BM25</strong>, <strong>Hybrid</strong>, <strong>Reranked</strong> — each with NDCG@10, MRR, Recall@20, Precision@10. ESCI labels are mapped to relevance:
+          </p>
+          <div className="grid grid-cols-4 gap-2 text-xs">
+            <div className="bg-emerald-50 p-2 rounded text-center"><strong>E</strong>xact = 4.0</div>
+            <div className="bg-blue-50 p-2 rounded text-center"><strong>S</strong>ubstitute = 1.0</div>
+            <div className="bg-amber-50 p-2 rounded text-center"><strong>C</strong>omplement = 0.1</div>
+            <div className="bg-gray-100 p-2 rounded text-center"><strong>I</strong>rrelevant = 0.0</div>
+          </div>
+
+          <h4 className="font-semibold text-gray-900 mt-2">Latency cost-benefit</h4>
+          <p className="text-sm text-gray-600">
+            A per-stage table with wall-clock latency and (for ground-truth queries) the marginal NDCG lift normalized to 100ms. Negative lift on the reranker row means it slowed you down without helping.
+          </p>
+
+          <h4 className="font-semibold text-gray-900 mt-2">Fallback layout</h4>
+          <p className="text-sm text-gray-600">
+            For novel queries (not in ESCI), the card shows a self-referential confidence proxy: top-1 reranker score, score gap to #2, score variance, and rank churn (top-10 positions that changed pre/post rerank). Color-coded high / medium / low chip — <em>not</em> NDCG, the card calls this out.
+          </p>
+
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-sm">
+            <p className="font-semibold text-amber-900">Enable ground-truth metrics:</p>
+            <p className="text-amber-900 mt-1">Ingest the ESCI judgments index once:</p>
+            <pre className="bg-gray-900 text-gray-100 p-2 rounded text-xs overflow-x-auto mt-1">
+              <code>cd langchain_agent{'\n'}PYTHONPATH=. python ingest_esci_judgments.py</code>
+            </pre>
+            <p className="text-amber-900 mt-1 text-xs">
+              ~97k US queries / 1.8M judgments. After ingestion, queries that match an ESCI query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout.
+            </p>
           </div>
         </div>
       ),
@@ -424,7 +517,10 @@ Server streams back:
               <li><code className="bg-gray-100 px-1">make dev</code> - Start all services</li>
               <li><code className="bg-gray-100 px-1">make dev-api</code> - Backend only</li>
               <li><code className="bg-gray-100 px-1">make dev-web</code> - Frontend only</li>
+              <li><code className="bg-gray-100 px-1">make ci</code> - Local pre-push gate (black/isort/flake8/mypy/pytest)</li>
               <li><code className="bg-gray-100 px-1">PYTHONPATH=. pytest tests/</code> - Run tests</li>
+              <li><code className="bg-gray-100 px-1">PYTHONPATH=. python ingest_esci_products.py</code> - Ingest products</li>
+              <li><code className="bg-gray-100 px-1">PYTHONPATH=. python ingest_esci_judgments.py</code> - Ingest ground-truth judgments (enables NDCG/MRR/Recall@20)</li>
             </ul>
           </div>
         </div>

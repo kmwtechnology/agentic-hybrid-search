@@ -125,5 +125,41 @@ class CustomAgentState(TypedDict, total=False):
 
     # Per-message search optimization toggles (frontend-controlled).
     # Recognized keys: hybrid, fuzzy, synonyms, phonetic, phrase_boost,
-    # field_boost, typeahead. Missing keys default to True.
+    # field_boost, typeahead, reranking, llm. Missing keys default to True.
     optimizations: Dict[str, bool]
+
+    # ------------------------------------------------------------------
+    # Pipeline Quality Summary inputs (set by retriever_node / reranker_node)
+    # ------------------------------------------------------------------
+    # Pre-rerank hybrid result list (top fetch_k) — preserved before the
+    # reranker overwrites retrieved_documents. Used to compute hybrid-stage
+    # NDCG@10/MRR/Recall@20/Precision@10 in the summary card.
+    pre_rerank_documents: List[Document]
+    # Pure BM25 baseline ranking (top fetch_k). Same query, same filters,
+    # but no vector search — used as the apples-to-apples baseline.
+    bm25_documents: List[Document]
+    # Stock/vanilla BM25 reference. Ignores all optimization toggles —
+    # standard analyzer, title + chunk_text only. Always present, gives
+    # the Pipeline Quality Summary card a fixed anchor for measuring the
+    # value of fuzzy/synonyms/phonetic/etc.
+    stock_bm25_documents: List[Document]
+    # ESCI ground-truth judgments for the user's query, looked up from
+    # the esci_judgments index. None when the query is novel; the UI
+    # falls back to the confidence proxy in that case.
+    judgments: Optional[Dict[str, float]]
+    # Per-stage wall-clock latency in milliseconds.
+    bm25_latency_ms: float
+    stock_bm25_latency_ms: float
+    retriever_latency_ms: float
+    reranker_latency_ms: float
+    # LLM-as-judge output (set by llm_judge_node when both ``llm:on`` and
+    # ``llm_judge:on`` toggles are active). Stored as a plain dict so it
+    # survives LangGraph checkpoint serialization without importing the
+    # judge module here.
+    judgment: Optional[Dict[str, object]]
+    judge_latency_ms: float
+    # Auto-correction (Layer 3a). Populated when the judge flagged
+    # hallucinations and the agent regenerated a clean response.
+    original_judgment: Optional[Dict[str, object]]
+    corrected_response: Optional[str]
+    hallucination_retry_used: bool

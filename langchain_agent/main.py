@@ -28,6 +28,7 @@ import sys
 import time
 import uuid
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import httpx
@@ -43,6 +44,7 @@ from pydantic import BaseModel
 # Import extracted modules
 from agent_state import CustomAgentState
 from doc_replacer import DocumentReplacer
+from judge import LLMJudge
 from link_verifier import LinkVerifier
 from reranker import GeminiReranker
 from vector_store import OpenSearchVectorStore
@@ -418,6 +420,10 @@ class EcommerceSearchAgent:
                 print(f"✓ Reranker warmup complete ({warmup_time:.3f}s)")
         else:
             self.reranker = None
+
+        # Lazy LLM-as-judge — only constructed when first needed (judge node
+        # only runs when user toggles llm_judge:on AND llm:on).
+        self.judge: Optional[LLMJudge] = None
 
         # Checkpointer will be created asynchronously via create_async_checkpointer()
         # This is required because AsyncPostgresSaver needs a running event loop
@@ -828,6 +834,44 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         return documents
 
     @staticmethod
+    def _build_grounded_context(documents: List[Document]) -> str:
+        """Render retrieved documents as numbered, isolated FACTS blocks.
+
+        Each block carries a hard boundary so the LLM treats facts as
+        per-product (not transferable between products). Inputs to this
+        function feed both the agent_node prompt and the llm_judge_node
+        regeneration helper, so the grounding semantics are identical.
+        """
+        if not documents:
+            return "No relevant documents were found."
+
+        blocks = []
+        sep = "═══════════════════════════════════════════════════════════"
+        for i, doc in enumerate(documents, 1):
+            title = doc.metadata.get("title", "(untitled)")
+            product_id = doc.metadata.get("product_id") or "—"
+            brand = doc.metadata.get("product_brand") or ""
+            color = doc.metadata.get("product_color") or ""
+            score = doc.metadata.get("reranker_score") or doc.metadata.get("retrieval_score") or 0.0
+
+            facts: List[str] = [f"  Title: {title}"]
+            if brand:
+                facts.append(f"  Brand: {brand}")
+            if color:
+                facts.append(f"  Color: {color}")
+            content = (doc.page_content or "").strip()
+            if content:
+                facts.append(f"  Description: {content}")
+
+            blocks.append(
+                f"{sep}\n"
+                f"[Product {i}] product_id={product_id} (relevance: {score:.3f})\n"
+                f"FACTS — only the lines below count as supported context for this product:\n"
+                + "\n".join(facts)
+            )
+        return "\n".join(blocks) + f"\n{sep}"
+
+    @staticmethod
     def _format_search_results(documents: List[Document], user_query: Optional[str]) -> str:
         """
         Render retrieved documents as a plain search-results-style markdown list.
@@ -971,18 +1015,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         # Build context from retrieved documents
         if retrieved_documents:
-            context_parts = []
-            for i, doc in enumerate(retrieved_documents, 1):
-                title = doc.metadata.get("title", "")
-                source = doc.metadata.get("source", "unknown")
-                doc_type = doc.metadata.get("doc_type", "reference")
-                score = doc.metadata.get("reranker_score", 0)
-                # Format: [Document N: Title] (doc_type, relevance: score)
-                header = f"[Document {i}: {title}]" if title else f"[Document {i}]"
-                context_parts.append(
-                    f"{header} ({doc_type}, relevance: {score:.3f})\n{doc.page_content}"
-                )
-            context = "\n\n---\n\n".join(context_parts)
+            context = self._build_grounded_context(retrieved_documents)
         else:
             context = "No relevant documents were found."
 
@@ -1134,12 +1167,16 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 INTENT: {intent.upper()}
 {intent_instruction}
 
-GENERAL INSTRUCTIONS:
-- Use only the retrieved documents above and the recent conversation context to respond; do not hallucinate product information.
-- When referencing a product, cite it descriptively (e.g., "According to the Sony WH-1000XM5 listing..." or "As shown in the product details...").
-- Do NOT cite as "Document N" — always use the actual product name or description so readers can match citations to the Sources list.
-- Always cite sources so users can verify information by reviewing the Sources section.
-- If you cannot find relevant products, explain what you searched for and offer alternative search suggestions.
+GROUNDING RULES (override creativity preferences — non-negotiable):
+1. Every factual claim about a specific product (origin / "Made in X", material, certifications like "FDA-approved" or "BPA-free", size, manufacturer claims, pricing) MUST be supported by THAT product's FACTS block above.
+2. Facts are PER-PRODUCT. If "Made in USA" appears in Product 3's FACTS but not in Product 1's FACTS, you MUST NOT attribute "Made in USA" to Product 1, even if it's the same brand or category.
+3. If a fact is not in any FACTS block, OMIT it. Do not infer from brand reputation, product category, prior knowledge, or implication.
+4. Comparison tables/summaries: every cell or claim must trace to a specific product's FACTS block. Leave cells blank rather than fabricating.
+5. When writing about a product, prefer paraphrasing its FACTS over inventing supporting language.
+
+CITATION & STYLE:
+- Cite products descriptively by name (e.g., "the Nylabone 3 Pack Puppy Chew listing"), never as "Document N".
+- If you cannot find relevant products, explain what you searched for and suggest alternative searches.
 - Keep tone professional, concise, and helpful.
 """
 
@@ -1961,6 +1998,194 @@ Respond with JSON only. No other text."""
             logger.debug(f"Could not emit event immediately: {e}, queueing instead")
             self.event_queue.append(event)
 
+    def llm_judge_node(self, state: CustomAgentState) -> Dict[str, Any]:
+        """
+        LLM-as-judge for the Pipeline Quality Summary "Generation" stage.
+
+        Compares the agent's synthesized response (whatever was just produced
+        by ``agent_node``) against the deterministic raw-list response that
+        ``optimizations.llm:false`` would have produced, and emits a
+        structured ``JudgmentResult`` with a pairwise verdict + 4 absolute
+        scores + hallucination list.
+
+        Skipped (returns ``judgment=None``) when:
+          * ``optimizations.llm_judge`` is False (per-query toggle), OR
+          * ``optimizations.llm`` is False (nothing to judge — the raw list
+            IS the response), OR
+          * ``intent == "summary"`` (no retrieval, nothing to compare), OR
+          * No retrieved documents.
+        """
+        opts = state.get("optimizations") or {}
+        llm_on = opts.get("llm", True)
+        judge_on = opts.get("llm_judge", False)
+        intent = state.get("intent", "search")
+        documents = state.get("retrieved_documents") or []
+
+        if not (llm_on and judge_on) or intent == "summary" or not documents:
+            return {"judgment": None, "judge_latency_ms": 0.0}
+
+        # Pull the agent's just-produced response from the message history.
+        llm_response = ""
+        for msg in reversed(state["messages"]):
+            if isinstance(msg, AIMessage) and msg.content and not getattr(msg, "tool_calls", None):
+                content = msg.content
+                if isinstance(content, list):
+                    text_parts = []
+                    for block in content:
+                        if isinstance(block, dict) and "text" in block:
+                            text_parts.append(block["text"])
+                    llm_response = "".join(text_parts)
+                else:
+                    llm_response = content
+                break
+
+        if not llm_response:
+            logger.debug("llm_judge_node: no agent response found, skipping judge")
+            return {"judgment": None, "judge_latency_ms": 0.0}
+
+        # Compute the deterministic baseline that llm:false would have produced.
+        query = state.get("user_query", "")
+        baseline = self._format_search_results(documents, query)
+
+        # Lazy-init the judge so users who never enable it pay no startup cost.
+        if self.judge is None:
+            from config import JUDGE_MODEL  # local import to avoid circular at module load
+
+            self.judge = LLMJudge(model_name=JUDGE_MODEL)
+
+        t0 = time.time()
+        try:
+            result = self.judge.judge(query, documents, llm_response, baseline)
+        except Exception as exc:
+            logger.warning("llm_judge_node failed: %s", exc, exc_info=True)
+            return {"judgment": None, "judge_latency_ms": (time.time() - t0) * 1000.0}
+
+        elapsed_ms = (time.time() - t0) * 1000.0
+        logger.info(
+            "llm_judge_node: verdict=%s, faithfulness=%.2f, in %.0fms",
+            result.verdict,
+            result.faithfulness,
+            elapsed_ms,
+        )
+
+        # Auto-retry path (Layer 3a). Triggered when:
+        #   - faithfulness < 0.85 AND at least one hallucination was flagged
+        #   - we haven't already retried this turn
+        # Regenerates with explicit "do not state X" instructions, re-judges,
+        # and stores BOTH judgments so the UI can show the before/after.
+        retry_eligible = (
+            result.faithfulness < 0.85
+            and len(result.hallucinations) > 0
+            and not state.get("hallucination_retry_used", False)
+        )
+        if not retry_eligible:
+            return {
+                "judgment": result.model_dump(),
+                "judge_latency_ms": elapsed_ms,
+            }
+
+        logger.info(
+            "llm_judge_node: auto-retrying — faithfulness=%.2f, %d hallucination(s)",
+            result.faithfulness,
+            len(result.hallucinations),
+        )
+        try:
+            corrected = self._regenerate_without_hallucinations(
+                query, documents, llm_response, list(result.hallucinations)
+            )
+        except Exception as exc:
+            logger.warning("Auto-retry regeneration failed: %s", exc, exc_info=True)
+            return {
+                "judgment": result.model_dump(),
+                "judge_latency_ms": elapsed_ms,
+            }
+
+        try:
+            new_baseline = self._format_search_results(documents, query)
+            new_result = self.judge.judge(query, documents, corrected, new_baseline)
+        except Exception as exc:
+            logger.warning("Auto-retry re-judge failed: %s", exc, exc_info=True)
+            return {
+                "judgment": result.model_dump(),
+                "judge_latency_ms": elapsed_ms,
+            }
+
+        total_ms = (time.time() - t0) * 1000.0
+        logger.info(
+            "llm_judge_node: retry result faithfulness=%.2f → %.2f, hallucinations %d → %d",
+            result.faithfulness,
+            new_result.faithfulness,
+            len(result.hallucinations),
+            len(new_result.hallucinations),
+        )
+        return {
+            "judgment": new_result.model_dump(),
+            "original_judgment": result.model_dump(),
+            "corrected_response": corrected,
+            "hallucination_retry_used": True,
+            "judge_latency_ms": total_ms,
+        }
+
+    def _regenerate_without_hallucinations(
+        self,
+        query: str,
+        documents: List["Document"],
+        original_response: str,
+        hallucinations: List[str],
+    ) -> str:
+        """Re-prompt the agent's LLM with explicit 'do not say X' instructions.
+
+        Used by the auto-retry path in ``llm_judge_node``. Returns the new
+        response string (no streaming, no state mutation).
+        """
+        forbidden = "\n".join(f"  - {h}" for h in hallucinations)
+        context = self._build_grounded_context(documents)
+        correction_prompt = f"""Your previous response to "{query}" contained UNSUPPORTED claims that are NOT in the retrieved product descriptions. You MUST omit them and stay strictly grounded.
+
+UNSUPPORTED CLAIMS YOU MADE (do NOT include these in the new response):
+{forbidden}
+
+PREVIOUS RESPONSE (for reference — rewrite it without the unsupported claims):
+{original_response}
+
+RETRIEVED PRODUCTS:
+{context}
+
+GROUNDING RULES (non-negotiable):
+- Every factual claim about a specific product must appear in THAT product's FACTS block above.
+- Facts are PER-PRODUCT — never transfer a fact from one product's FACTS block to another product.
+- If a fact (e.g. "Made in USA", "BPA-free", certifications, country of origin) isn't in a product's FACTS, OMIT it for that product. Do not infer.
+- Keep the helpful structure (recommendations, comparisons, summaries) but ground every detail in the FACTS blocks.
+
+Regenerate the response to the original query, removing all unsupported claims. Preserve the helpful synthesis.
+
+Original query: {query}
+"""
+        messages = [
+            SystemMessage(
+                content=(
+                    "You are a careful product-search assistant. Stay strictly grounded in "
+                    "the provided FACTS blocks. Omit any claim you cannot trace to a "
+                    "specific product's FACTS."
+                )
+            ),
+            HumanMessage(content=correction_prompt),
+        ]
+        response = self.llm.invoke(messages)
+        # Gemini may return ``content`` as a list of content blocks
+        # ([{"type": "text", "text": "..."}, ...]) — flatten to a string
+        # so downstream Pydantic models accept it.
+        content = getattr(response, "content", response)
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and "text" in block:
+                    text_parts.append(block["text"])
+                elif isinstance(block, str):
+                    text_parts.append(block)
+            return "".join(text_parts)
+        return content if isinstance(content, str) else str(content)
+
     def summary_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
         Generate a conversation summary when the user intent is to summarize history.
@@ -2111,12 +2336,65 @@ Respond with JSON only. No other text."""
             except Exception as e:
                 logger.debug(f"Could not emit vector search progress event: {e}")
 
-        # Get results
+        # Get results — run hybrid retrieval and the BM25 baseline in parallel.
+        # The BM25 baseline powers the Pipeline Quality Summary card; opensearch-py
+        # is a synchronous HTTP client that releases the GIL during I/O so two
+        # worker threads cut the wall-clock cost of the second query in half.
+        bm25_query_opts = dict(state.get("optimizations") or {})
+        bm25_query_opts["hybrid"] = False  # force BM25 for the baseline
+
+        def _hybrid_call() -> Tuple[List[Document], float]:
+            t0 = time.time()
+            docs = retriever.invoke(query)
+            return docs, (time.time() - t0) * 1000.0
+
+        def _bm25_call() -> Tuple[List[Document], float]:
+            t0 = time.time()
+            docs = self.vector_store.bm25_only_search(
+                query,
+                k=RETRIEVER_FETCH_K,
+                filters=attribute_filters,
+                optimizations=bm25_query_opts,
+            )
+            return docs, (time.time() - t0) * 1000.0
+
+        def _stock_bm25_call() -> Tuple[List[Document], float]:
+            # Vanilla BM25 reference — ignores all optimization toggles. Gives
+            # the Pipeline Quality Summary card a fixed anchor so users can
+            # see what their fuzzy/synonyms/phonetic toggles actually buy.
+            t0 = time.time()
+            docs = self.vector_store.stock_bm25_search(
+                query,
+                k=RETRIEVER_FETCH_K,
+                filters=attribute_filters,
+            )
+            return docs, (time.time() - t0) * 1000.0
+
         retrieve_start = time.time()
-        results = retriever.invoke(query)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            hybrid_future = pool.submit(_hybrid_call)
+            bm25_future = pool.submit(_bm25_call)
+            stock_future = pool.submit(_stock_bm25_call)
+            results, retriever_latency_ms = hybrid_future.result()
+            bm25_results, bm25_latency_ms = bm25_future.result()
+            stock_bm25_results, stock_bm25_latency_ms = stock_future.result()
         retrieve_elapsed = time.time() - retrieve_start
 
-        logger.info(f"Retriever: retrieved {len(results)} documents in {retrieve_elapsed:.3f}s")
+        logger.info(
+            f"Retriever: hybrid={len(results)} docs ({retriever_latency_ms:.0f}ms), "
+            f"bm25={len(bm25_results)} docs ({bm25_latency_ms:.0f}ms), "
+            f"stock_bm25={len(stock_bm25_results)} docs ({stock_bm25_latency_ms:.0f}ms), "
+            f"wall={retrieve_elapsed:.3f}s"
+        )
+
+        # Best-effort lookup of ESCI ground-truth judgments. Missing index or
+        # missing query is silently treated as "no ground truth" — the UI
+        # falls back to the confidence proxy in that case.
+        judgments = self.vector_store.lookup_judgments(query)
+        if judgments:
+            logger.info(f"Retriever: ground truth available ({len(judgments)} judged products)")
+        else:
+            logger.debug("Retriever: no ground truth for query")
 
         # Emit text search progress
         if SearchProgressEvent:
@@ -2183,6 +2461,13 @@ Respond with JSON only. No other text."""
 
         return {
             "retrieved_documents": results,
+            "pre_rerank_documents": list(results),
+            "bm25_documents": bm25_results,
+            "stock_bm25_documents": stock_bm25_results,
+            "judgments": judgments,
+            "bm25_latency_ms": bm25_latency_ms,
+            "stock_bm25_latency_ms": stock_bm25_latency_ms,
+            "retriever_latency_ms": retriever_latency_ms,
             "prior_search_documents": prior_search_documents,
             "prior_search_intent": prior_search_intent,
             "user_query": query,
@@ -2222,6 +2507,7 @@ Respond with JSON only. No other text."""
             return {
                 "retrieved_documents": retrieved_documents,
                 "reranker_max_score": 1.0 if not reranking_opt else 0.0,
+                "reranker_latency_ms": 0.0,
                 "quality_gate_retried": (
                     True if not reranking_opt else state.get("quality_gate_retried", False)
                 ),
@@ -2351,6 +2637,7 @@ Respond with JSON only. No other text."""
         return {
             "retrieved_documents": results,
             "reranker_max_score": max_score,
+            "reranker_latency_ms": rerank_elapsed * 1000.0,
             "intent": intent,  # Pass intent to quality gate
         }
 
@@ -2569,6 +2856,7 @@ Respond with JSON only. No other text."""
         workflow.add_node("reranker", self.reranker_node)
         workflow.add_node("quality_gate", self.quality_gate_node)
         workflow.add_node("agent", self.agent_node)
+        workflow.add_node("llm_judge", self.llm_judge_node)
 
         # Set entry point
         workflow.set_entry_point("intent_classifier")
@@ -2595,13 +2883,14 @@ Respond with JSON only. No other text."""
         )
 
         # Agent is the final step
-        workflow.add_edge("agent", END)
+        workflow.add_edge("agent", "llm_judge")
+        workflow.add_edge("llm_judge", END)
 
         # Compile with checkpointer
         self.app = workflow.compile(checkpointer=self.checkpointer)
 
         logger.info(
-            "Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent"
+            "Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent → llm_judge"
         )
 
     def generate_thread_id(self):
