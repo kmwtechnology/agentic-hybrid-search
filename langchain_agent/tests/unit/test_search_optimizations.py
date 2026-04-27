@@ -558,6 +558,7 @@ class TestLLMToggleFormatting:
         """When reranking is off the doc has only `retrieval_score` (raw BM25/RRF)
         — the renderer should surface it under a 'Score:' label."""
         from langchain_core.documents import Document
+
         from main import EcommerceSearchAgent
 
         docs = [
@@ -583,8 +584,9 @@ class TestLLMToggleFormatting:
         assert "snnyy" in out
 
     def test_format_handles_missing_metadata_gracefully(self):
-        from main import EcommerceSearchAgent
         from langchain_core.documents import Document
+
+        from main import EcommerceSearchAgent
 
         out = EcommerceSearchAgent._format_search_results(
             [Document(page_content="something", metadata={})],
