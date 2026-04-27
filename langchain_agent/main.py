@@ -2172,7 +2172,19 @@ Original query: {query}
             HumanMessage(content=correction_prompt),
         ]
         response = self.llm.invoke(messages)
-        return response.content if hasattr(response, "content") else str(response)
+        # Gemini may return ``content`` as a list of content blocks
+        # ([{"type": "text", "text": "..."}, ...]) — flatten to a string
+        # so downstream Pydantic models accept it.
+        content = getattr(response, "content", response)
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and "text" in block:
+                    text_parts.append(block["text"])
+                elif isinstance(block, str):
+                    text_parts.append(block)
+            return "".join(text_parts)
+        return content if isinstance(content, str) else str(content)
 
     def summary_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
