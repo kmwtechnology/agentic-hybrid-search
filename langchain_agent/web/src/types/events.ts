@@ -492,6 +492,7 @@ export type NodeName =
   | 'agent'
   | 'intent_classifier'
   | 'summary'
+  | 'llm_judge'
 
 // Node status for UI
 export type NodeStatus = 'idle' | 'running' | 'complete' | 'error'

@@ -517,6 +517,7 @@ class ObservableAgentService:
             "reranker",
             "quality_gate",
             "agent",
+            "llm_judge",
         }
         current_node: Optional[str] = None
         accumulated_output: Dict[str, Any] = {}
@@ -574,6 +575,14 @@ class ObservableAgentService:
                             or opts.get("llm", True) is False
                             or opts.get("hybrid", True) is False
                         ):
+                            skipped_nodes.add(event_name)
+                            continue
+
+                    # LLM-as-judge step is a no-op (and skipped from the panel)
+                    # when the toggle is off or LLM Response Generation is off.
+                    if event_name == "llm_judge":
+                        opts = _opts(event_data)
+                        if not opts.get("llm_judge", False) or opts.get("llm", True) is False:
                             skipped_nodes.add(event_name)
                             continue
 
