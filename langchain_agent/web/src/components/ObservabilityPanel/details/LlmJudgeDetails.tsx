@@ -60,11 +60,17 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
       )
     }
     return (
-      <div className="text-sm text-gray-500">
-        Judge result not yet available for this turn (toggles look correct).
-        If the step is complete, the PipelineSummaryEvent may have failed to
-        deliver — check the backend logs. The card below the steps will be the
-        source of truth once it arrives.
+      <div className="text-sm text-gray-500 space-y-2">
+        <p>
+          No judge result for this turn. The toggles are currently both{' '}
+          <code>llm</code> and <code>llm_judge</code> on, but the query you're
+          looking at probably ran with one of them off.
+        </p>
+        <p className="text-xs text-gray-600">
+          Send a new query — the judge runs at the end of every retrieval and
+          its result will populate this step (and the Pipeline Quality Summary
+          card below) automatically.
+        </p>
       </div>
     )
   }
