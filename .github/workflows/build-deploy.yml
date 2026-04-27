@@ -29,6 +29,13 @@ env:
   SERVICE_NAME: agentic-hybrid-search
   ARTIFACT_REGISTRY_REPO: agentic-hybrid-search
 
+# Cancel stale PR runs when a new push lands on the same branch — saves CI
+# minutes on rapid-fire pushes. Main-branch runs are NEVER cancelled so we
+# always finish a deploy after merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   unit-tests:
     name: Phase 1 - Unit Tests
@@ -247,6 +254,10 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: [unit-tests, integration-tests, lint-backend]
+    # Only build & push on main (or manual dispatch) — PRs run lint + tests
+    # only. A broken Dockerfile will be caught by the next push to main; the
+    # `make ci` gate covers the Python failures that were the common case.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     permissions:
       contents: read
       id-token: write
@@ -274,19 +285,7 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-      - name: Build Docker image (PR)
-        if: github.event_name == 'pull_request'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./langchain_agent/Dockerfile
-          push: false
-          tags: |
-            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
-            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:latest
-
       - name: Build and push Docker image (main)
-        if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v7
         with:
           context: .
