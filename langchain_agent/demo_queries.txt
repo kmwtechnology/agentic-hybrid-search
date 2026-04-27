@@ -1,0 +1,85 @@
+# Curated demo query list for the Pipeline Quality Summary card.
+#
+# All queries here are present in the ESCI judgments index AND have at least
+# one judged-relevant product in the local 10K-product sample, so the card
+# shows the ground-truth layout (BM25 → Hybrid → Reranked NDCG progression).
+#
+# Use:
+#   PYTHONPATH=. python evaluate_pipeline.py --queries-file demo_queries.txt
+#
+# Lines starting with # are comments; blank lines are skipped.
+# Queries below are sorted by story (matches the script in /guide).
+# Numbers are NDCG@10 from a baseline run on 2026-04-27 (10K-product index,
+# alpha=0.25, gemini-3.1-flash-lite-preview reranker). Yours will drift.
+
+
+# ==============================================================================
+# 🟢 Story 1: "Hybrid clearly beats BM25"
+#     The pipeline earns its latency. Best-of-stage demo material.
+# ==============================================================================
+
+# nyla bones for puppys     BM25=0.220 → Hybrid=0.444 (Δ +0.224 / +101%)
+#   Killer demo: misspellings ("nyla" vs "nylabone", "puppys" vs "puppies").
+#   Vector embeddings rescue what BM25 fumbles.
+nyla bones for puppys
+
+# projector                 BM25=0.220 → Hybrid=0.384 (Δ +0.164 / +75%)
+#   Single ambiguous noun. Vector resolves "projector" -> "video projector".
+projector
+
+# sd card                   BM25=0.139 → Hybrid=0.293 (Δ +0.154 / +111%)
+#   Acronym query — BM25 over-matches; vector understands the category.
+sd card
+
+# pre stretched canvas 10in BM25=0.359 → Hybrid=0.444 (Δ +0.085 / +24%)
+#   Multi-word descriptor with size constraint.
+pre stretched canvas 10in
+
+# magnified lighted mirror  BM25=0.409 → Hybrid=0.489 (Δ +0.080 / +20%)
+#   Adjective-heavy descriptive query. Semantic > lexical.
+magnified lighted mirror
+
+
+# ==============================================================================
+# 🟡 Story 2: "Pipeline saturated"
+#     BM25 already nails it. The reranker isn't earning its 4 seconds.
+#     Honest scorecard moment.
+# ==============================================================================
+
+# tens unit muscle stimulator   BM25=Hybrid=Reranked=0.662 (NDCG-saturated)
+#   7 of top-10 are Exact-judged at every stage. Different orderings,
+#   identical metrics — when relevance buckets collapse, NDCG can't tell.
+tens unit muscle stimulator
+
+# whisk silicone black          BM25=0.554 → Hybrid=0.560 (~flat)
+#   Attribute-heavy query; BM25 already finds the right products.
+whisk silicone black
+
+# surge protector power strip   BM25=0.444 → Hybrid=0.454 (~flat)
+#   Common-noun category query.
+surge protector power strip
+
+
+# ==============================================================================
+# 🔴 Story 3: "Hybrid hurts" — vector pulls in distractors
+#     This is why we have adaptive α per intent. Real tradeoffs.
+# ==============================================================================
+
+# weighted blanket             BM25=0.415 → Hybrid=0.344 (Δ -0.071 / -17%)
+#   Vector pulls in semantically-similar-but-wrong items. MRR also drops
+#   1.000 → 0.500: hybrid pushes the top exact match to position 2.
+weighted blanket
+
+
+# ==============================================================================
+# 🔵 Story 4: BM25 returns nothing useful
+#     Recall-poor BM25 gets bailed out by hybrid (or sometimes doesn't).
+# ==============================================================================
+
+# pants for women              BM25=0.000 → Hybrid=0.095 (from-zero lift)
+#   BM25 finds zero judged products. Hybrid surfaces something useful.
+pants for women
+
+# size 4 boys shoes            BM25=0.000 → Hybrid=0.073 (from-zero lift)
+#   Compound-attribute query; BM25 over-weights one term.
+size 4 boys shoes
