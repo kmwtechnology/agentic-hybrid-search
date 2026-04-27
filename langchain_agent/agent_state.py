@@ -158,3 +158,8 @@ class CustomAgentState(TypedDict, total=False):
     # judge module here.
     judgment: Optional[Dict[str, object]]
     judge_latency_ms: float
+    # Auto-correction (Layer 3a). Populated when the judge flagged
+    # hallucinations and the agent regenerated a clean response.
+    original_judgment: Optional[Dict[str, object]]
+    corrected_response: Optional[str]
+    hallucination_retry_used: bool

@@ -253,7 +253,13 @@ export function PipelineSummaryCard() {
             ) : (
               <ConfidenceCard summary={summary} />
             )}
-            {summary.generation && <GenerationCard judgment={summary.generation} />}
+            {summary.generation && (
+              <GenerationCard
+                judgment={summary.generation}
+                retried={!!summary.hallucination_retry_used}
+                original={summary.original_generation}
+              />
+            )}
             <LatencyTable rows={summary.latency} />
             <FootnoteText summary={summary} />
           </div>
@@ -339,7 +345,15 @@ function ConfidenceCard({ summary }: { summary: PipelineSummaryEvent }) {
   )
 }
 
-function GenerationCard({ judgment }: { judgment: GenerationJudgment }) {
+function GenerationCard({
+  judgment,
+  retried,
+  original,
+}: {
+  judgment: GenerationJudgment
+  retried?: boolean
+  original?: GenerationJudgment | null
+}) {
   const tone = VERDICT_TONE[judgment.verdict]
   return (
     <div className="space-y-2">
@@ -348,11 +362,21 @@ function GenerationCard({ judgment }: { judgment: GenerationJudgment }) {
         <span className="text-[11px] uppercase tracking-wide text-gray-400">
           Generation (LLM-as-judge)
         </span>
-        <span
-          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border whitespace-nowrap ${tone.chip}`}
-        >
-          {tone.label}
-        </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {retried && (
+            <span
+              className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border whitespace-nowrap bg-amber-900/40 text-amber-200 border-amber-700/50"
+              title={`Auto-corrected: faithfulness ${original?.faithfulness?.toFixed(2) ?? '?'} → ${judgment.faithfulness.toFixed(2)}`}
+            >
+              🔁 Auto-corrected
+            </span>
+          )}
+          <span
+            className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border whitespace-nowrap ${tone.chip}`}
+          >
+            {tone.label}
+          </span>
+        </div>
       </div>
       <div className="rounded-md border border-gray-700/50 bg-gray-800/40 p-3 space-y-2.5">
         <p className="text-xs text-gray-200 leading-snug italic break-words">

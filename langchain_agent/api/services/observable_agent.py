@@ -239,6 +239,9 @@ class ObservableAgentService:
                 "post_rerank_documents": [],
                 "judgments": None,
                 "judgment": None,
+                "original_judgment": None,
+                "corrected_response": None,
+                "hallucination_retry_used": False,
                 "bm25_latency_ms": 0.0,
                 "stock_bm25_latency_ms": 0.0,
                 "retriever_latency_ms": 0.0,
@@ -283,6 +286,9 @@ class ObservableAgentService:
                         "stock_bm25_documents",
                         "judgments",
                         "judgment",
+                        "original_judgment",
+                        "corrected_response",
+                        "hallucination_retry_used",
                         "bm25_latency_ms",
                         "stock_bm25_latency_ms",
                         "retriever_latency_ms",
@@ -459,12 +465,19 @@ class ObservableAgentService:
 
         # Generation row — built from llm_judge_node output (already a dict).
         generation: Optional[GenerationJudgment] = None
+        original_generation: Optional[GenerationJudgment] = None
         judgment_dict = pipeline_state.get("judgment")
         if judgment_dict:
             try:
                 generation = GenerationJudgment(**judgment_dict)
             except Exception as exc:  # pragma: no cover — defensive
                 logger.warning("Failed to coerce judgment dict: %s", exc)
+        original_judgment_dict = pipeline_state.get("original_judgment")
+        if original_judgment_dict:
+            try:
+                original_generation = GenerationJudgment(**original_judgment_dict)
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.warning("Failed to coerce original judgment dict: %s", exc)
 
         return PipelineSummaryEvent(
             has_ground_truth=judgments is not None,
@@ -476,6 +489,9 @@ class ObservableAgentService:
             reranked=rerank_metrics,
             confidence=confidence,
             generation=generation,
+            original_generation=original_generation,
+            hallucination_retry_used=bool(pipeline_state.get("hallucination_retry_used")),
+            corrected_response=pipeline_state.get("corrected_response"),
             latency=latency,
         )
 

@@ -555,6 +555,12 @@ class PipelineSummaryEvent(BaseEvent):
     # ``optimizations.llm_judge`` are on). Adds the "Generation" row to
     # the card with a pairwise verdict + 4 absolute scores + hallucinations.
     generation: Optional[GenerationJudgment] = None
+    # When auto-correction (Layer 3a) fires, ``generation`` carries the
+    # post-retry judgment and these fields carry the original (flagged)
+    # judgment + corrected response text so the UI can show before/after.
+    original_generation: Optional[GenerationJudgment] = None
+    hallucination_retry_used: bool = False
+    corrected_response: Optional[str] = None
 
     # Latency cost/benefit framing — always present
     latency: List[LatencyStage] = []

@@ -834,6 +834,44 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         return documents
 
     @staticmethod
+    def _build_grounded_context(documents: List[Document]) -> str:
+        """Render retrieved documents as numbered, isolated FACTS blocks.
+
+        Each block carries a hard boundary so the LLM treats facts as
+        per-product (not transferable between products). Inputs to this
+        function feed both the agent_node prompt and the llm_judge_node
+        regeneration helper, so the grounding semantics are identical.
+        """
+        if not documents:
+            return "No relevant documents were found."
+
+        blocks = []
+        sep = "═══════════════════════════════════════════════════════════"
+        for i, doc in enumerate(documents, 1):
+            title = doc.metadata.get("title", "(untitled)")
+            product_id = doc.metadata.get("product_id") or "—"
+            brand = doc.metadata.get("product_brand") or ""
+            color = doc.metadata.get("product_color") or ""
+            score = doc.metadata.get("reranker_score") or doc.metadata.get("retrieval_score") or 0.0
+
+            facts: List[str] = [f"  Title: {title}"]
+            if brand:
+                facts.append(f"  Brand: {brand}")
+            if color:
+                facts.append(f"  Color: {color}")
+            content = (doc.page_content or "").strip()
+            if content:
+                facts.append(f"  Description: {content}")
+
+            blocks.append(
+                f"{sep}\n"
+                f"[Product {i}] product_id={product_id} (relevance: {score:.3f})\n"
+                f"FACTS — only the lines below count as supported context for this product:\n"
+                + "\n".join(facts)
+            )
+        return "\n".join(blocks) + f"\n{sep}"
+
+    @staticmethod
     def _format_search_results(documents: List[Document], user_query: Optional[str]) -> str:
         """
         Render retrieved documents as a plain search-results-style markdown list.
@@ -977,18 +1015,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         # Build context from retrieved documents
         if retrieved_documents:
-            context_parts = []
-            for i, doc in enumerate(retrieved_documents, 1):
-                title = doc.metadata.get("title", "")
-                source = doc.metadata.get("source", "unknown")
-                doc_type = doc.metadata.get("doc_type", "reference")
-                score = doc.metadata.get("reranker_score", 0)
-                # Format: [Document N: Title] (doc_type, relevance: score)
-                header = f"[Document {i}: {title}]" if title else f"[Document {i}]"
-                context_parts.append(
-                    f"{header} ({doc_type}, relevance: {score:.3f})\n{doc.page_content}"
-                )
-            context = "\n\n---\n\n".join(context_parts)
+            context = self._build_grounded_context(retrieved_documents)
         else:
             context = "No relevant documents were found."
 
@@ -1140,12 +1167,16 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 INTENT: {intent.upper()}
 {intent_instruction}
 
-GENERAL INSTRUCTIONS:
-- Use only the retrieved documents above and the recent conversation context to respond; do not hallucinate product information.
-- When referencing a product, cite it descriptively (e.g., "According to the Sony WH-1000XM5 listing..." or "As shown in the product details...").
-- Do NOT cite as "Document N" — always use the actual product name or description so readers can match citations to the Sources list.
-- Always cite sources so users can verify information by reviewing the Sources section.
-- If you cannot find relevant products, explain what you searched for and offer alternative search suggestions.
+GROUNDING RULES (override creativity preferences — non-negotiable):
+1. Every factual claim about a specific product (origin / "Made in X", material, certifications like "FDA-approved" or "BPA-free", size, manufacturer claims, pricing) MUST be supported by THAT product's FACTS block above.
+2. Facts are PER-PRODUCT. If "Made in USA" appears in Product 3's FACTS but not in Product 1's FACTS, you MUST NOT attribute "Made in USA" to Product 1, even if it's the same brand or category.
+3. If a fact is not in any FACTS block, OMIT it. Do not infer from brand reputation, product category, prior knowledge, or implication.
+4. Comparison tables/summaries: every cell or claim must trace to a specific product's FACTS block. Leave cells blank rather than fabricating.
+5. When writing about a product, prefer paraphrasing its FACTS over inventing supporting language.
+
+CITATION & STYLE:
+- Cite products descriptively by name (e.g., "the Nylabone 3 Pack Puppy Chew listing"), never as "Document N".
+- If you cannot find relevant products, explain what you searched for and suggest alternative searches.
 - Keep tone professional, concise, and helpful.
 """
 
@@ -2036,10 +2067,112 @@ Respond with JSON only. No other text."""
             result.faithfulness,
             elapsed_ms,
         )
+
+        # Auto-retry path (Layer 3a). Triggered when:
+        #   - faithfulness < 0.85 AND at least one hallucination was flagged
+        #   - we haven't already retried this turn
+        # Regenerates with explicit "do not state X" instructions, re-judges,
+        # and stores BOTH judgments so the UI can show the before/after.
+        retry_eligible = (
+            result.faithfulness < 0.85
+            and len(result.hallucinations) > 0
+            and not state.get("hallucination_retry_used", False)
+        )
+        if not retry_eligible:
+            return {
+                "judgment": result.model_dump(),
+                "judge_latency_ms": elapsed_ms,
+            }
+
+        logger.info(
+            "llm_judge_node: auto-retrying — faithfulness=%.2f, %d hallucination(s)",
+            result.faithfulness,
+            len(result.hallucinations),
+        )
+        try:
+            corrected = self._regenerate_without_hallucinations(
+                query, documents, llm_response, list(result.hallucinations)
+            )
+        except Exception as exc:
+            logger.warning("Auto-retry regeneration failed: %s", exc, exc_info=True)
+            return {
+                "judgment": result.model_dump(),
+                "judge_latency_ms": elapsed_ms,
+            }
+
+        try:
+            new_baseline = self._format_search_results(documents, query)
+            new_result = self.judge.judge(query, documents, corrected, new_baseline)
+        except Exception as exc:
+            logger.warning("Auto-retry re-judge failed: %s", exc, exc_info=True)
+            return {
+                "judgment": result.model_dump(),
+                "judge_latency_ms": elapsed_ms,
+            }
+
+        total_ms = (time.time() - t0) * 1000.0
+        logger.info(
+            "llm_judge_node: retry result faithfulness=%.2f → %.2f, hallucinations %d → %d",
+            result.faithfulness,
+            new_result.faithfulness,
+            len(result.hallucinations),
+            len(new_result.hallucinations),
+        )
         return {
-            "judgment": result.model_dump(),
-            "judge_latency_ms": elapsed_ms,
+            "judgment": new_result.model_dump(),
+            "original_judgment": result.model_dump(),
+            "corrected_response": corrected,
+            "hallucination_retry_used": True,
+            "judge_latency_ms": total_ms,
         }
+
+    def _regenerate_without_hallucinations(
+        self,
+        query: str,
+        documents: List["Document"],
+        original_response: str,
+        hallucinations: List[str],
+    ) -> str:
+        """Re-prompt the agent's LLM with explicit 'do not say X' instructions.
+
+        Used by the auto-retry path in ``llm_judge_node``. Returns the new
+        response string (no streaming, no state mutation).
+        """
+        forbidden = "\n".join(f"  - {h}" for h in hallucinations)
+        context = self._build_grounded_context(documents)
+        correction_prompt = f"""Your previous response to "{query}" contained UNSUPPORTED claims that are NOT in the retrieved product descriptions. You MUST omit them and stay strictly grounded.
+
+UNSUPPORTED CLAIMS YOU MADE (do NOT include these in the new response):
+{forbidden}
+
+PREVIOUS RESPONSE (for reference — rewrite it without the unsupported claims):
+{original_response}
+
+RETRIEVED PRODUCTS:
+{context}
+
+GROUNDING RULES (non-negotiable):
+- Every factual claim about a specific product must appear in THAT product's FACTS block above.
+- Facts are PER-PRODUCT — never transfer a fact from one product's FACTS block to another product.
+- If a fact (e.g. "Made in USA", "BPA-free", certifications, country of origin) isn't in a product's FACTS, OMIT it for that product. Do not infer.
+- Keep the helpful structure (recommendations, comparisons, summaries) but ground every detail in the FACTS blocks.
+
+Regenerate the response to the original query, removing all unsupported claims. Preserve the helpful synthesis.
+
+Original query: {query}
+"""
+        messages = [
+            SystemMessage(
+                content=(
+                    "You are a careful product-search assistant. Stay strictly grounded in "
+                    "the provided FACTS blocks. Omit any claim you cannot trace to a "
+                    "specific product's FACTS."
+                )
+            ),
+            HumanMessage(content=correction_prompt),
+        ]
+        response = self.llm.invoke(messages)
+        return response.content if hasattr(response, "content") else str(response)
 
     def summary_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """

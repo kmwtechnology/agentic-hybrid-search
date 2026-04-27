@@ -406,6 +406,9 @@ export interface PipelineSummaryEvent extends BaseEvent {
   reranked?: StageMetrics | null
   confidence?: ConfidenceProxy | null
   generation?: GenerationJudgment | null
+  original_generation?: GenerationJudgment | null
+  hallucination_retry_used?: boolean
+  corrected_response?: string | null
   latency: LatencyStage[]
 }
 
