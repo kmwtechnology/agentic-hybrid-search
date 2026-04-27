@@ -2878,7 +2878,7 @@ Original query: {query}
         self.app = workflow.compile(checkpointer=self.checkpointer)
 
         logger.info(
-            "Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent"
+            "Agent graph created: intent_classifier → query_evaluator → retriever → reranker → quality_gate → agent → llm_judge"
         )
 
     def generate_thread_id(self):

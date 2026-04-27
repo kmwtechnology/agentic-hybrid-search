@@ -32,7 +32,8 @@ const DEFAULT_OPTIMIZATIONS: Optimizations = {
   typeahead: true,
   reranking: true,
   llm: true,
-  llm_judge: false,  // off by default — adds a 1-2s extra LLM call per query
+  llm_judge: true,  // on by default — extra ~1-2s per query, but the
+                    // hallucination guardrail is worth it for demo
 }
 
 interface OptimizationsState {
@@ -65,8 +66,9 @@ export const useOptimizationsStore = create<OptimizationsState>()(
     {
       name: 'search-optimizations',
       // Bump on additive flag changes:
-      //   v2 added `reranking`; v3 added `llm`; v4 added `llm_judge`.
-      version: 4,
+      //   v2 added `reranking`; v3 added `llm`; v4 added `llm_judge`;
+      //   v5 flipped llm_judge default to true.
+      version: 5,
       // Merge persisted state with current defaults so newly added flags
       // appear enabled instead of `undefined`, and unknown keys from older
       // schemas are dropped (we only keep keys that exist in the defaults).
