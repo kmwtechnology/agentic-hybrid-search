@@ -31,9 +31,11 @@ from api.schemas.events import (
     AgentCompleteEvent,
     AgentErrorEvent,
     BaseEvent,
+    ConfidenceProxy,
     ConversationContextEvent,
     HybridSearchStartEvent,
     IntentClassificationEvent,
+    LatencyStage,
     LLMReasoningChunkEvent,
     LLMReasoningStartEvent,
     LLMResponseChunkEvent,
@@ -41,18 +43,31 @@ from api.schemas.events import (
     MetricsEvent,
     NodeEndEvent,
     NodeStartEvent,
+    PipelineSummaryEvent,
     QualityGateEvent,
     QueryEvaluationEvent,
     RerankedDocument,
     RerankerResultEvent,
+    StageMetrics,
     SummaryEvent,
     ToolCallEvent,
 )
+
+# Convenience aliases — match the names used in our local helper to avoid
+# colliding with the relevancy_metrics dataclasses we also import below.
+ConfidenceProxyModel = ConfidenceProxy
+StageMetricsModel = StageMetrics
 from config import (
     ENABLE_RERANKING,
     RETRIEVER_FETCH_K,
 )
 from main import EcommerceSearchAgent
+from relevancy_metrics import (
+    compute_stage_metrics,
+    confidence_from_scores,
+    count_rank_changes,
+    latency_cost_benefit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +226,21 @@ class ObservableAgentService:
             documents_used = 0
             citations: List[Dict[str, str]] = []
 
+            # Pipeline-summary state — accumulated as state updates flow past us.
+            # Last-write-wins for each key: retriever_node sets pre_rerank/bm25/
+            # judgments/latencies, reranker_node overwrites retrieved_documents
+            # with the post-rerank list and adds reranker_latency_ms.
+            pipeline_state: Dict[str, Any] = {
+                "user_query": "",
+                "pre_rerank_documents": [],
+                "bm25_documents": [],
+                "post_rerank_documents": [],
+                "judgments": None,
+                "bm25_latency_ms": 0.0,
+                "retriever_latency_ms": 0.0,
+                "reranker_latency_ms": 0.0,
+            }
+
             # Stream through the graph
             async for event in self._astream_graph(
                 initial_state, config, emit, node_start_times, metrics
@@ -237,6 +267,22 @@ class ObservableAgentService:
 
                     if "retrieved_documents" in event:
                         documents_used = len(event["retrieved_documents"])
+                        # The reranker_node overwrites retrieved_documents with the
+                        # post-rerank list. We always store the latest seen list as
+                        # the post-rerank ranking; if the reranker is skipped this
+                        # equals the pre-rerank list (which is the right behavior).
+                        pipeline_state["post_rerank_documents"] = list(event["retrieved_documents"])
+                    for key in (
+                        "user_query",
+                        "pre_rerank_documents",
+                        "bm25_documents",
+                        "judgments",
+                        "bm25_latency_ms",
+                        "retriever_latency_ms",
+                        "reranker_latency_ms",
+                    ):
+                        if key in event and event[key] is not None:
+                            pipeline_state[key] = event[key]
                     if "citations" in event and isinstance(event["citations"], list):
                         citations = event["citations"]
 
@@ -281,6 +327,15 @@ class ObservableAgentService:
                 )
             )
 
+            # Emit Pipeline Quality Summary — last card the UI renders.
+            # Best-effort; never blocks the user response on metric failure.
+            try:
+                summary = self._build_pipeline_summary(pipeline_state, optimizations or {})
+                if summary is not None:
+                    await emit(summary)
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.warning("Failed to build PipelineSummaryEvent: %s", exc, exc_info=True)
+
             return final_response
 
         except Exception as e:
@@ -291,6 +346,98 @@ class ObservableAgentService:
                 )
             )
             return None
+
+    def _build_pipeline_summary(
+        self,
+        pipeline_state: Dict[str, Any],
+        optimizations: Dict[str, bool],
+    ) -> Optional[PipelineSummaryEvent]:
+        """Build the end-of-pipeline retrieval-quality summary.
+
+        Returns ``None`` when the request didn't trigger retrieval at all
+        (e.g. summary intent), so the UI doesn't render an empty card.
+
+        When ESCI ground truth is available, populates per-stage IR
+        metrics (BM25 / hybrid / reranked) and computes the cost-benefit
+        latency table. Otherwise emits the self-referential confidence
+        proxy from the reranker score distribution.
+        """
+        pre_rerank = pipeline_state.get("pre_rerank_documents") or []
+        bm25_docs = pipeline_state.get("bm25_documents") or []
+        post_rerank = pipeline_state.get("post_rerank_documents") or []
+        if not pre_rerank and not bm25_docs and not post_rerank:
+            return None
+
+        query = pipeline_state.get("user_query") or ""
+        judgments = pipeline_state.get("judgments")
+
+        bm25_latency = float(pipeline_state.get("bm25_latency_ms") or 0.0)
+        # Hybrid stage's "incremental" latency is the part not already paid by
+        # BM25 (they ran in parallel, so the wall-clock cost of hybrid was
+        # max(hybrid, bm25)). Use the raw retriever_latency_ms — it represents
+        # what the hybrid stage would cost on its own.
+        hybrid_latency = float(pipeline_state.get("retriever_latency_ms") or 0.0)
+        rerank_latency = float(pipeline_state.get("reranker_latency_ms") or 0.0)
+
+        bm25_ids = [doc.metadata.get("product_id", "") for doc in bm25_docs]
+        hybrid_ids = [doc.metadata.get("product_id", "") for doc in pre_rerank]
+        rerank_ids = [doc.metadata.get("product_id", "") for doc in post_rerank]
+
+        bm25_metrics = hybrid_metrics = rerank_metrics = None
+        bm25_ndcg = hybrid_ndcg = rerank_ndcg = None
+        confidence = None
+
+        if judgments:
+            # Ground-truth layout: compute IR metrics for each stage we have.
+            if bm25_ids:
+                stage = compute_stage_metrics(bm25_ids, judgments)
+                bm25_metrics = StageMetricsModel(**stage.to_dict())
+                bm25_ndcg = stage.ndcg10
+            if hybrid_ids:
+                stage = compute_stage_metrics(hybrid_ids, judgments)
+                hybrid_metrics = StageMetricsModel(**stage.to_dict())
+                hybrid_ndcg = stage.ndcg10
+            if rerank_ids and rerank_latency > 0:
+                stage = compute_stage_metrics(rerank_ids, judgments)
+                rerank_metrics = StageMetricsModel(**stage.to_dict())
+                rerank_ndcg = stage.ndcg10
+        else:
+            # Fallback: use reranker scores (post-rerank) when available, else
+            # fall back to retrieval scores from the pre-rerank stage.
+            scores: List[float] = []
+            for doc in post_rerank:
+                score = doc.metadata.get("reranker_score")
+                if score is not None:
+                    scores.append(float(score))
+            if not scores:
+                for doc in pre_rerank:
+                    score = doc.metadata.get("retrieval_score")
+                    if score is not None:
+                        scores.append(float(score))
+            rank_changes = count_rank_changes(hybrid_ids, rerank_ids, k=10)
+            proxy = confidence_from_scores(scores, rank_changes_count=rank_changes)
+            confidence = ConfidenceProxyModel(**proxy.to_dict())
+
+        latency_rows = latency_cost_benefit(
+            bm25_latency,
+            hybrid_latency,
+            rerank_latency,
+            bm25_ndcg=bm25_ndcg,
+            hybrid_ndcg=hybrid_ndcg,
+            rerank_ndcg=rerank_ndcg,
+        )
+        latency = [LatencyStage(**row) for row in latency_rows]
+
+        return PipelineSummaryEvent(
+            has_ground_truth=judgments is not None,
+            query=query,
+            optimizations=optimizations,
+            bm25=bm25_metrics,
+            hybrid=hybrid_metrics,
+            reranked=rerank_metrics,
+            confidence=confidence,
+            latency=latency,
+        )
 
     async def _emit_queued_events(self, emit: EmitCallback) -> None:
         """

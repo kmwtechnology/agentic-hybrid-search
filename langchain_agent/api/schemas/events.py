@@ -464,6 +464,77 @@ class AgentErrorEvent(BaseEvent):
 
 
 # ============================================================================
+# PIPELINE QUALITY SUMMARY (offline IR metrics + cost-benefit framing)
+# ============================================================================
+
+
+class StageMetrics(BaseModel):
+    """Offline IR metrics for a single retrieval stage."""
+
+    ndcg10: float
+    mrr: float
+    recall20: float
+    precision10: float
+    judged_count: int  # how many returned items had a ground-truth judgment
+
+
+class LatencyStage(BaseModel):
+    """One row of the per-stage latency / lift table."""
+
+    stage: Literal["bm25", "hybrid", "reranked"]
+    latency_ms: float
+    ndcg: Optional[float] = None
+    ndcg_lift_per_100ms: Optional[float] = None
+
+
+class ConfidenceProxy(BaseModel):
+    """Self-referential signal used when no ESCI ground truth exists."""
+
+    top1_score: float
+    score_gap: float
+    score_variance: float
+    rank_changes_count: int
+    confidence_label: Literal["high", "medium", "low"]
+
+
+class PipelineSummaryEvent(BaseEvent):
+    """End-of-pipeline retrieval-quality summary.
+
+    Emits two layouts:
+
+      * ``has_ground_truth=True``: ``bm25``/``hybrid``/``reranked`` are
+        populated with offline IR metrics (NDCG@10, MRR, Recall@20,
+        Precision@10) computed against ESCI judgments. The frontend
+        renders the BM25→Hybrid→Reranked progression to make the value
+        of each pipeline stage visible at a glance.
+      * ``has_ground_truth=False``: ``confidence`` carries a self-
+        referential proxy (top-1 reranker score, gap, variance, rank
+        churn, label). The card calls out that the metrics are not
+        offline-truth, so users don't conflate the two.
+
+    ``latency`` is always populated; ``ndcg_lift_per_100ms`` is only
+    filled for stages where ground truth was available.
+    """
+
+    type: Literal["pipeline_summary"] = "pipeline_summary"
+    has_ground_truth: bool
+    query: str
+    optimizations: Dict[str, bool] = {}
+
+    # Ground-truth layout (one of these three may be None when the stage
+    # didn't run — e.g., reranker disabled).
+    bm25: Optional[StageMetrics] = None
+    hybrid: Optional[StageMetrics] = None
+    reranked: Optional[StageMetrics] = None
+
+    # Fallback layout
+    confidence: Optional[ConfidenceProxy] = None
+
+    # Latency cost/benefit framing — always present
+    latency: List[LatencyStage] = []
+
+
+# ============================================================================
 # TOKEN BUDGET EVENTS
 # ============================================================================
 
@@ -625,6 +696,7 @@ AgentEvent = (
     | ResponseImprovementEvent
     | AgentCompleteEvent
     | AgentErrorEvent
+    | PipelineSummaryEvent
     | TokenBudgetEvent
     | CacheHitEvent
     | ConfidenceScoreEvent
