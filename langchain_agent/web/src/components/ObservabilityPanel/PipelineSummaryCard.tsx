@@ -96,9 +96,11 @@ const CONFIDENCE_TONE: Record<ConfidenceLabel, { dot: string; chip: string; text
 
 function MetricCell({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="flex flex-col gap-0.5 text-center">
-      <span className="text-[11px] uppercase tracking-wide text-gray-400">{label}</span>
-      <span className="font-mono text-sm text-gray-100" title={hint}>
+    <div className="flex flex-col gap-0.5 text-center min-w-0">
+      <span className="text-[10px] uppercase tracking-wide text-gray-400 truncate" title={hint}>
+        {label}
+      </span>
+      <span className="font-mono text-sm text-gray-100 tabular-nums" title={hint}>
         {value}
       </span>
     </div>
@@ -116,21 +118,29 @@ function StageRow({
 }) {
   if (!stage) return null
   return (
-    <div className="grid grid-cols-[8rem_repeat(4,1fr)_auto] items-center gap-3 px-3 py-2 rounded-md bg-gray-800/40 border border-gray-700/50">
-      <span className="text-sm text-gray-100 font-medium flex items-center gap-1.5">
-        {name}
-        {badge}
-      </span>
-      <MetricCell label="NDCG@10" value={fmt(stage.ndcg10, 3)} />
-      <MetricCell label="MRR" value={fmt(stage.mrr, 3)} />
-      <MetricCell label="Recall@20" value={fmt(stage.recall20, 3)} />
-      <MetricCell label="P@10" value={fmt(stage.precision10, 3)} />
-      <span
-        className="text-[10px] uppercase tracking-wide text-gray-500"
-        title={`${stage.judged_count} of the returned items had a ground-truth ESCI judgment`}
-      >
-        {stage.judged_count}/10 judged
-      </span>
+    <div className="px-3 py-2 rounded-md bg-gray-800/40 border border-gray-700/50 space-y-1.5">
+      {/* Title row — name + degradation badge on the left, judged-count chip on
+          the right. flex-wrap so they stack on very narrow panels. */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-sm font-medium text-gray-100 flex items-center gap-1.5">
+          {name}
+          {badge}
+        </span>
+        <span
+          className="text-[10px] uppercase tracking-wide text-gray-500 whitespace-nowrap"
+          title={`${stage.judged_count} of the top-10 returned items had a ground-truth ESCI judgment`}
+        >
+          {stage.judged_count}/10 judged
+        </span>
+      </div>
+      {/* Metrics row — 4 evenly-sized cells. min-w-0 on the cells lets long
+          numbers shrink with ellipsis instead of overflowing the card. */}
+      <div className="grid grid-cols-4 gap-2">
+        <MetricCell label="NDCG@10" value={fmt(stage.ndcg10, 3)} />
+        <MetricCell label="MRR" value={fmt(stage.mrr, 3)} />
+        <MetricCell label="R@20" value={fmt(stage.recall20, 3)} hint="Recall@20" />
+        <MetricCell label="P@10" value={fmt(stage.precision10, 3)} hint="Precision@10" />
+      </div>
     </div>
   )
 }
@@ -142,17 +152,17 @@ function LatencyTable({ rows }: { rows: LatencyStage[] }) {
       <div className="text-[11px] uppercase tracking-wide text-gray-400 px-1">
         Latency cost-benefit
       </div>
-      <div className="rounded-md border border-gray-700/50 overflow-hidden">
-        <table className="w-full text-xs">
+      <div className="rounded-md border border-gray-700/50 overflow-x-auto">
+        <table className="w-full text-xs table-fixed">
           <thead className="bg-gray-800/60 text-gray-400">
             <tr>
-              <th className="text-left px-3 py-1.5 font-normal">Stage</th>
-              <th className="text-right px-3 py-1.5 font-normal">Latency</th>
+              <th className="text-left px-2 py-1.5 font-normal w-[44%]">Stage</th>
+              <th className="text-right px-2 py-1.5 font-normal w-[18%]">Latency</th>
               {hasGroundTruth && (
                 <>
-                  <th className="text-right px-3 py-1.5 font-normal">NDCG</th>
+                  <th className="text-right px-2 py-1.5 font-normal w-[18%]">NDCG</th>
                   <th
-                    className="text-right px-3 py-1.5 font-normal"
+                    className="text-right px-2 py-1.5 font-normal w-[20%]"
                     title="Marginal NDCG lift per 100ms vs the previous stage"
                   >
                     Lift / 100ms
@@ -164,17 +174,19 @@ function LatencyTable({ rows }: { rows: LatencyStage[] }) {
           <tbody className="bg-gray-900/40">
             {rows.map((row) => (
               <tr key={row.stage} className="border-t border-gray-700/40">
-                <td className="px-3 py-1.5 text-gray-200">{STAGE_LABEL[row.stage]}</td>
-                <td className="px-3 py-1.5 text-right font-mono text-gray-300">
+                <td className="px-2 py-1.5 text-gray-200 truncate" title={STAGE_LABEL[row.stage]}>
+                  {STAGE_LABEL[row.stage]}
+                </td>
+                <td className="px-2 py-1.5 text-right font-mono text-gray-300 tabular-nums">
                   {fmtMs(row.latency_ms)}
                 </td>
                 {hasGroundTruth && (
                   <>
-                    <td className="px-3 py-1.5 text-right font-mono text-gray-300">
+                    <td className="px-2 py-1.5 text-right font-mono text-gray-300 tabular-nums">
                       {fmt(row.ndcg, 3)}
                     </td>
                     <td
-                      className={`px-3 py-1.5 text-right font-mono ${
+                      className={`px-2 py-1.5 text-right font-mono tabular-nums ${
                         row.ndcg_lift_per_100ms !== null &&
                         row.ndcg_lift_per_100ms !== undefined &&
                         row.ndcg_lift_per_100ms > 0
@@ -331,21 +343,24 @@ function GenerationCard({ judgment }: { judgment: GenerationJudgment }) {
   const tone = VERDICT_TONE[judgment.verdict]
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
+      {/* Title + verdict chip wrap to two lines on narrow panels. */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className="text-[11px] uppercase tracking-wide text-gray-400">
           Generation (LLM-as-judge)
         </span>
         <span
-          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border ${tone.chip}`}
+          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border whitespace-nowrap ${tone.chip}`}
         >
           {tone.label}
         </span>
       </div>
-      <div className="rounded-md border border-gray-700/50 bg-gray-800/40 p-3 space-y-2">
-        <p className="text-xs text-gray-200 leading-snug italic">
+      <div className="rounded-md border border-gray-700/50 bg-gray-800/40 p-3 space-y-2.5">
+        <p className="text-xs text-gray-200 leading-snug italic break-words">
           “{judgment.pairwise_justification}”
         </p>
-        <div className="grid grid-cols-4 gap-3">
+        {/* 2 cols by default → tighter packing on narrow panels; 4 cols at sm+
+            so wide panels still get a single row. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2">
           <MetricCell
             label="Faithful"
             value={fmt(judgment.faithfulness, 2)}
@@ -372,7 +387,7 @@ function GenerationCard({ judgment }: { judgment: GenerationJudgment }) {
             <span className="text-[11px] uppercase tracking-wide text-rose-300">
               Hallucinations flagged ({judgment.hallucinations.length})
             </span>
-            <ul className="text-xs text-rose-200/90 list-disc list-inside space-y-0.5">
+            <ul className="text-xs text-rose-200/90 list-disc list-outside ml-4 space-y-0.5 break-words">
               {judgment.hallucinations.map((h, i) => (
                 <li key={i}>{h}</li>
               ))}
