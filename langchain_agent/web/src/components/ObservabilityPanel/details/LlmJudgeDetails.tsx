@@ -36,8 +36,13 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
     //   4. fresh page load wiped the per-session pipelineSummary
     if (step?.status === 'running') {
       return (
-        <div className="text-sm text-gray-400 italic">
-          Judging in progress (typically 1–2s)…
+        <div className="text-sm text-gray-400 italic space-y-1">
+          <p>Judging in progress…</p>
+          <p className="text-xs not-italic text-gray-500">
+            Initial scoring takes ~1–2s. If hallucinations are flagged, an
+            auto-correction retry kicks in (re-prompts the agent + re-judges)
+            which can push the total to 20–30s.
+          </p>
         </div>
       )
     }
