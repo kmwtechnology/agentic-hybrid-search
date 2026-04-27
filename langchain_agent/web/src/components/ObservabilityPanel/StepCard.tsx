@@ -170,7 +170,7 @@ function StepDetails({ step }: { step: ObservabilityStep }) {
     }
 
     case 'llm_judge':
-      return <LlmJudgeDetails />
+      return <LlmJudgeDetails step={step} />
 
     default:
       return (

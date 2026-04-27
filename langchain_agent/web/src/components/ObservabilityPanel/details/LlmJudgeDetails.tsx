@@ -7,7 +7,8 @@
  */
 
 import { useObservabilityStore } from '../../../stores/observabilityStore'
-import type { GenerationJudgment } from '../../../types/events'
+import { useOptimizationsStore } from '../../../stores/optimizationsStore'
+import type { GenerationJudgment, ObservabilityStep } from '../../../types/events'
 
 function fmt(n: number, digits = 2): string {
   return n.toFixed(digits)
@@ -19,17 +20,51 @@ const VERDICT_COPY: Record<GenerationJudgment['verdict'], string> = {
   llm_worse: 'LLM judged WORSE',
 }
 
-export function LlmJudgeDetails() {
+export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
   const summary = useObservabilityStore((s) => s.pipelineSummary)
+  const optimizations = useOptimizationsStore((s) => s.optimizations)
   const judgment = summary?.generation
   const original = summary?.original_generation
   const retried = !!summary?.hallucination_retry_used
 
   if (!judgment) {
+    // The judge result hasn't surfaced. Be specific about why so the user
+    // doesn't see a misleading "skipped" message in cases like:
+    //   1. step is still running → judge is in flight
+    //   2. step finished but PipelineSummaryEvent hasn't been emitted yet
+    //   3. toggle was off when the query ran
+    //   4. fresh page load wiped the per-session pipelineSummary
+    if (step?.status === 'running') {
+      return (
+        <div className="text-sm text-gray-400 italic">
+          Judging in progress (typically 1–2s)…
+        </div>
+      )
+    }
+    const llmOn = optimizations.llm
+    const judgeOn = optimizations.llm_judge
+    if (!llmOn) {
+      return (
+        <div className="text-sm text-gray-500">
+          Judge needs <code>llm</code> on. Currently <code>llm</code> is OFF — there's
+          no synthesized response to compare against.
+        </div>
+      )
+    }
+    if (!judgeOn) {
+      return (
+        <div className="text-sm text-gray-500">
+          Judge toggle is currently OFF. Toggle <code>llm_judge</code> on in the
+          Search Optimizations card to enable the Generation row on the next query.
+        </div>
+      )
+    }
     return (
       <div className="text-sm text-gray-500">
-        Judge skipped — toggle <code>llm_judge</code> on (and ensure{' '}
-        <code>llm</code> is on) to enable the Generation row.
+        Judge result not yet available for this turn (toggles look correct).
+        If the step is complete, the PipelineSummaryEvent may have failed to
+        deliver — check the backend logs. The card below the steps will be the
+        source of truth once it arrives.
       </div>
     )
   }
