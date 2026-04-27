@@ -9,7 +9,8 @@ A production-grade LangGraph RAG agent for e-commerce product discovery. Uses Go
 - **LLM reranking** — Gemini Flash Lite scores query-product relevance 0.0–1.0.
 - **Quality gate** — retries once with α ±0.3 if max reranker score < 0.5.
 - **Real-time streaming** — token-by-token WebSocket output with full observability events.
-- Data is the Amazon ESCI / Shopping Queries Dataset.
+- **Pipeline Quality Summary** — per-turn scorecard (NDCG@10 / MRR / Recall@20 / Precision@10 against ESCI judgments, or a self-referential confidence proxy when ground truth is unavailable) with a latency cost-benefit table.
+- Data is the Amazon ESCI / Shopping Queries Dataset (products + relevance judgments).
 
 **Stack:**
 
@@ -357,6 +358,48 @@ These are surfaced in the frontend observability panel as a collapsible
 "Search Optimizations" card — see
 `web/src/components/ObservabilityPanel/SearchOptimizationDetails.tsx`.
 
+### Pipeline Quality Summary
+
+Every turn ends with a `PipelineSummaryEvent` (emitted right after
+`AgentCompleteEvent`) that powers the **Pipeline Quality Summary** card
+at the bottom of the observability panel.
+
+The retriever runs hybrid search and a BM25-only baseline in parallel via
+a 2-worker `ThreadPoolExecutor` (opensearch-py releases the GIL during
+HTTP I/O). State now carries `pre_rerank_documents`, `bm25_documents`,
+`judgments`, and per-stage latency (`bm25_latency_ms`,
+`retriever_latency_ms`, `reranker_latency_ms`).
+
+**With ESCI ground truth** — when a best-effort exact-keyword lookup
+against the `esci_judgments` index hits a known query, the card renders
+three rows (BM25 → Hybrid → Reranked) with **NDCG@10**, **MRR**,
+**Recall@20**, **Precision@10**, plus a latency cost-benefit table that
+includes a "Lift / 100ms" column. ESCI labels are mapped to numeric
+relevance: `E=4.0`, `S=1.0`, `C=0.1`, `I=0.0`.
+
+**Without ground truth** — the card falls back to a self-referential
+**confidence proxy**: `top1_score`, `score_gap` (top-1 vs top-2),
+`score_variance`, and `rank_changes_count` (rank churn between hybrid and
+reranked). These collapse to a `confidence_label` of `high`, `medium`,
+or `low`. The latency table still renders without the lift column.
+
+Implementation:
+
+- [`relevancy_metrics.py`](relevancy_metrics.py) — pure-Python (no NumPy)
+  module with `ndcg_at_k`, `mrr`, `recall_at_k`, `precision_at_k`,
+  `compute_stage_metrics`, `confidence_from_scores`,
+  `count_rank_changes`, `latency_cost_benefit`. 43 unit tests in
+  [`tests/unit/test_relevancy_metrics.py`](tests/unit/test_relevancy_metrics.py).
+- [`vector_store.py`](vector_store.py) — `bm25_only_search()` (BM25
+  baseline) and `lookup_judgments(query)` (judgments index lookup).
+- [`api/services/observable_agent.py`](api/services/observable_agent.py) —
+  accumulates pipeline state across the LangGraph stream
+  (last-write-wins) and emits the summary in `_build_pipeline_summary()`.
+  5 unit tests in
+  [`tests/unit/test_pipeline_summary_event.py`](tests/unit/test_pipeline_summary_event.py).
+- [`web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx`](web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx) —
+  the rendered card.
+
 ### Admin reindex API
 
 `POST /api/admin/reindex?reset_index=true&limit=10000` kicks off a
@@ -382,6 +425,7 @@ WebSocket:
 | `quality_gate` | pass / retry / α adjusted |
 | `llm_response_start` / `llm_response_chunk` | Token streaming |
 | `agent_complete` | Final response + citations |
+| `pipeline_summary` | Per-stage NDCG/MRR/Recall/Precision (or confidence proxy) + latency cost-benefit |
 
 Schemas in [api/schemas/events.py](api/schemas/events.py) must stay in sync
 with [web/src/types/events.ts](web/src/types/events.ts).
@@ -435,8 +479,9 @@ TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 | Classifier | `intent`, `confidence`, `user_query` |
 | Query Evaluator | `alpha`, `intent_description` |
 | Retriever | `retrieved_documents` |
-| Reranker | `reranker_max_score`, `reranked_documents` |
+| Reranker | `reranker_max_score`, `reranked_documents`, `reranker_latency_ms` |
 | Quality Gate | `quality_gate_retried`, `alpha_adjusted_value` |
+| Pipeline Summary | `pre_rerank_documents`, `bm25_documents`, `judgments`, `bm25_latency_ms`, `retriever_latency_ms` |
 | Other | `thread_id`, `current_node`, `retrieved_products`, `citations` |
 
 ---
@@ -454,6 +499,26 @@ PYTHONPATH=. python ingest_esci_products.py --stats
 ```
 
 Sample parquets are cached at `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`.
+
+### Ingest ESCI relevance judgments
+
+Powers the Pipeline Quality Summary's ground-truth metrics. Loads
+`esci/shopping_queries_dataset/shopping_queries_dataset_examples.parquet`,
+filters by locale, aggregates one document per query, and indexes into
+`esci_judgments` (~97 k US queries / ~1.8 M judgments).
+
+```bash
+PYTHONPATH=. python ingest_esci_judgments.py             # full --reset (default), us locale
+PYTHONPATH=. python ingest_esci_judgments.py --limit 5000
+PYTHONPATH=. python ingest_esci_judgments.py --locale jp
+PYTHONPATH=. python ingest_esci_judgments.py --append    # incremental, skip index reset
+PYTHONPATH=. python ingest_esci_judgments.py --stats
+```
+
+ESCI labels are mapped to numeric relevance: `E=4.0`, `S=1.0`, `C=0.1`,
+`I=0.0`. Lookups from `OpenSearchVectorStore.lookup_judgments(query)` are
+best-effort exact-keyword matches; absence is non-fatal — the summary
+falls back to the confidence proxy.
 
 ### Batch embedding via BigQuery
 
@@ -549,7 +614,8 @@ langchain_agent/
 │       ├── hooks/useRecentSearches.ts              # localStorage-backed recent-search history
 │       └── components/
 │           ├── ChatPanel/TypeaheadSuggestions.tsx  # Did you mean? / Suggestions / Recent Searches
-│           └── ObservabilityPanel/SearchOptimizationDetails.tsx  # BM25 optimization card
+│           ├── ObservabilityPanel/SearchOptimizationDetails.tsx  # BM25 optimization card
+│           └── ObservabilityPanel/PipelineSummaryCard.tsx        # Pipeline Quality Summary card
 ├── tests/                 # unit / integration / e2e (see tests/README.md)
 ├── main.py                # LangGraph agent core (~2,600 lines)
 ├── agent_state.py         # CustomAgentState TypedDict
@@ -563,7 +629,9 @@ langchain_agent/
 ├── retry_utils.py         # Tenacity decorators
 ├── logging_config.py      # structlog setup (JSON/console)
 ├── setup.py               # DB + index init + ingestion orchestration
-├── ingest_esci_products.py
+├── ingest_esci_products.py        # ESCI product ingestion
+├── ingest_esci_judgments.py       # ESCI relevance judgments → esci_judgments index
+├── relevancy_metrics.py           # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
 ├── bigquery_batch_embeddings.py   # Parallel embedding via BigQuery ML
 ├── generate_embeddings.py         # Serial embedding fallback
 ├── benchmark_search.py            # Latency benchmarks

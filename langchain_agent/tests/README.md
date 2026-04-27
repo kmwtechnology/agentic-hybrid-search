@@ -17,7 +17,9 @@ tests/
 │   │   └── test_quality_gate.py
 │   ├── test_config_validation.py
 │   ├── test_llm_streaming_content_blocks.py
-│   └── test_model_compatibility.py
+│   ├── test_model_compatibility.py
+│   ├── test_pipeline_summary_event.py
+│   └── test_relevancy_metrics.py
 │
 ├── integration/                   # Multi-component; requires services
 │   ├── test_admin_reindex.py
@@ -109,8 +111,11 @@ services — everything is mocked through `conftest.py`.
 | `test_config_validation.py` | Required env vars, value ranges, type checks |
 | `test_llm_streaming_content_blocks.py` | Streaming event emission, token assembly |
 | `test_model_compatibility.py` | Gemini model ID handling, version compatibility |
+| `test_relevancy_metrics.py` | NDCG@k / MRR / Recall@k / Precision@k, `compute_stage_metrics`, `confidence_from_scores`, `count_rank_changes`, `latency_cost_benefit` (43 tests, no NumPy) |
+| `test_pipeline_summary_event.py` | `_build_pipeline_summary` accumulation across the LangGraph stream, ground-truth vs. confidence-proxy fallback, latency table assembly (5 tests) |
 
-**Run time:** ~0.5 s. **Best for:** TDD, pre-commit, CI fast lane.
+**Run time:** ~0.5 s. ~300 unit tests total. **Best for:** TDD,
+pre-commit, CI fast lane.
 
 ### Integration (`tests/integration/`)
 

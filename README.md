@@ -40,6 +40,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
 - **Typeahead autocomplete** — `GET /api/suggest` edge-ngram prefix matching on product titles + brands with spell correction (Levenshtein + SequenceMatcher), fuzzy fallback for single-character typos, and a three-section UI (Did you mean? / Suggestions / Recent Searches)
 - **Admin reindex API** — `GET /api/admin/reindex` triggers a background ESCI re-ingestion; `GET /api/admin/reindex/status` polls progress; `GET /api/admin/health` reports index health and doc count
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase boosting, field boosting, and phonetic matching (double_metaphone via the `analysis-phonetic` plugin), displayed in the observability panel's "Search Optimizations" card
+- **Pipeline Quality Summary** — every turn ends with a per-stage scorecard. With ESCI ground truth: NDCG@10 / MRR / Recall@20 / Precision@10 across BM25 → Hybrid → Reranked, plus a latency cost-benefit table. Without ground truth: a self-referential confidence proxy (top-1 score, score gap, variance, rank churn) labeled high/medium/low
 - **Real-time streaming** — token-by-token WebSocket output with cancellation
 - **Observability panel** — live visualization of every pipeline stage
 
@@ -216,9 +217,35 @@ The web UI streams typed Pydantic events over WebSocket for every stage:
 - **Reranker** — per-document 0.0–1.0 relevance and top-K selection
 - **Quality Gate** — pass / retry / α adjusted
 - **LLM Streaming** — token-by-token output with timing
+- **Pipeline Quality Summary** — emitted after `AgentCompleteEvent`; renders the per-stage scorecard described below
 
 Event schemas live in `langchain_agent/api/schemas/events.py` and must stay
 in sync with `langchain_agent/web/src/types/events.ts`.
+
+### Pipeline Quality Summary
+
+The retriever runs hybrid + BM25-only in parallel (a 2-worker
+`ThreadPoolExecutor` — opensearch-py releases the GIL during HTTP I/O), so
+every turn produces a BM25 baseline ranking, the pre-rerank hybrid
+ranking, the post-rerank ranking, and per-stage latencies (`bm25_ms`,
+`retriever_ms`, `reranker_ms`).
+
+When ESCI ground truth exists for the query (best-effort lookup against
+the `esci_judgments` index — labels mapped E=4.0, S=1.0, C=0.1, I=0.0),
+the summary card shows real metrics per stage: **NDCG@10**, **MRR**,
+**Recall@20**, **Precision@10**, plus a latency cost-benefit table with a
+"Lift / 100ms" column.
+
+When there is no ground truth, the card falls back to a self-referential
+**confidence proxy** — top-1 reranker score, score gap (top-1 vs top-2),
+score variance, and rank-churn count between hybrid and reranked — bucketed
+into `high` / `medium` / `low`.
+
+Pure-Python metric implementations live in
+[`langchain_agent/relevancy_metrics.py`](langchain_agent/relevancy_metrics.py)
+(no NumPy). Event payload is `PipelineSummaryEvent` in
+`api/schemas/events.py`; the UI lives in
+`web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx`.
 
 ## Key Techniques
 
@@ -254,7 +281,9 @@ agentic-hybrid-search/
 │   ├── reranker.py               # GeminiReranker (Pydantic-validated scoring)
 │   ├── link_verifier.py          # URL validation w/ TTL cache
 │   ├── embedding_cache.py        # Query embedding cache
-│   ├── ingest_esci_products.py   # ESCI ingestion (deterministic sampling)
+│   ├── ingest_esci_products.py   # ESCI product ingestion (deterministic sampling)
+│   ├── ingest_esci_judgments.py  # ESCI relevance judgments → esci_judgments index
+│   ├── relevancy_metrics.py      # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
 │   ├── bigquery_batch_embeddings.py  # Parallel embedding via BigQuery ML
 │   ├── generate_embeddings.py    # Serial embedding fallback
 │   ├── benchmark_search.py       # Latency benchmarks
