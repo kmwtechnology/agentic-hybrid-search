@@ -219,3 +219,4 @@ esci/shopping_queries_dataset/esci_products_sample_[0-9]*.parquet
 esci/shopping_queries_dataset/esci_products_sample_[a-z]*.parquet
 # except the 10K
 !esci/shopping_queries_dataset/esci_products_sample_10000.parquet
+docs/Haystack-2026.md
