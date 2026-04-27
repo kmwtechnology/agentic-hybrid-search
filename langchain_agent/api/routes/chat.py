@@ -182,6 +182,14 @@ class ChatMessage(BaseModel):
         None,
         description="Conversation thread ID for resuming conversations. Format: alphanumeric, underscore, hyphen, max 64 chars. Auto-generated if omitted.",
     )
+    optimizations: Optional[Dict[str, bool]] = Field(
+        None,
+        description=(
+            "Per-feature search optimization toggles. Recognized keys: "
+            "hybrid, fuzzy, synonyms, phonetic, phrase_boost, field_boost, typeahead. "
+            "Missing keys default to true (enabled)."
+        ),
+    )
 
     @field_validator("thread_id")
     @classmethod
@@ -359,6 +367,22 @@ async def websocket_chat(websocket: WebSocket):
             if data.get("type") == "chat_message":
                 message = data.get("message", "").strip()
                 msg_thread_id = data.get("thread_id", thread_id)
+                # Validate the per-message optimization toggles. We accept only
+                # the known allowlist of keys so a hostile client can't inflate
+                # checkpoint state with arbitrary JSON. Unknown keys are dropped
+                # silently. Mirror this list in optimizationsStore.ts.
+                _ALLOWED_OPTIMIZATIONS = frozenset({
+                    "hybrid", "fuzzy", "synonyms", "phonetic", "phrase_boost",
+                    "field_boost", "typeahead", "reranking", "llm",
+                })
+                raw_optimizations = data.get("optimizations")
+                msg_optimizations: Optional[Dict[str, bool]] = None
+                if isinstance(raw_optimizations, dict):
+                    msg_optimizations = {
+                        k: bool(v)
+                        for k, v in raw_optimizations.items()
+                        if isinstance(k, str) and k in _ALLOWED_OPTIMIZATIONS
+                    }
 
                 if not message:
                     continue
@@ -374,6 +398,7 @@ async def websocket_chat(websocket: WebSocket):
                             message=message,
                             thread_id=msg_thread_id,
                             emit=emit_callback,
+                            optimizations=msg_optimizations,
                         )
                     except asyncio.CancelledError:
                         logger.info("agent_task_cancelled", thread_id=msg_thread_id)

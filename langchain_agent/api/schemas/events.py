@@ -165,6 +165,9 @@ class OpenSearchQueryEvent(BaseEvent):
         None  # Human-readable summary (e.g., "brand: Sony, color: blue")
     )
     intent: str  # intent that triggered the search
+    # Per-feature optimization toggles applied to this search (frontend-controlled).
+    # Echoed back so the observability panel can show what was actually used.
+    optimizations: Optional[Dict[str, bool]] = None
 
 
 class QualityGateEvent(BaseEvent):

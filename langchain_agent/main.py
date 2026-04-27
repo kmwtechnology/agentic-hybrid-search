@@ -836,6 +836,55 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         return documents
 
+    @staticmethod
+    def _format_search_results(documents: List[Document], user_query: Optional[str]) -> str:
+        """
+        Render retrieved documents as a plain search-results-style markdown list.
+        Used when the user has disabled LLM response generation — order reflects
+        whatever the upstream pipeline produced (reranker scores if reranking is
+        on, otherwise raw retriever order).
+        """
+        if not documents:
+            return (
+                f"No products found for **{user_query or 'your search'}**.\n\n"
+                "Try a different keyword or relax your filters."
+            )
+
+        header = f"### Search results for *{user_query}*  \n*{len(documents)} products*\n\n" \
+            if user_query else f"### Search results  \n*{len(documents)} products*\n\n"
+
+        rows = []
+        for i, doc in enumerate(documents, 1):
+            title = doc.metadata.get("title") or "(untitled product)"
+            brand = doc.metadata.get("product_brand") or doc.metadata.get("brand")
+            url = doc.metadata.get("url") or ""
+            # Prefer the reranker's relevance score; fall back to the raw
+            # OpenSearch retrieval score (BM25 / kNN / RRF) when reranking is off.
+            reranker_score = doc.metadata.get("reranker_score")
+            retrieval_score = doc.metadata.get("retrieval_score")
+            snippet = (doc.page_content or "").strip().replace("\n", " ")
+            if len(snippet) > 240:
+                snippet = snippet[:240].rstrip() + "…"
+
+            meta_bits = []
+            if brand:
+                meta_bits.append(f"**Brand:** {brand}")
+            if reranker_score is not None and reranker_score > 0:
+                meta_bits.append(f"**Reranker Score:** {reranker_score:.3f}")
+            elif retrieval_score is not None and retrieval_score > 0:
+                meta_bits.append(f"**Score:** {retrieval_score:.3f}")
+            meta_line = " · ".join(meta_bits)
+
+            heading = f"**{i}. [{title}]({url})**" if url else f"**{i}. {title}**"
+            block = [heading]
+            if meta_line:
+                block.append(meta_line)
+            if snippet:
+                block.append(snippet)
+            rows.append("\n\n".join(block))
+
+        return header + "\n\n---\n\n".join(rows)
+
     def agent_node(self, state: CustomAgentState) -> Dict[str, Any]:
         """
         Agent response generation node - generates response from retrieved documents.
@@ -900,7 +949,20 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents), default=0.0
         )
 
-        if quality_gate_retried and max_relevance < MIN_RELEVANCE_THRESHOLD:
+        # The "no info" branch only fires when the reranker actually scored the
+        # documents — if reranking is off there are no scores to evaluate and
+        # zero relevance doesn't mean low relevance. Skip this gate when the
+        # user has disabled reranking or the LLM (raw-results mode).
+        opts = state.get("optimizations", {})
+        reranker_skipped = opts.get("reranking", True) is False
+        llm_off = opts.get("llm", True) is False
+
+        if (
+            quality_gate_retried
+            and max_relevance < MIN_RELEVANCE_THRESHOLD
+            and not reranker_skipped
+            and not llm_off
+        ):
             logger.info(
                 f"Agent: retrieval failed after quality gate retry "
                 f"(max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
@@ -934,17 +996,22 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         # Only include citations if documents have meaningful relevance scores
         citations_dict: Dict[str, Tuple[str, List[int]]] = {}  # Map URL to (label, doc_indices)
 
-        # Check max relevance score - suppress citations if all docs are irrelevant
+        # Check max relevance score - suppress citations if all docs are irrelevant.
+        # When the user has disabled reranking, no doc has a `reranker_score`
+        # (defaults to 0.0), so the standard floor would suppress every citation.
+        # In that case we trust the retriever's BM25/RRF ranking and emit
+        # citations for every doc.
         max_relevance = max(
             (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents), default=0.0
         )
         MIN_CITATION_RELEVANCE = 0.10  # Don't cite docs below 10% relevance
+        reranker_skipped_for_citations = state.get("optimizations", {}).get("reranking", True) is False
 
-        if max_relevance >= MIN_CITATION_RELEVANCE:
+        if reranker_skipped_for_citations or max_relevance >= MIN_CITATION_RELEVANCE:
             for i, doc in enumerate(retrieved_documents, 1):
-                # Skip docs with very low relevance
+                # Skip docs with very low relevance, but only when scores are real
                 doc_score = doc.metadata.get("reranker_score", 0.0)
-                if doc_score < MIN_CITATION_RELEVANCE:
+                if not reranker_skipped_for_citations and doc_score < MIN_CITATION_RELEVANCE:
                     continue
 
                 url = doc.metadata.get("url")
@@ -994,6 +1061,20 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         for url, (label, indices) in citations_dict.items():
             index_prefix = ",".join(str(idx) for idx in indices)
             citations.append({"label": f"[{index_prefix}] {label}", "url": url})
+
+        # LLM-off short-circuit: render a plain search-results list (no Gemini call).
+        # Document order respects the reranker toggle — if reranking is off the
+        # documents arrive here in retriever-determined order, otherwise in
+        # reranker-scored order.
+        if state.get("optimizations", {}).get("llm", True) is False:
+            results_md = self._format_search_results(retrieved_documents, user_query)
+            logger.info(
+                f"Agent: LLM disabled, returning {len(retrieved_documents)} raw search results"
+            )
+            return {
+                "messages": [AIMessage(content=results_md)],
+                "citations": citations,
+            }
 
         # Build recent conversation context (excluding the current query)
         recent_context = self._build_recent_context(messages)
@@ -1977,6 +2058,7 @@ Respond with JSON only. No other text."""
                     filters=attribute_filters,
                     filter_summary=filter_summary,
                     intent=intent,
+                    optimizations=state.get("optimizations") or None,
                 )
                 logger.info(
                     f"Retriever: emitting OpenSearch query event - intent={intent}, filters={bool(attribute_filters)}, filter_summary={filter_summary}"
@@ -1994,7 +2076,8 @@ Respond with JSON only. No other text."""
             except Exception as e:
                 logger.debug(f"Could not emit embedding progress event: {e}")
 
-        # Create retriever with dynamic alpha and attribute filters
+        # Create retriever with dynamic alpha, attribute filters, and per-message
+        # optimization toggles (sent by the frontend via the chat WebSocket).
         retriever = self.vector_store.as_retriever(
             search_type="hybrid",
             search_kwargs={
@@ -2002,6 +2085,7 @@ Respond with JSON only. No other text."""
                 "fetch_k": RETRIEVER_FETCH_K,
                 "alpha": alpha,
                 "filters": attribute_filters,
+                "optimizations": state.get("optimizations") or {},
             },
         )
 
@@ -2106,12 +2190,26 @@ Respond with JSON only. No other text."""
         """
         retrieved_documents = state.get("retrieved_documents", [])
         intent = state.get("intent", "search")
+        # Per-message toggle from the frontend; falls back to the global env flag.
+        reranking_opt = state.get("optimizations", {}).get("reranking", True)
 
-        if not ENABLE_RERANKING or not self.reranker or not retrieved_documents:
-            logger.debug(f"Reranker: skipped (disabled or no documents, intent={intent})")
+        if (
+            not ENABLE_RERANKING
+            or not reranking_opt
+            or not self.reranker
+            or not retrieved_documents
+        ):
+            logger.debug(
+                f"Reranker: skipped (toggle={reranking_opt}, intent={intent}, "
+                f"docs={len(retrieved_documents)})"
+            )
+            # When reranking is intentionally off we mark the quality gate as
+            # already retried so it doesn't loop trying to "rescue" a missing
+            # score. Documents pass through in their retriever-determined order.
             return {
                 "retrieved_documents": retrieved_documents,
-                "reranker_max_score": 0.0,
+                "reranker_max_score": 1.0 if not reranking_opt else 0.0,
+                "quality_gate_retried": True if not reranking_opt else state.get("quality_gate_retried", False),
                 "intent": intent,
             }
 

@@ -7,7 +7,7 @@ IMPORTANT: State fields may not be initialized. Always use state.get(key, defaul
 to access optional fields safely. Only 'messages' is guaranteed to exist.
 """
 
-from typing import Annotated, List, Optional, Sequence
+from typing import Annotated, Dict, List, Optional, Sequence
 
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
@@ -122,3 +122,8 @@ class CustomAgentState(TypedDict, total=False):
     # Defaults: quality_gate_retried=False
     quality_gate_retried: bool
     quality_gate_reason: Optional[str]
+
+    # Per-message search optimization toggles (frontend-controlled).
+    # Recognized keys: hybrid, fuzzy, synonyms, phonetic, phrase_boost,
+    # field_boost, typeahead. Missing keys default to True.
+    optimizations: Dict[str, bool]

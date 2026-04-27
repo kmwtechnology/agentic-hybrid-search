@@ -153,6 +153,7 @@ class ObservableAgentService:
         message: str,
         thread_id: str,
         emit: EmitCallback,
+        optimizations: Optional[Dict[str, bool]] = None,
     ) -> Optional[str]:
         """
         Process a user message through the agent with observability.
@@ -206,6 +207,7 @@ class ObservableAgentService:
                 "alpha": DEFAULT_ALPHA,
                 "query_analysis": "",
                 "quality_gate_retried": False,  # Reset for each new message
+                "optimizations": optimizations or {},
             }
 
             config = {"configurable": {"thread_id": thread_id}}
@@ -351,11 +353,47 @@ class ObservableAgentService:
                 event_name = event.get("name", "")
                 event_data = event.get("data", {})
 
+                # Helper: read per-message optimization toggles off the input state.
+                def _opts(event_data: Dict[str, Any]) -> Dict[str, bool]:
+                    return (event_data.get("input") or {}).get("optimizations") or {}
+
                 # Handle node lifecycle events
                 if event_type == "on_chain_start":
                     if event_name == "retriever":
                         input_state = event_data.get("input", {})
                         if input_state.get("intent") == "summary":
+                            skipped_nodes.add(event_name)
+                            continue
+
+                    # query_evaluator's only used output is `alpha`. With hybrid
+                    # search forced off the retriever ignores alpha entirely,
+                    # so the evaluator step is decorative — hide it.
+                    if event_name == "query_evaluator":
+                        opts = _opts(event_data)
+                        if opts.get("hybrid", True) is False:
+                            skipped_nodes.add(event_name)
+                            continue
+
+                    # Hide the reranker step from the observability panel when
+                    # the user has toggled reranking off — the node still
+                    # short-circuits internally but emits no UI events.
+                    if event_name == "reranker":
+                        opts = _opts(event_data)
+                        if opts.get("reranking", True) is False:
+                            skipped_nodes.add(event_name)
+                            continue
+
+                    # Quality gate is a no-op when its retry-with-different-alpha
+                    # mechanism can't help: reranking off (no scores to judge),
+                    # llm off (raw results don't need quality validation), or
+                    # hybrid off (alpha is ignored so retry can't change ranking).
+                    if event_name == "quality_gate":
+                        opts = _opts(event_data)
+                        if (
+                            opts.get("reranking", True) is False
+                            or opts.get("llm", True) is False
+                            or opts.get("hybrid", True) is False
+                        ):
                             skipped_nodes.add(event_name)
                             continue
 

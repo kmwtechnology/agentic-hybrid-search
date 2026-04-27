@@ -17,6 +17,7 @@ import { History, Lightbulb, Search, SpellCheck2, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { apiGet } from '../../utils/api'
 import { useRecentSearches } from '../../hooks/useRecentSearches'
+import { useOptimizationsStore } from '../../stores/optimizationsStore'
 
 export interface Suggestion {
   title: string
@@ -175,12 +176,13 @@ export function TypeaheadSuggestions({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { recent, clear: clearRecent } = useRecentSearches()
+  const typeaheadEnabled = useOptimizationsStore((s) => s.optimizations.typeahead)
 
   const trimmed = query.trim()
   const hasQuery = trimmed.length > 0
 
   useEffect(() => {
-    if (!hasQuery || !isOpen) {
+    if (!hasQuery || !isOpen || !typeaheadEnabled) {
       setProducts([])
       setSpelling(null)
       return
@@ -231,7 +233,7 @@ export function TypeaheadSuggestions({
       controller.abort()
       clearTimeout(timer)
     }
-  }, [trimmed, hasQuery, isOpen])
+  }, [trimmed, hasQuery, isOpen, typeaheadEnabled])
 
   // Flat list of selectable rows in navigation order: spelling → products → recent.
   // Headers are visual-only and don't participate in arrow-key navigation.

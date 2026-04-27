@@ -8,7 +8,17 @@ import { FileText, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Loader2, E
 import clsx from 'clsx'
 import type { OpenSearchQueryEvent } from '../../../types/events'
 
-export function SearchDetails() {
+interface SearchDetailsProps {
+  /**
+   * Which pipeline step is rendering this view.
+   * - `retriever` (default): always show pre-rerank candidates — even after
+   *   reranking completes — so the card represents what the retriever produced.
+   * - `reranker`: show the reranked document list (post-LLM scoring).
+   */
+  mode?: 'retriever' | 'reranker'
+}
+
+export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
   const { searchCandidates, rerankedDocuments, searchStatus, rerankerStatus, steps } = useObservabilityStore()
   const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set())
 
@@ -31,8 +41,9 @@ export function SearchDetails() {
     })
   }
 
-  // If we have reranked documents, show those; otherwise show candidates
-  const documents = rerankedDocuments.length > 0 ? rerankedDocuments : null
+  // The retriever step always shows the raw search candidates (pre-rerank); the
+  // reranker step shows the reranked, scored list once available.
+  const documents = mode === 'reranker' && rerankedDocuments.length > 0 ? rerankedDocuments : null
   const candidates = searchCandidates
 
   // Show waiting message only if nothing is happening and no results
@@ -79,29 +90,39 @@ export function SearchDetails() {
         </div>
       )}
 
-      {/* Status banners for interim messages */}
-      {searchStatus === 'running' && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-sm">
-          <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
-          <span className="text-violet-300">Hybrid search query sent to postgres</span>
-        </div>
-      )}
+      {/* Search status banner — retriever card only. Label reflects whether
+          hybrid retrieval ran or whether the `hybrid` toggle forced pure BM25. */}
+      {mode === 'retriever' && (() => {
+        const hybridOn = opensearchQueryEvent?.optimizations?.hybrid !== false
+        const searchLabel = hybridOn ? 'Hybrid search' : 'Lexical (BM25) search'
+        if (searchStatus === 'running') {
+          return (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-sm">
+              <Loader2 className="w-4 h-4 text-violet-400 animate-spin" />
+              <span className="text-violet-300">{searchLabel} in progress</span>
+            </div>
+          )
+        }
+        if (searchStatus === 'done') {
+          return (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-sm">
+              <span className="text-violet-400">✓</span>
+              <span className="text-violet-300">{searchLabel} complete</span>
+            </div>
+          )
+        }
+        return null
+      })()}
 
-      {searchStatus === 'done' && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/30 text-sm">
-          <span className="text-violet-400">✓</span>
-          <span className="text-violet-300">Hybrid search complete</span>
-        </div>
-      )}
-
-      {rerankerStatus === 'running' && (
+      {/* Reranker status banner — reranker card only. */}
+      {mode === 'reranker' && rerankerStatus === 'running' && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-sm">
           <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
           <span className="text-indigo-300">Reranking results</span>
         </div>
       )}
 
-      {rerankerStatus === 'done' && (
+      {mode === 'reranker' && rerankerStatus === 'done' && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-sm">
           <span className="text-indigo-400">✓</span>
           <span className="text-indigo-300">Reranking complete</span>
@@ -183,16 +204,19 @@ export function SearchDetails() {
                     </div>
                   </div>
 
-                  {/* Score bar - Relevance Score */}
+                  {/* Score bar — raw reranker score (0.0–1.0). The fill width
+                      stays in % since CSS widths are percent-based, but the
+                      label shows the unmodified score so it lines up with the
+                      OpenSearch retrieval scores shown elsewhere. */}
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">Relevance Score</span>
-                      <span className="text-purple-400">{(doc.score * 100).toFixed(1)}%</span>
+                      <span className="text-gray-500">Reranker Score</span>
+                      <span className="text-purple-400 font-mono">{doc.score.toFixed(3)}</span>
                     </div>
                     <div className="score-bar">
                       <div
                         className="score-bar-fill bg-gradient-to-r from-purple-600 to-purple-400"
-                        style={{ width: `${doc.score * 100}%` }}
+                        style={{ width: `${Math.max(0, Math.min(1, doc.score)) * 100}%` }}
                       />
                     </div>
                   </div>
