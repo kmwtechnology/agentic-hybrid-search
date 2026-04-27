@@ -28,6 +28,7 @@ import sys
 import time
 import uuid
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import httpx
@@ -2111,12 +2112,50 @@ Respond with JSON only. No other text."""
             except Exception as e:
                 logger.debug(f"Could not emit vector search progress event: {e}")
 
-        # Get results
+        # Get results — run hybrid retrieval and the BM25 baseline in parallel.
+        # The BM25 baseline powers the Pipeline Quality Summary card; opensearch-py
+        # is a synchronous HTTP client that releases the GIL during I/O so two
+        # worker threads cut the wall-clock cost of the second query in half.
+        bm25_query_opts = dict(state.get("optimizations") or {})
+        bm25_query_opts["hybrid"] = False  # force BM25 for the baseline
+
+        def _hybrid_call() -> Tuple[List[Document], float]:
+            t0 = time.time()
+            docs = retriever.invoke(query)
+            return docs, (time.time() - t0) * 1000.0
+
+        def _bm25_call() -> Tuple[List[Document], float]:
+            t0 = time.time()
+            docs = self.vector_store.bm25_only_search(
+                query,
+                k=RETRIEVER_FETCH_K,
+                filters=attribute_filters,
+                optimizations=bm25_query_opts,
+            )
+            return docs, (time.time() - t0) * 1000.0
+
         retrieve_start = time.time()
-        results = retriever.invoke(query)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            hybrid_future = pool.submit(_hybrid_call)
+            bm25_future = pool.submit(_bm25_call)
+            results, retriever_latency_ms = hybrid_future.result()
+            bm25_results, bm25_latency_ms = bm25_future.result()
         retrieve_elapsed = time.time() - retrieve_start
 
-        logger.info(f"Retriever: retrieved {len(results)} documents in {retrieve_elapsed:.3f}s")
+        logger.info(
+            f"Retriever: hybrid={len(results)} docs ({retriever_latency_ms:.0f}ms), "
+            f"bm25={len(bm25_results)} docs ({bm25_latency_ms:.0f}ms), "
+            f"wall={retrieve_elapsed:.3f}s"
+        )
+
+        # Best-effort lookup of ESCI ground-truth judgments. Missing index or
+        # missing query is silently treated as "no ground truth" — the UI
+        # falls back to the confidence proxy in that case.
+        judgments = self.vector_store.lookup_judgments(query)
+        if judgments:
+            logger.info(f"Retriever: ground truth available ({len(judgments)} judged products)")
+        else:
+            logger.debug("Retriever: no ground truth for query")
 
         # Emit text search progress
         if SearchProgressEvent:
@@ -2183,6 +2222,11 @@ Respond with JSON only. No other text."""
 
         return {
             "retrieved_documents": results,
+            "pre_rerank_documents": list(results),
+            "bm25_documents": bm25_results,
+            "judgments": judgments,
+            "bm25_latency_ms": bm25_latency_ms,
+            "retriever_latency_ms": retriever_latency_ms,
             "prior_search_documents": prior_search_documents,
             "prior_search_intent": prior_search_intent,
             "user_query": query,
@@ -2222,6 +2266,7 @@ Respond with JSON only. No other text."""
             return {
                 "retrieved_documents": retrieved_documents,
                 "reranker_max_score": 1.0 if not reranking_opt else 0.0,
+                "reranker_latency_ms": 0.0,
                 "quality_gate_retried": (
                     True if not reranking_opt else state.get("quality_gate_retried", False)
                 ),
@@ -2351,6 +2396,7 @@ Respond with JSON only. No other text."""
         return {
             "retrieved_documents": results,
             "reranker_max_score": max_score,
+            "reranker_latency_ms": rerank_elapsed * 1000.0,
             "intent": intent,  # Pass intent to quality gate
         }
 

@@ -125,5 +125,24 @@ class CustomAgentState(TypedDict, total=False):
 
     # Per-message search optimization toggles (frontend-controlled).
     # Recognized keys: hybrid, fuzzy, synonyms, phonetic, phrase_boost,
-    # field_boost, typeahead. Missing keys default to True.
+    # field_boost, typeahead, reranking, llm. Missing keys default to True.
     optimizations: Dict[str, bool]
+
+    # ------------------------------------------------------------------
+    # Pipeline Quality Summary inputs (set by retriever_node / reranker_node)
+    # ------------------------------------------------------------------
+    # Pre-rerank hybrid result list (top fetch_k) — preserved before the
+    # reranker overwrites retrieved_documents. Used to compute hybrid-stage
+    # NDCG@10/MRR/Recall@20/Precision@10 in the summary card.
+    pre_rerank_documents: List[Document]
+    # Pure BM25 baseline ranking (top fetch_k). Same query, same filters,
+    # but no vector search — used as the apples-to-apples baseline.
+    bm25_documents: List[Document]
+    # ESCI ground-truth judgments for the user's query, looked up from
+    # the esci_judgments index. None when the query is novel; the UI
+    # falls back to the confidence proxy in that case.
+    judgments: Optional[Dict[str, float]]
+    # Per-stage wall-clock latency in milliseconds.
+    bm25_latency_ms: float
+    retriever_latency_ms: float
+    reranker_latency_ms: float
