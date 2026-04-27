@@ -145,10 +145,10 @@ function StepDetails({ step }: { step: ObservabilityStep }) {
       return <QueryEvaluatorDetails />
 
     case 'retriever':
-      return <SearchDetails />
+      return <SearchDetails mode="retriever" />
 
     case 'reranker':
-      return <SearchDetails />
+      return <SearchDetails mode="reranker" />
 
     case 'agent':
       return <LLMAgentDetails step={step} />
@@ -219,10 +219,10 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
         <div className="flex items-center justify-between">
           <span className="font-semibold text-gray-200">Max Reranker Score:</span>
           <span className={clsx(
-            'text-xs',
+            'text-xs font-mono',
             event.max_score < event.threshold ? 'text-orange-400' : 'text-green-400'
           )}>
-            {(event.max_score * 100).toFixed(1)}%
+            {event.max_score.toFixed(3)}
           </span>
         </div>
         <div className="relative h-1.5 bg-gray-700 rounded-full overflow-hidden">
@@ -237,11 +237,11 @@ function QualityGateDetails({ event }: { event?: QualityGateEvent | null }) {
           <div
             className="absolute top-0 h-full w-0.5 bg-yellow-400"
             style={{ left: `${event.threshold * 100}%` }}
-            title={`Threshold: ${(event.threshold * 100).toFixed(0)}%`}
+            title={`Threshold: ${event.threshold.toFixed(3)}`}
           />
         </div>
         <div className="flex justify-between text-xs text-gray-500">
-          <span>Threshold: {(event.threshold * 100).toFixed(0)}%</span>
+          <span className="font-mono">Threshold: {event.threshold.toFixed(3)}</span>
         </div>
       </div>
 

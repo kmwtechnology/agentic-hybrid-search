@@ -312,7 +312,74 @@ class OpenSearchVectorStore:
             fetch_k=search_kwargs.get("fetch_k", RETRIEVER_FETCH_K),
             alpha=search_kwargs.get("alpha", RETRIEVER_ALPHA),
             filters=search_kwargs.get("filters"),
+            optimizations=search_kwargs.get("optimizations"),
         )
+
+    @staticmethod
+    def _build_multi_match(
+        query: str,
+        optimizations: Optional[Dict[str, bool]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build a multi_match clause that respects per-feature optimization toggles.
+
+        Toggle semantics (all default True when key missing):
+          - phonetic: include `title_phonetic`/`brand_phonetic` fields
+          - phrase_boost: include `title_phrase` field
+          - field_boost: keep per-field `^N` weights; when False, all fields equal
+          - fuzzy: include `"fuzziness": "AUTO"` on the multi_match
+          - synonyms: keep default (`english_analyzer`); when False, force the
+            query through the `standard` analyzer to suppress query-time
+            synonym expansion (index-time tokens are unaffected)
+        """
+        opts = optimizations or {}
+        phonetic = opts.get("phonetic", True)
+        phrase_boost = opts.get("phrase_boost", True)
+        field_boost = opts.get("field_boost", True)
+        fuzzy = opts.get("fuzzy", True)
+        synonyms = opts.get("synonyms", True)
+
+        # (field_name, default_boost) — boost is dropped when field_boost is off
+        candidate_fields: List[tuple] = [
+            ("chunk_text", 1.0),
+            ("title", 3.0),
+        ]
+        if phrase_boost:
+            candidate_fields.append(("title_phrase", 2.5))
+        candidate_fields.extend(
+            [
+                ("product_brand", 2.0),
+                ("product_color", 1.5),
+            ]
+        )
+        if phonetic:
+            candidate_fields.extend(
+                [
+                    ("title_phonetic", 1.5),
+                    ("brand_phonetic", 1.5),
+                ]
+            )
+
+        if field_boost:
+            fields = [
+                f"{name}^{boost}" if boost != 1.0 else name for name, boost in candidate_fields
+            ]
+        else:
+            fields = [name for name, _ in candidate_fields]
+
+        clause: Dict[str, Any] = {
+            "query": query,
+            "fields": fields,
+            "type": "best_fields",
+            "tie_breaker": 0.3,
+        }
+        if fuzzy:
+            clause["fuzziness"] = "AUTO"
+        if not synonyms:
+            # `standard` analyzer skips the synonym_filter applied by english_analyzer
+            clause["analyzer"] = "standard"
+
+        return {"multi_match": clause}
 
     def similarity_search(self, query: str, k: int = 4) -> List[Document]:
         """
@@ -362,6 +429,7 @@ class OpenSearchVectorStore:
         fetch_k: int = 20,
         alpha: float = 0.5,
         filters: Optional[List[Dict[str, Any]]] = None,
+        optimizations: Optional[Dict[str, bool]] = None,
     ) -> List[Document]:
         """
         Hybrid search combining vector similarity and full-text search.
@@ -385,8 +453,14 @@ class OpenSearchVectorStore:
         if fetch_k < k:
             raise SearchValidationError(f"fetch_k ({fetch_k}) must be >= k ({k})")
 
+        # Honor the `hybrid` toggle: when off, fall through to pure BM25 lexical
+        # search regardless of the alpha the query evaluator chose.
+        opts = optimizations or {}
+        if opts.get("hybrid", True) is False:
+            return self._text_search(query, k, filters, optimizations=optimizations)
+
         if alpha == 0.0:
-            return self._text_search(query, k, filters)
+            return self._text_search(query, k, filters, optimizations=optimizations)
 
         if alpha == 1.0:
             return self.similarity_search(query, k)
@@ -399,10 +473,12 @@ class OpenSearchVectorStore:
 
             if self._check_hybrid_support():
                 return self._hybrid_search_native(
-                    query, query_embedding, k, fetch_k, alpha, filters
+                    query, query_embedding, k, fetch_k, alpha, filters, optimizations
                 )
             else:
-                return self._hybrid_search_rrf(query, query_embedding, k, fetch_k, alpha, filters)
+                return self._hybrid_search_rrf(
+                    query, query_embedding, k, fetch_k, alpha, filters, optimizations
+                )
 
         except EmbeddingError:
             raise
@@ -419,6 +495,7 @@ class OpenSearchVectorStore:
         fetch_k: int,
         alpha: float,
         filters: Optional[List[Dict[str, Any]]] = None,
+        optimizations: Optional[Dict[str, bool]] = None,
     ) -> List[Document]:
         """Native OpenSearch hybrid search using search pipeline with optional attribute filters."""
         # Build filter lists - combine collection_id with attribute filters
@@ -451,25 +528,7 @@ class OpenSearchVectorStore:
                         },
                         {
                             "bool": {
-                                "must": [
-                                    {
-                                        "multi_match": {
-                                            "query": query,
-                                            "fields": [
-                                                "chunk_text",
-                                                "title^3",
-                                                "title_phrase^2.5",
-                                                "product_brand^2",
-                                                "product_color^1.5",
-                                                "title_phonetic^1.5",
-                                                "brand_phonetic^1.5",
-                                            ],
-                                            "type": "best_fields",
-                                            "fuzziness": "AUTO",
-                                            "tie_breaker": 0.3,
-                                        }
-                                    }
-                                ],
+                                "must": [self._build_multi_match(query, optimizations)],
                                 "filter": text_filter_list,
                             }
                         },
@@ -491,6 +550,7 @@ class OpenSearchVectorStore:
         fetch_k: int,
         alpha: float,
         filters: Optional[List[Dict[str, Any]]] = None,
+        optimizations: Optional[Dict[str, bool]] = None,
     ) -> List[Document]:
         """Client-side RRF fallback for older OpenSearch versions."""
         RRF_K = 60
@@ -519,25 +579,7 @@ class OpenSearchVectorStore:
             "_source": {"excludes": ["embedding"]},
             "query": {
                 "bool": {
-                    "must": [
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": [
-                                    "chunk_text",
-                                    "title^3",
-                                    "title_phrase^2.5",
-                                    "product_brand^2",
-                                    "product_color^1.5",
-                                    "title_phonetic^1.5",
-                                    "brand_phonetic^1.5",
-                                ],
-                                "type": "best_fields",
-                                "fuzziness": "AUTO",
-                                "tie_breaker": 0.3,
-                            }
-                        }
-                    ],
+                    "must": [self._build_multi_match(query, optimizations)],
                     "filter": filter_list,
                 }
             },
@@ -567,13 +609,16 @@ class OpenSearchVectorStore:
             scored.append((rrf_score, hit))
 
         scored.sort(key=lambda x: x[0], reverse=True)
-        return [self._hit_to_document(hit) for _, hit in scored[:k]]
+        # Use the fused RRF score as the retrieval_score so the UI shows the
+        # actual rank-fusion value, not the raw kNN/BM25 score from one half.
+        return [self._hit_to_document(hit, retrieval_score=score) for score, hit in scored[:k]]
 
     def _text_search(
         self,
         query: str,
         k: int = 4,
         filters: Optional[List[Dict[str, Any]]] = None,
+        optimizations: Optional[Dict[str, bool]] = None,
     ) -> List[Document]:
         """Pure BM25 text search for alpha=0.0."""
         try:
@@ -586,25 +631,7 @@ class OpenSearchVectorStore:
                 "_source": {"excludes": ["embedding"]},
                 "query": {
                     "bool": {
-                        "must": [
-                            {
-                                "multi_match": {
-                                    "query": query,
-                                    "fields": [
-                                        "chunk_text",
-                                        "title^3",
-                                        "title_phrase^2.5",
-                                        "product_brand^2",
-                                        "product_color^1.5",
-                                        "title_phonetic^1.5",
-                                        "brand_phonetic^1.5",
-                                    ],
-                                    "type": "best_fields",
-                                    "fuzziness": "AUTO",
-                                    "tie_breaker": 0.3,
-                                }
-                            }
-                        ],
+                        "must": [self._build_multi_match(query, optimizations)],
                         "filter": filter_list,
                     }
                 },
@@ -618,9 +645,15 @@ class OpenSearchVectorStore:
             return []
 
     @staticmethod
-    def _hit_to_document(hit: dict) -> Document:
-        """Convert an OpenSearch hit to a LangChain Document."""
+    def _hit_to_document(hit: dict, retrieval_score: Optional[float] = None) -> Document:
+        """Convert an OpenSearch hit to a LangChain Document.
+
+        ``retrieval_score`` overrides ``hit["_score"]`` and is used by the RRF
+        fallback path to surface the fused rank score instead of the raw
+        per-subquery BM25/kNN score.
+        """
         src = hit["_source"]
+        score = retrieval_score if retrieval_score is not None else hit.get("_score")
         metadata = {
             "source": src.get("source", ""),
             "title": src.get("title", ""),
@@ -631,6 +664,8 @@ class OpenSearchVectorStore:
             "product_brand": src.get("product_brand", ""),
             "product_color": src.get("product_color", ""),
         }
+        if score is not None:
+            metadata["retrieval_score"] = float(score)
         return Document(page_content=src.get("chunk_text", ""), metadata=metadata)
 
 
@@ -721,6 +756,7 @@ class OpenSearchRetriever:
         fetch_k: int = 20,
         alpha: float = 0.5,
         filters: Optional[List[Dict[str, Any]]] = None,
+        optimizations: Optional[Dict[str, bool]] = None,
     ) -> None:
         self.vector_store = vector_store
         self.search_type = search_type
@@ -728,6 +764,7 @@ class OpenSearchRetriever:
         self.fetch_k = fetch_k
         self.alpha = alpha
         self.filters = filters
+        self.optimizations = optimizations
 
     @staticmethod
     def collapse_by_document(
@@ -784,6 +821,7 @@ class OpenSearchRetriever:
                 fetch_k=self.fetch_k,
                 alpha=self.alpha,
                 filters=self.filters,
+                optimizations=self.optimizations,
             )
         elif self.search_type == "similarity":
             documents = self.vector_store.similarity_search(query, k=self.k)

@@ -1,4 +1,4 @@
-.PHONY: help setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web
+.PHONY: help setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -20,6 +20,10 @@ help:
 	@echo "  make lint               - Run code quality checks (pylint)"
 	@echo "  make format             - Format code with black"
 	@echo "  make type-check         - Check types with mypy (if installed)"
+	@echo ""
+	@echo "Pre-push CI gate (mirrors GitHub Actions build-deploy.yml):"
+	@echo "  make ci                 - Run all CI checks locally before push"
+	@echo "  make format-fix         - Auto-fix black + isort formatting"
 	@echo ""
 	@echo "Running:"
 	@echo "  make run                - Start the CLI agent"
@@ -72,6 +76,48 @@ format:
 type-check:
 	@echo "Checking types with mypy..."
 	$(VENV)/mypy main.py config.py --ignore-missing-imports || true
+
+# ----------------------------------------------------------------------------
+# CI parity: run *exactly* what build-deploy.yml runs in GitHub Actions.
+# `make ci` is the pre-push gate — if this passes, the GCP build/deploy
+# pipeline will too.
+# ----------------------------------------------------------------------------
+
+ci-tools:
+	@echo "Installing CI lint toolchain into .venv..."
+	@$(VENV)/pip install -q --upgrade pip
+	@$(VENV)/pip install -q flake8 black isort mypy types-requests pytest pytest-asyncio pytest-cov pytest-timeout pytest-xdist
+
+ci-format: ci-tools
+	@echo "[CI] black --check ."
+	@$(VENV)/black --check .
+	@echo "[CI] isort --check-only ."
+	@$(VENV)/isort --check-only .
+
+ci-lint: ci-tools
+	@echo "[CI] flake8 . --count"
+	@$(VENV)/flake8 . --count
+	@echo "[CI] mypy main.py"
+	@$(VENV)/mypy main.py --ignore-missing-imports || true
+
+ci-test: ci-tools
+	@echo "[CI] pytest tests/unit/"
+	@PYTHONPATH=. $(VENV)/pytest tests/unit/ -q
+
+# Full pre-push gate. Mirrors GitHub Actions build-deploy.yml jobs:
+#   lint-backend  → ci-format + ci-lint
+#   unit-tests    → ci-test
+# Integration tests are intentionally omitted (they need a live PG +
+# OpenSearch); CI runs them after this gate passes.
+ci: ci-format ci-lint ci-test
+	@echo ""
+	@echo "✅ Local CI gate passed — safe to push."
+
+format-fix:
+	@echo "Auto-fixing formatting (black + isort) across the whole package..."
+	@$(VENV)/black .
+	@$(VENV)/isort .
+	@echo "✓ Formatted. Re-run 'make ci' to verify."
 
 run:
 	@echo "Starting Agentic Hybrid Search agent..."

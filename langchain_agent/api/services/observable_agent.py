@@ -17,25 +17,21 @@ warnings.filterwarnings(
 
 import asyncio
 import logging
+import sys
 import time
+from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-# Get logger for this module
-logger = logging.getLogger(__name__)
-
-import sys
-from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+# pylint: disable=wrong-import-position  # sys.path tweak above is required first
 from api.schemas.events import (
     AgentCompleteEvent,
     AgentErrorEvent,
     BaseEvent,
     ConversationContextEvent,
-    HybridSearchResultEvent,
     HybridSearchStartEvent,
     IntentClassificationEvent,
     LLMReasoningChunkEvent,
@@ -45,23 +41,20 @@ from api.schemas.events import (
     MetricsEvent,
     NodeEndEvent,
     NodeStartEvent,
-    OpenSearchQueryEvent,
     QualityGateEvent,
     QueryEvaluationEvent,
-    QueryExpansionEvent,
     RerankedDocument,
     RerankerResultEvent,
-    RerankerStartEvent,
-    SearchCandidate,
     SummaryEvent,
     ToolCallEvent,
 )
 from config import (
     ENABLE_RERANKING,
-    RERANKER_MODEL,
     RETRIEVER_FETCH_K,
 )
 from main import EcommerceSearchAgent
+
+logger = logging.getLogger(__name__)
 
 # Type alias for emit callback
 EmitCallback = Callable[[BaseEvent], Coroutine[Any, Any, None]]
@@ -153,6 +146,7 @@ class ObservableAgentService:
         message: str,
         thread_id: str,
         emit: EmitCallback,
+        optimizations: Optional[Dict[str, bool]] = None,
     ) -> Optional[str]:
         """
         Process a user message through the agent with observability.
@@ -206,6 +200,7 @@ class ObservableAgentService:
                 "alpha": DEFAULT_ALPHA,
                 "query_analysis": "",
                 "quality_gate_retried": False,  # Reset for each new message
+                "optimizations": optimizations or {},
             }
 
             config = {"configurable": {"thread_id": thread_id}}
@@ -351,11 +346,47 @@ class ObservableAgentService:
                 event_name = event.get("name", "")
                 event_data = event.get("data", {})
 
+                # Helper: read per-message optimization toggles off the input state.
+                def _opts(event_data: Dict[str, Any]) -> Dict[str, bool]:
+                    return (event_data.get("input") or {}).get("optimizations") or {}
+
                 # Handle node lifecycle events
                 if event_type == "on_chain_start":
                     if event_name == "retriever":
                         input_state = event_data.get("input", {})
                         if input_state.get("intent") == "summary":
+                            skipped_nodes.add(event_name)
+                            continue
+
+                    # query_evaluator's only used output is `alpha`. With hybrid
+                    # search forced off the retriever ignores alpha entirely,
+                    # so the evaluator step is decorative — hide it.
+                    if event_name == "query_evaluator":
+                        opts = _opts(event_data)
+                        if opts.get("hybrid", True) is False:
+                            skipped_nodes.add(event_name)
+                            continue
+
+                    # Hide the reranker step from the observability panel when
+                    # the user has toggled reranking off — the node still
+                    # short-circuits internally but emits no UI events.
+                    if event_name == "reranker":
+                        opts = _opts(event_data)
+                        if opts.get("reranking", True) is False:
+                            skipped_nodes.add(event_name)
+                            continue
+
+                    # Quality gate is a no-op when its retry-with-different-alpha
+                    # mechanism can't help: reranking off (no scores to judge),
+                    # llm off (raw results don't need quality validation), or
+                    # hybrid off (alpha is ignored so retry can't change ranking).
+                    if event_name == "quality_gate":
+                        opts = _opts(event_data)
+                        if (
+                            opts.get("reranking", True) is False
+                            or opts.get("llm", True) is False
+                            or opts.get("hybrid", True) is False
+                        ):
                             skipped_nodes.add(event_name)
                             continue
 
@@ -816,11 +847,16 @@ class ObservableAgentService:
 
     async def _generate_title(
         self,
-        thread_id: str,
+        _thread_id: str,
         user_message: str,
-        response: Optional[str],
+        _response: Optional[str],
     ) -> Optional[str]:
-        """Generate and save a conversation title."""
+        """Generate and save a conversation title.
+
+        `_thread_id` and `_response` are accepted for API symmetry with the
+        upstream call site but the agent already has the thread_id internally
+        and synthesizes the title from the prior conversation state.
+        """
         try:
             loop = asyncio.get_event_loop()
             # update_conversation_title() uses the internally set thread_id
@@ -829,7 +865,7 @@ class ObservableAgentService:
             # Return a generated title from the user message for the WebSocket event
             # (the actual title is saved to DB by update_conversation_title)
             return user_message[:50].strip() if user_message else None
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             print(f"Error generating title: {e}")
             return None
 

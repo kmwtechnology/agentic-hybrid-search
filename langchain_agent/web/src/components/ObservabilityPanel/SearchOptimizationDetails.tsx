@@ -1,66 +1,101 @@
 /**
- * SearchOptimizationDetails - Shows query optimizations applied by OpenSearch.
- * Displays: hybrid search balance (alpha), fuzzy matching, synonym expansion, phonetic matching.
+ * SearchOptimizationDetails - Displays and toggles the search optimizations
+ * applied at retrieval time (hybrid search, fuzzy, synonyms, phonetic, phrase
+ * boost, field boost, typeahead). State is held in `optimizationsStore` and
+ * sent to the backend with each chat message.
  */
 
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 import clsx from 'clsx'
+import {
+  useOptimizationsStore,
+  type OptimizationKey,
+} from '../../stores/optimizationsStore'
+import { useObservabilityStore } from '../../stores/observabilityStore'
+import type { OpenSearchQueryEvent } from '../../types/events'
 
-interface SearchOptimization {
+interface OptimizationDef {
+  key: OptimizationKey
   name: string
-  status: 'enabled' | 'applied' | 'disabled'
   description: string
   icon: string
 }
 
-const OPTIMIZATIONS: SearchOptimization[] = [
+const OPTIMIZATIONS: OptimizationDef[] = [
   {
+    key: 'hybrid',
     name: 'Hybrid Search',
-    status: 'enabled',
     description: 'Combines semantic (vector) and lexical (BM25) search for best results',
     icon: '🔄',
   },
   {
+    key: 'fuzzy',
     name: 'Fuzzy Matching',
-    status: 'enabled',
     description: 'Tolerates spelling variations (e.g., "Sony" matches "Sonie")',
     icon: '🎯',
   },
   {
+    key: 'synonyms',
     name: 'Synonym Expansion',
-    status: 'enabled',
     description: 'Expands queries (e.g., "headphones" → "earphones/earbuds")',
     icon: '🔗',
   },
   {
+    key: 'phonetic',
     name: 'Phonetic Matching',
-    status: 'enabled',
     description: 'Finds phonetically similar terms (e.g., "Sennheiser")',
     icon: '🔊',
   },
   {
+    key: 'phrase_boost',
     name: 'Phrase Boosting',
-    status: 'enabled',
     description: 'Ranks exact phrases higher (e.g., "noise cancelling")',
     icon: '📝',
   },
   {
+    key: 'field_boost',
     name: 'Field Boosting',
-    status: 'enabled',
     description: 'Prioritizes matches in important fields (title, brand)',
     icon: '⭐',
   },
   {
+    key: 'typeahead',
     name: 'Typeahead Autocomplete',
-    status: 'enabled',
     description: 'Edge-ngram prefix suggestions as you type (title + brand)',
     icon: '⌨️',
+  },
+  {
+    key: 'reranking',
+    name: 'LLM Reranking',
+    description: 'Rescores and reorders retrieved documents with Gemini for relevance',
+    icon: '🧮',
+  },
+  {
+    key: 'llm',
+    name: 'LLM Response Generation',
+    description: 'Synthesizes a conversational answer; off → plain search-results list',
+    icon: '🤖',
   },
 ]
 
 export function SearchOptimizationDetails() {
   const [isExpanded, setIsExpanded] = useState(false)
+  const optimizations = useOptimizationsStore((s) => s.optimizations)
+  const toggle = useOptimizationsStore((s) => s.toggle)
+  const reset = useOptimizationsStore((s) => s.reset)
+
+  // Pull the optimizations actually applied to the most recent search so the
+  // user can confirm what hit OpenSearch (vs. what they have toggled now).
+  const steps = useObservabilityStore((s) => s.steps)
+  const opensearchEvents = steps
+    .filter((step) => step.node === 'retriever')
+    .flatMap((step) => step.events)
+    .filter((e): e is OpenSearchQueryEvent => e.type === 'opensearch_query')
+  const lastApplied =
+    opensearchEvents.length > 0
+      ? opensearchEvents[opensearchEvents.length - 1].optimizations
+      : undefined
 
   return (
     <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
@@ -80,36 +115,60 @@ export function SearchOptimizationDetails() {
 
       {isExpanded && (
         <div className="mt-3 space-y-2">
-          {OPTIMIZATIONS.map((opt) => (
-            <div
-              key={opt.name}
-              className={clsx(
-                'p-2 rounded text-sm transition-colors',
-                opt.status === 'enabled' ? 'bg-green-900/20 border border-green-800/50' : 'bg-gray-700/20 border border-gray-700/50'
-              )}
-            >
-              <div className="flex items-start gap-2">
-                <span className="text-lg">{opt.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-100">{opt.name}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{opt.description}</div>
+          {OPTIMIZATIONS.map((opt) => {
+            const enabled = optimizations[opt.key]
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => toggle(opt.key)}
+                aria-pressed={enabled}
+                className={clsx(
+                  'w-full text-left p-2 rounded text-sm transition-colors cursor-pointer',
+                  'focus:outline-none focus:ring-2 focus:ring-blue-500/50',
+                  enabled
+                    ? 'bg-green-900/20 border border-green-800/50 hover:bg-green-900/30'
+                    : 'bg-gray-700/20 border border-gray-700/50 hover:bg-gray-700/30'
+                )}
+              >
+                <div className="flex items-start gap-2">
+                  <span className="text-lg">{opt.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-100">{opt.name}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{opt.description}</div>
+                  </div>
+                  <Toggle enabled={enabled} />
                 </div>
-                <div
-                  className={clsx(
-                    'text-xs font-medium whitespace-nowrap ml-2',
-                    opt.status === 'enabled' ? 'text-green-400' : 'text-gray-500'
-                  )}
-                >
-                  {opt.status === 'enabled' && '✓ On'}
-                  {opt.status === 'applied' && '✓ Applied'}
-                  {opt.status === 'disabled' && '○ Off'}
-                </div>
+              </button>
+            )
+          })}
+
+          {lastApplied && (
+            <div className="mt-3 pt-3 border-t border-gray-700 text-xs">
+              <div className="text-gray-500 mb-1">Applied to last search:</div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
+                {Object.entries(lastApplied).map(([k, v]) => (
+                  <span key={k} className={v ? 'text-green-300' : 'text-red-300'}>
+                    {k}={v ? 'on' : 'off'}
+                  </span>
+                ))}
               </div>
             </div>
-          ))}
+          )}
 
           <div className="mt-3 pt-3 border-t border-gray-700 text-xs text-gray-500">
-            <p className="mb-2">💡 <strong>Tip:</strong> These optimizations work automatically to improve search accuracy.</p>
+            <div className="flex items-center justify-between mb-2">
+              <p>💡 <strong>Tip:</strong> Click any row to toggle it; the next query reflects your choices.</p>
+              <button
+                type="button"
+                onClick={reset}
+                className="ml-2 inline-flex items-center gap-1 text-gray-400 hover:text-gray-200 transition-colors"
+                title="Reset all to defaults"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset
+              </button>
+            </div>
             <p>Try searching for:</p>
             <ul className="list-disc list-inside text-gray-600 mt-1 space-y-1">
               <li>Misspelled terms (e.g., "sonie" for Sony)</li>
@@ -120,5 +179,23 @@ export function SearchOptimizationDetails() {
         </div>
       )}
     </div>
+  )
+}
+
+function Toggle({ enabled }: { enabled: boolean }) {
+  return (
+    <span
+      className={clsx(
+        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ml-2',
+        enabled ? 'bg-green-600' : 'bg-gray-600'
+      )}
+    >
+      <span
+        className={clsx(
+          'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+          enabled ? 'translate-x-4' : 'translate-x-1'
+        )}
+      />
+    </span>
   )
 }

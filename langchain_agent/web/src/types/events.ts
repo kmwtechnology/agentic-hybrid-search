@@ -79,6 +79,7 @@ export interface OpenSearchQueryEvent extends BaseEvent {
   filters?: Record<string, unknown>[]  // Applied attribute filters
   filter_summary?: string  // Human-readable summary (e.g., "brand: Sony, color: blue")
   intent: string  // intent that triggered the search
+  optimizations?: Record<string, boolean>  // Per-feature toggles applied to this search
 }
 
 export interface QualityGateEvent extends BaseEvent {
