@@ -285,6 +285,50 @@ print(f'      OpenSearch documents: {count}')
 " 2>/dev/null || warn "Could not verify OpenSearch."
 
 echo ""
+
+# ============================================================================
+# STEP 6: INGEST ESCI JUDGMENTS (if not skipped)
+# ============================================================================
+
+if ! $SKIP_DOCS; then
+    log "Ingesting ESCI ground-truth judgments..."
+    python ingest_esci_judgments.py || warn "Judgments ingestion failed (index may have been partially created)"
+    echo ""
+fi
+
+# ============================================================================
+# STEP 7: VERIFY
+# ============================================================================
+
+log "Verifying setup..."
+
+# Verify Cloud SQL checkpoint tables
+PGPASSWORD="$DB_PASSWORD" psql \
+    -h 127.0.0.1 \
+    -p "$PROXY_PORT" \
+    -U "$DB_USER" \
+    -d "$DB_NAME" \
+    -c "SELECT 'checkpoints' AS resource, COUNT(*)::text AS count FROM checkpoints
+        UNION ALL
+        SELECT 'conversation_metadata', COUNT(*)::text FROM conversation_metadata;" 2>/dev/null || \
+    warn "Could not verify Cloud SQL (psql not installed locally)."
+
+# Verify OpenSearch documents
+python -c "
+from vector_store import create_opensearch_client
+from config import OPENSEARCH_INDEX_NAME
+client = create_opensearch_client()
+count = client.count(index=OPENSEARCH_INDEX_NAME, body={'query': {'match_all': {}}})['count']
+print(f'      OpenSearch documents: {count}')
+# Also check judgments index
+try:
+    judgment_count = client.count(index='esci_judgments')['count']
+    print(f'      ESCI judgments:       {judgment_count}')
+except:
+    print('      ESCI judgments:       not found (run ingest_esci_judgments.py)')
+" 2>/dev/null || warn "Could not verify OpenSearch."
+
+echo ""
 echo "============================================================"
 log "GCP INITIALIZATION COMPLETE"
 echo "============================================================"
@@ -298,5 +342,8 @@ echo "    /api/health"
 echo ""
 echo "  To re-ingest products later:"
 echo "    python ingest_esci_products.py"
+echo ""
+echo "  To re-ingest judgments later:"
+echo "    python ingest_esci_judgments.py"
 echo ""
 echo "============================================================"
