@@ -31,6 +31,7 @@ _reindex_state: dict[str, Any] = {
     "reset_index": None,
     "documents_ingested": None,
     "chunks_created": None,
+    "judgments_indexed": None,
     "error": None,
 }
 
@@ -67,7 +68,9 @@ class ReindexResponse(BaseModel):
     error: str | None = None
 
 
-def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> ReindexResponse:
+def perform_reindex(
+    limit: int, force_resample: bool, reset_index: bool, reindex_judgments: bool = False
+) -> ReindexResponse:
     """
     Perform re-indexing of OpenSearch index (synchronous for BackgroundTasks).
 
@@ -78,12 +81,14 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
         limit: Number of products to ingest
         force_resample: Force re-sampling of dataset
         reset_index: Delete and recreate index (for schema changes)
+        reindex_judgments: Also rebuild the esci_judgments index
 
     Returns:
         ReindexResponse with status and document counts
     """
     logger.info(
-        f"[perform_reindex] Starting re-index: limit={limit}, force_resample={force_resample}, reset_index={reset_index}"
+        f"[perform_reindex] Starting re-index: limit={limit}, force_resample={force_resample}, "
+        f"reset_index={reset_index}, reindex_judgments={reindex_judgments}"
     )
 
     _update_reindex_state(
@@ -94,6 +99,7 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
         reset_index=reset_index,
         documents_ingested=None,
         chunks_created=None,
+        judgments_indexed=None,
         error=None,
     )
 
@@ -107,17 +113,26 @@ def perform_reindex(limit: int, force_resample: bool, reset_index: bool) -> Rein
         )
 
         logger.info(
-            f"[perform_reindex] Results: {docs} documents ingested, {chunks} chunks created"
+            f"[perform_reindex] Products: {docs} documents ingested, {chunks} chunks created"
         )
-        _update_reindex_state(
-            status="success",
-            finished_at=_now_iso(),
-            documents_ingested=docs,
-            chunks_created=chunks,
-        )
+        _update_reindex_state(documents_ingested=docs, chunks_created=chunks)
+
+        judgments_indexed = None
+        if reindex_judgments:
+            from ingest_esci_judgments import ingest_esci_judgments
+
+            judgments_indexed = ingest_esci_judgments(reset_index=reset_index)
+            logger.info(f"[perform_reindex] Judgments: {judgments_indexed} queries indexed")
+            _update_reindex_state(judgments_indexed=judgments_indexed)
+
+        msg = f"Successfully re-indexed {docs} documents into {chunks} chunks"
+        if judgments_indexed is not None:
+            msg += f"; {judgments_indexed} judgment queries indexed"
+
+        _update_reindex_state(status="success", finished_at=_now_iso())
         return ReindexResponse(
             status="success",
-            message=f"Successfully re-indexed {docs} documents into {chunks} chunks",
+            message=msg,
             documents_ingested=docs,
             chunks_created=chunks,
         )
@@ -148,6 +163,7 @@ async def trigger_reindex(
     limit: int = 10000,
     reset_index: bool = True,
     force_resample: bool = False,
+    reindex_judgments: bool = False,
 ) -> ReindexResponse:
     """
     Trigger re-indexing of OpenSearch index.
@@ -161,27 +177,23 @@ async def trigger_reindex(
     - `limit`: Number of products to ingest (default: 10000)
     - `reset_index`: Delete and recreate index (default: true, required for schema changes)
     - `force_resample`: Force re-sampling of dataset even if cached (default: false)
+    - `reindex_judgments`: Also rebuild the esci_judgments index (default: false)
 
     Returns:
     - `status`: "success" or "error"
     - `documents_ingested`: Number of products loaded
     - `chunks_created`: Number of text chunks created
+    - `judgments_indexed`: Number of judgment queries indexed (if reindex_judgments=true)
     - `error`: Error message if failed
 
     Example:
     ```
-    GET /api/admin/reindex?reset_index=true&limit=10000
+    GET /api/admin/reindex?reset_index=true&limit=10000&reindex_judgments=true
     ```
-
-    This will:
-    1. Delete the existing index
-    2. Create a new index with current mappings (including BM25 optimizations)
-    3. Load and embed 10,000 products
-    4. Index them with new fields (title_suggest, title_phrase, title_phonetic, etc.)
     """
     logger.info(
         f"Re-index triggered: limit={limit}, reset_index={reset_index}, "
-        f"force_resample={force_resample}"
+        f"force_resample={force_resample}, reindex_judgments={reindex_judgments}"
     )
 
     # Reset state to "queued" synchronously before returning. Poll-based
@@ -195,6 +207,7 @@ async def trigger_reindex(
         reset_index=reset_index,
         documents_ingested=None,
         chunks_created=None,
+        judgments_indexed=None,
         error=None,
     )
 
@@ -204,12 +217,13 @@ async def trigger_reindex(
         limit=limit,
         force_resample=force_resample,
         reset_index=reset_index,
+        reindex_judgments=reindex_judgments,
     )
 
     return ReindexResponse(
         status="started",
-        message=f"Re-index job started (limit={limit}, reset_index={reset_index}). "
-        "Poll /api/admin/reindex/status for progress.",
+        message=f"Re-index job started (limit={limit}, reset_index={reset_index}, "
+        f"reindex_judgments={reindex_judgments}). Poll /api/admin/reindex/status for progress.",
     )
 
 

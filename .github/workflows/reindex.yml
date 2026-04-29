@@ -1,6 +1,6 @@
 name: Re-Index OpenSearch
 
-# Drop-and-rebuild the product index on Cloud Run.
+# Drop-and-rebuild the product index (and optionally the judgments index) on Cloud Run.
 #
 # Flow:
 #   1. POST /api/admin/reindex — accepted synchronously, queues a background task.
@@ -26,17 +26,25 @@ on:
         description: 'Max products to ingest (final count may be ≤ this)'
         required: true
         default: '10000'
+      reindex_judgments:
+        description: 'Also rebuild the esci_judgments index (ground-truth NDCG/MRR data)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 env:
   SERVICE_URL: https://agentic-hybrid-search-375500751528.us-central1.run.app
   POLL_INTERVAL_SECONDS: 15
-  DEADLINE_MINUTES: 25
+  DEADLINE_MINUTES: 45
 
 jobs:
   reindex:
     name: Re-index OpenSearch
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
 
     steps:
       - name: Trigger re-index
@@ -44,14 +52,16 @@ jobs:
           set -euo pipefail
           RESET='${{ github.event.inputs.reset_index }}'
           LIMIT='${{ github.event.inputs.limit }}'
+          JUDGMENTS='${{ github.event.inputs.reindex_judgments }}'
 
-          echo "Service:       ${SERVICE_URL}"
-          echo "reset_index:   ${RESET}"
-          echo "limit:         ${LIMIT}"
+          echo "Service:            ${SERVICE_URL}"
+          echo "reset_index:        ${RESET}"
+          echo "limit:              ${LIMIT}"
+          echo "reindex_judgments:  ${JUDGMENTS}"
           echo
 
           RESP=$(curl -sS -w "\n%{http_code}" \
-            "${SERVICE_URL}/api/admin/reindex?reset_index=${RESET}&limit=${LIMIT}")
+            "${SERVICE_URL}/api/admin/reindex?reset_index=${RESET}&limit=${LIMIT}&reindex_judgments=${JUDGMENTS}")
           HTTP=$(echo "$RESP" | tail -n 1)
           BODY=$(echo "$RESP" | head -n -1)
 
@@ -91,7 +101,7 @@ jobs:
                 echo
                 echo "════════════════════════════════════════════════"
                 echo "Re-index completed"
-                echo "$BODY" | jq '{status, started_at, finished_at, limit, reset_index, documents_ingested, chunks_created}'
+                echo "$BODY" | jq '{status, started_at, finished_at, limit, reset_index, documents_ingested, chunks_created, judgments_indexed}'
                 exit 0
                 ;;
               error)

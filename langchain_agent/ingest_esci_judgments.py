@@ -316,6 +316,34 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def ingest_esci_judgments(
+    limit: Optional[int] = None,
+    reset_index: bool = True,
+    locale: str = "us",
+) -> int:
+    """Ingest ESCI judgment documents into OpenSearch.
+
+    Callable from other modules (e.g. admin reindex API).
+
+    Args:
+        limit: Cap on number of query documents to index (None = all).
+        reset_index: Drop and recreate the index before ingesting.
+        locale: Product locale filter (default "us").
+
+    Returns:
+        Number of query documents indexed.
+    """
+    client = create_opensearch_client()
+    df = load_judgments(JUDGMENTS_PARQUET, locale)
+    if df.empty:
+        logger.error("No judgments to index after locale filter", extra={"locale": locale})
+        return 0
+    ensure_index(client, reset=reset_index)
+    indexed = index_judgments(client, aggregate_per_query(df), limit=limit)
+    logger.info("Ingestion complete", extra={"queries_indexed": indexed})
+    return indexed
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     configure_logging()
     args = parse_args(argv)
