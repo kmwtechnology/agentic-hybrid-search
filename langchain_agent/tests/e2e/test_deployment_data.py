@@ -236,7 +236,10 @@ class TestProductMetadata:
                 )
                 await websocket.send(message)
 
-                metadata = {}
+                # agent_complete carries citations (list of {url, title, text}) per
+                # api/schemas/events.py:AgentCompleteEvent. Each citation pulled
+                # from a real product carries through product metadata.
+                citations = []
                 start_time = time.time()
 
                 while time.time() - start_time < 60:
@@ -245,16 +248,16 @@ class TestProductMetadata:
                         event = json.loads(event_msg)
 
                         if event.get("type") == "agent_complete":
-                            metadata = event.get("metadata", {})
+                            citations = event.get("citations", [])
                             break
                     except asyncio.TimeoutError:
                         break
 
-                # Metadata should contain product information
-                # Either directly or as part of citations
-                assert (
-                    len(metadata) > 0 or "citations" in str(metadata).lower()
-                ), "No product metadata found"
+                assert len(citations) > 0, "No product citations returned"
+                # Each citation should carry the canonical Amazon URL derived from product_id.
+                for c in citations:
+                    assert "url" in c and c["url"], f"Citation missing url: {c}"
+                    assert "title" in c and c["title"], f"Citation missing title: {c}"
         except Exception as e:
             _skip_if_origin_blocked(e)
             pytest.fail(f"Product metadata test failed: {e}")
@@ -427,12 +430,18 @@ class TestDataConsistency:
                     except asyncio.TimeoutError:
                         break
 
-                # Response should be valid text, no null characters or corruption
+                # Response should be valid text, no NUL or non-whitespace control
+                # corruption. LLM output routinely contains Unicode (smart quotes,
+                # em-dashes, etc.) and whitespace controls (\n, \r, \t), so we
+                # only flag NUL and the C0 control range outside whitespace.
                 assert len(response_text) > 0, "No response generated"
-                assert "\x00" not in response_text, "Null character found in response"
-                assert response_text.isascii() or all(
-                    ord(c) >= 32 for c in response_text
-                ), "Control characters in response"
+                allowed_controls = {"\n", "\r", "\t"}
+                bad = [
+                    c
+                    for c in response_text
+                    if (ord(c) < 32 and c not in allowed_controls) or c == "\x00"
+                ]
+                assert not bad, f"Control characters in response: {bad[:5]!r}"
         except Exception as e:
             _skip_if_origin_blocked(e)
             pytest.fail(f"Data integrity test failed: {e}")
@@ -491,6 +500,7 @@ class TestCheckpointPersistence:
                 await ws.send(msg2)
 
                 response_text = ""
+                final_response = ""
                 start_time = time.time()
                 while time.time() - start_time < 60:
                     try:
@@ -499,12 +509,16 @@ class TestCheckpointPersistence:
                         if event.get("type") == "llm_response_chunk":
                             response_text += event.get("content", "")
                         if event.get("type") == "agent_complete":
+                            final_response = event.get("final_response", "")
                             break
                     except asyncio.TimeoutError:
                         break
 
-                # Should have maintained conversation context
-                assert len(response_text) > 0, "Checkpoint not restored"
+                # Either streamed chunks OR the canonical final_response field
+                # must carry the second-turn answer; both empty means the
+                # follow-up never produced output (no context = no recall).
+                combined = response_text or final_response
+                assert len(combined) > 0, "Checkpoint not restored — no response on follow-up"
         except Exception as e:
             _skip_if_origin_blocked(e)
             pytest.fail(f"Checkpoint persistence test failed: {e}")
