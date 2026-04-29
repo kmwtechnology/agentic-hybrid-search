@@ -95,7 +95,7 @@ describe('IntentClassifierDetails Component', () => {
         reasoning: 'Test',
         user_query: 'Test',
         }
-      const { container } = render(<IntentClassifierDetails event={event} />)
+      render(<IntentClassifierDetails event={event} />)
       const confidenceText = screen.getByText('95%')
       expect(confidenceText.className).toContain('green')
     })

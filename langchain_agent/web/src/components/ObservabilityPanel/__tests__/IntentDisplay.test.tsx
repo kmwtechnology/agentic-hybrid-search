@@ -16,7 +16,7 @@ describe('Intent Display Integration', () => {
     }
 
     it('maps all intents to color classes', () => {
-      Object.entries(intentColors).forEach(([intent, colors]) => {
+      Object.entries(intentColors).forEach(([_intent, colors]) => {
         expect(colors.bg).toBeTruthy()
         expect(colors.text).toBeTruthy()
       })

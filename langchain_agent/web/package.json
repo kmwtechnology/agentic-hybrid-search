@@ -24,6 +24,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^9.17.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -47,7 +48,7 @@
     "vite": "^6.2.0",
     "vitest": "^4.1.5"
   },
-  "overrides": {
-    "ajv": "^8.18.0"
+  "engines": {
+    "node": ">=20.0.0 <21.0.0"
   }
 }
