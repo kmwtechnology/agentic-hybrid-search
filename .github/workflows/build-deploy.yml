@@ -99,10 +99,7 @@ jobs:
           cd langchain_agent
           TESTS="?" PASSED="?" FAILURES="0" ERRORS="0" SKIPPED="?" STATUS="⚠️ No results" COVERAGE="?"
           if [ -f test-results-phase1.xml ]; then
-            TESTS=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase1.xml').getroot(); print(r.get('tests','?'))")
-            FAILURES=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase1.xml').getroot(); print(r.get('failures','0'))")
-            ERRORS=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase1.xml').getroot(); print(r.get('errors','0'))")
-            SKIPPED=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase1.xml').getroot(); print(r.get('skipped','0'))")
+            read -r TESTS FAILURES ERRORS SKIPPED < <(python3 -c "import xml.etree.ElementTree as ET; root=ET.parse('test-results-phase1.xml').getroot(); suites=root.findall('testsuite') if root.tag=='testsuites' else [root]; print(sum(int(s.get('tests',0))for s in suites),sum(int(s.get('failures',0))for s in suites),sum(int(s.get('errors',0))for s in suites),sum(int(s.get('skipped',0))for s in suites))")
             PASSED=$((TESTS - FAILURES - ERRORS - SKIPPED))
             if [ "${FAILURES}" -gt 0 ] || [ "${ERRORS}" -gt 0 ]; then
               STATUS="❌ Failed"
@@ -243,10 +240,7 @@ jobs:
           cd langchain_agent
           TESTS="?" PASSED="?" FAILURES="0" ERRORS="0" SKIPPED="?" STATUS="⚠️ No results"
           if [ -f test-results-phase2.xml ]; then
-            TESTS=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase2.xml').getroot(); print(r.get('tests','?'))")
-            FAILURES=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase2.xml').getroot(); print(r.get('failures','0'))")
-            ERRORS=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase2.xml').getroot(); print(r.get('errors','0'))")
-            SKIPPED=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase2.xml').getroot(); print(r.get('skipped','0'))")
+            read -r TESTS FAILURES ERRORS SKIPPED < <(python3 -c "import xml.etree.ElementTree as ET; root=ET.parse('test-results-phase2.xml').getroot(); suites=root.findall('testsuite') if root.tag=='testsuites' else [root]; print(sum(int(s.get('tests',0))for s in suites),sum(int(s.get('failures',0))for s in suites),sum(int(s.get('errors',0))for s in suites),sum(int(s.get('skipped',0))for s in suites))")
             PASSED=$((TESTS - FAILURES - ERRORS - SKIPPED))
             if [ "${FAILURES}" -gt 0 ] || [ "${ERRORS}" -gt 0 ]; then
               STATUS="❌ Failed"
