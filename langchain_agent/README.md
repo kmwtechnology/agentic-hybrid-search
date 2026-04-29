@@ -28,7 +28,7 @@ A production-grade LangGraph RAG agent for e-commerce product discovery. Uses Go
 ```bash
 docker --version      # Docker Desktop
 python3 --version     # Python 3.13+
-node --version        # Node.js 18+
+node --version        # Node.js 24+
 ```
 
 You'll also need a Google API key from <https://aistudio.google.com/apikey>
@@ -292,7 +292,7 @@ Useful signals:
 
 ### Live Deployment
 
-- **Service URL:** <https://agentic-hybrid-search-gyx7duaosq-uc.a.run.app>
+- **Service URL:** <https://agentic-hybrid-search-375500751528.us-central1.run.app>
 - **Health:** `/api/health`
 - **API docs:** `/docs`
 - **OpenSearch:** hosted externally on GCP VM, ESCI products indexed

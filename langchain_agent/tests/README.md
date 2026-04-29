@@ -108,13 +108,28 @@ services — everything is mocked through `conftest.py`.
 | `intent/test_intent_classifier.py` | 6-intent classification, keyword fast-path vs LLM fallback, confidence thresholds |
 | `evaluator/test_query_evaluator.py` | Dynamic α selection, query expansion, fast-path vs LLM-path |
 | `quality_gate/test_quality_gate.py` | Retry decision logic, α adjustment bounds, intent-specific thresholds |
+| `test_auth_middleware.py` | API key validation, constant-time comparison, header/query-param auth |
 | `test_config_validation.py` | Required env vars, value ranges, type checks |
+| `test_doc_replacer.py` | Replacement scoring, broken-link substitution, cleanup |
+| `test_embedding_cache.py` | LRU eviction, TTL, disabled-cache no-op, thread safety |
+| `test_exceptions.py` | Custom exception hierarchy, inheritance, error codes |
+| `test_health.py` | `/api/health` response shape, degraded-mode reporting |
+| `test_intent_classifier_node.py` | LangGraph node wrapper, state mutations |
+| `test_link_verifier.py` | URL validation, TTL cache, timeout handling |
 | `test_llm_streaming_content_blocks.py` | Streaming event emission, token assembly |
 | `test_model_compatibility.py` | Gemini model ID handling, version compatibility |
+| `test_origin_auth.py` | Origin/Referer allow-list, WebSocket auth checks |
+| `test_pipeline_nodes.py` | Node input/output contracts across the pipeline |
+| `test_pipeline_summary_event.py` | `_build_pipeline_summary` accumulation, ground-truth vs. confidence-proxy fallback, latency table assembly |
 | `test_relevancy_metrics.py` | NDCG@k / MRR / Recall@k / Precision@k, `compute_stage_metrics`, `confidence_from_scores`, `count_rank_changes`, `latency_cost_benefit` (43 tests, no NumPy) |
-| `test_pipeline_summary_event.py` | `_build_pipeline_summary` accumulation across the LangGraph stream, ground-truth vs. confidence-proxy fallback, latency table assembly (5 tests) |
+| `test_reranker.py` | `GeminiReranker` scoring, Pydantic validation, partial-JSON fallback |
+| `test_retry_utils.py` | Retry decorators, transient-error detection, max-attempts behaviour |
+| `test_routing_functions.py` | LangGraph edge routing logic |
+| `test_search_optimizations.py` | BM25 synonym expansion, fuzzy, phrase-boost, phonetic config |
+| `test_vector_store.py` | `OpenSearchVectorStore` hybrid search, RRF fusion, facets, collapse |
+| `test_admin_reindex.py` | `/api/admin/reindex` background job, status polling, index health |
 
-**Run time:** ~0.5 s. ~300 unit tests total. **Best for:** TDD,
+**Run time:** ~0.5 s. ~590 unit tests total. **Best for:** TDD,
 pre-commit, CI fast lane.
 
 ### Integration (`tests/integration/`)

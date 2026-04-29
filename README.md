@@ -354,8 +354,14 @@ gcloud logging read resource.type=cloud_run_revision --project=<PROJECT_ID>
 ./scripts/gcp-teardown.sh --project <PROJECT_ID>
 ```
 
-**OpenSearch** is hosted externally on a GCP VM. Credentials live in Secret
-Manager as `agentic-hybrid-search-opensearch-user` / `…-password`.
+**OpenSearch** is hosted externally on a GCP VM (not provisioned by these scripts). To do a fresh GCP deployment you must have a running OpenSearch instance reachable from Cloud Run, then store its credentials in Secret Manager:
+
+```bash
+gcloud secrets create agentic-hybrid-search-opensearch-user --data-file=- <<< "your-user"
+gcloud secrets create agentic-hybrid-search-opensearch-password --data-file=- <<< "your-password"
+```
+
+Set `OPENSEARCH_HOST` and `OPENSEARCH_PORT` in your environment before running `gcp-init.sh`.
 
 ### CI/CD (GitHub Actions)
 
@@ -384,7 +390,7 @@ cp .env.example .env        # Fill in GOOGLE_API_KEY
 ./scripts/teardown.sh       # Full cleanup
 ```
 
-**Prerequisites:** Docker Desktop, Python 3.13+, Node.js 18+,
+**Prerequisites:** Docker Desktop, Python 3.13+, Node.js 24+,
 Google API key ([get one](https://aistudio.google.com/apikey)), ~1 GB disk for ESCI dataset.
 
 ## Performance
