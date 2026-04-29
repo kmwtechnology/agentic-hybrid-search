@@ -40,14 +40,14 @@ OPTIONS:
 
 REQUIREMENTS:
     - Docker (for PostgreSQL + OpenSearch containers)
-    - Python 3.13 (creates .venv at project root if missing)
+    - Python 3.13+ (creates .venv at project root if missing)
     - Node.js 18+ (for frontend)
     - Google API Key (for Gemini embeddings and LLM)
     - ~1.5 GB disk space (ESCI dataset + sample parquet + Docker volumes)
     - Internet access (to clone ESCI dataset repo from GitHub)
 
 WHAT THIS SCRIPT DOES:
-    1. Checks prerequisites (Docker, Python 3.13, Node.js)
+    1. Checks prerequisites (Docker, Python 3.13+, Node.js 24+)
     2. Clones ESCI dataset repo (if not present) → ../esci/
     3. Creates Python virtual environment at project root (if not present)
     4. Creates .env file and configures Google API key (if not present)
@@ -94,32 +94,25 @@ echo "✓ Docker found"
 
 if ! command -v python3 &> /dev/null; then
     echo "❌ Python 3 not found"
-    echo "   Please install Python 3.13 from https://www.python.org/"
+    echo "   Please install Python 3.13+ from https://www.python.org/"
     exit 1
 fi
 
-# Check Python version (must be 3.13)
+# Check Python version (must be 3.13+)
 PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
 PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
 PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
 
 if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 13 ]); then
     echo "❌ Python version too old: $PYTHON_VERSION"
-    echo "   Required: Python 3.13 (or 3.13.x)"
-    exit 1
-fi
-
-if [ "$PYTHON_MAJOR" -gt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -gt 13 ]); then
-    echo "❌ Python version too new: $PYTHON_VERSION"
-    echo "   Required: Python 3.13 (or 3.13.x)"
-    echo "   LangChain/Pydantic are not compatible with Python 3.14+"
+    echo "   Required: Python 3.13+"
     exit 1
 fi
 echo "✓ Python $PYTHON_VERSION found"
 
 if ! command -v node &> /dev/null; then
     echo "❌ Node.js not found"
-    echo "   Please install Node.js 18+ from https://nodejs.org/"
+    echo "   Please install Node.js 24+ from https://nodejs.org/"
     exit 1
 fi
 echo "✓ Node.js found"

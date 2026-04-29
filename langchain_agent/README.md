@@ -14,7 +14,7 @@ A production-grade LangGraph RAG agent for e-commerce product discovery. Uses Go
 
 **Stack:**
 
-- **Backend:** Python 3.13, FastAPI, LangGraph, LangChain
+- **Backend:** Python 3.13+, FastAPI, LangGraph, LangChain
 - **Frontend:** React 18, TypeScript, Tailwind, Zustand
 - **Data layer:** OpenSearch 2.19.1 (HNSW + BM25) · PostgreSQL 16 (LangGraph checkpoints only)
 - **LLM:** Google Gemini 3 Flash (generation) + Gemini 3.1 Flash Lite (classify/rerank) · `text-embedding-005` (embeddings)
