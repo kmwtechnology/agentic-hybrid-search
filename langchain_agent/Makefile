@@ -88,7 +88,7 @@ type-check:
 ci-tools:
 	@echo "Installing CI lint toolchain into .venv..."
 	@$(VENV)/pip install -q --upgrade pip
-	@$(VENV)/pip install -q flake8 black isort mypy types-requests pytest pytest-asyncio pytest-cov pytest-timeout pytest-xdist
+	@$(VENV)/pip install -q flake8 black isort mypy types-requests pytest pytest-asyncio pytest-cov pytest-timeout pytest-xdist psutil
 
 ci-format: ci-tools
 	@echo "[CI] black --check ."
@@ -105,6 +105,8 @@ ci-lint: ci-tools
 ci-test: ci-tools
 	@echo "[CI] pytest tests/unit/"
 	@PYTHONPATH=. $(VENV)/pytest tests/unit/ -q
+	@echo "[CI] pytest --collect-only tests/integration/ tests/e2e/ (import + signature check)"
+	@PYTHONPATH=. $(VENV)/pytest --collect-only -q tests/integration/ tests/e2e/ > /dev/null
 
 ci-frontend:
 	@echo "[CI] npm test (vitest)"
