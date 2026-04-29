@@ -93,6 +93,39 @@ jobs:
         env:
           ENV_FILE: .env.test
 
+      - name: Generate unit test summary
+        if: always()
+        run: |
+          cd langchain_agent
+          {
+            echo "## Phase 1 — Unit Test Results"
+            echo ""
+            if [ -f test-results-phase1.xml ]; then
+              TESTS=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase1.xml').getroot(); print(r.get('tests','?'))")
+              FAILURES=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase1.xml').getroot(); print(r.get('failures','0'))")
+              ERRORS=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase1.xml').getroot(); print(r.get('errors','0'))")
+              SKIPPED=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase1.xml').getroot(); print(r.get('skipped','0'))")
+              PASSED=$((TESTS - FAILURES - ERRORS - SKIPPED))
+              STATUS="✅ Passed"
+              [ "${FAILURES}" -gt 0 ] || [ "${ERRORS}" -gt 0 ] && STATUS="❌ Failed"
+            else
+              TESTS="?" PASSED="?" FAILURES="?" ERRORS="?" SKIPPED="?" STATUS="⚠️ No results"
+            fi
+            COVERAGE="?"
+            if [ -f coverage.xml ]; then
+              COVERAGE=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('coverage.xml').getroot(); print(f\"{float(r.get('line-rate',0))*100:.1f}\")")
+            fi
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| Status | $STATUS |"
+            echo "| Total tests | $TESTS |"
+            echo "| Passed | $PASSED |"
+            echo "| Failed | $FAILURES |"
+            echo "| Errors | $ERRORS |"
+            echo "| Skipped | $SKIPPED |"
+            echo "| Line coverage | ${COVERAGE}% |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Phase 1 Coverage Report
         if: always()
         uses: actions/upload-artifact@v7
@@ -205,6 +238,34 @@ jobs:
         env:
           ENV_FILE: .env.test
 
+      - name: Generate integration test summary
+        if: always()
+        run: |
+          cd langchain_agent
+          {
+            echo "## Phase 2 — Integration Test Results"
+            echo ""
+            if [ -f test-results-phase2.xml ]; then
+              TESTS=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase2.xml').getroot(); print(r.get('tests','?'))")
+              FAILURES=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase2.xml').getroot(); print(r.get('failures','0'))")
+              ERRORS=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase2.xml').getroot(); print(r.get('errors','0'))")
+              SKIPPED=$(python3 -c "import xml.etree.ElementTree as ET; r=ET.parse('test-results-phase2.xml').getroot(); print(r.get('skipped','0'))")
+              PASSED=$((TESTS - FAILURES - ERRORS - SKIPPED))
+              STATUS="✅ Passed"
+              [ "${FAILURES}" -gt 0 ] || [ "${ERRORS}" -gt 0 ] && STATUS="❌ Failed"
+            else
+              TESTS="?" PASSED="?" FAILURES="?" ERRORS="?" SKIPPED="?" STATUS="⚠️ No results"
+            fi
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| Status | $STATUS |"
+            echo "| Total tests | $TESTS |"
+            echo "| Passed | $PASSED |"
+            echo "| Failed | $FAILURES |"
+            echo "| Errors | $ERRORS |"
+            echo "| Skipped | $SKIPPED |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Phase 2 Test Results
         if: always()
         uses: actions/upload-artifact@v7
@@ -231,25 +292,32 @@ jobs:
           pip install --upgrade pip
           pip install flake8 black isort mypy types-requests
 
-      - name: Check code formatting with black
+      - name: Run all lint and type checks
+        id: lint
         run: |
           cd langchain_agent
-          black --check .
+          BLACK_STATUS="✅ Passed"; black --check . 2>&1 || BLACK_STATUS="❌ Failed"
+          ISORT_STATUS="✅ Passed"; isort --check-only . 2>&1 || ISORT_STATUS="❌ Failed"
+          FLAKE8_STATUS="✅ Passed"; flake8 . --count 2>&1 || FLAKE8_STATUS="❌ Failed"
+          MYPY_STATUS="✅ Passed"; mypy main.py 2>&1 || MYPY_STATUS="❌ Failed"
 
-      - name: Sort imports with isort
-        run: |
-          cd langchain_agent
-          isort --check-only .
+          {
+            echo "## Linting & Type Check Results"
+            echo ""
+            echo "| Tool | Status |"
+            echo "|------|--------|"
+            echo "| black (formatting) | $BLACK_STATUS |"
+            echo "| isort (imports) | $ISORT_STATUS |"
+            echo "| flake8 (style) | $FLAKE8_STATUS |"
+            echo "| mypy (types) | $MYPY_STATUS |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Lint with flake8
-        run: |
-          cd langchain_agent
-          flake8 . --count
-
-      - name: Type check with mypy
-        run: |
-          cd langchain_agent
-          mypy main.py
+          # Fail the step if any check failed
+          [[ "$BLACK_STATUS" == *Failed* ]] && exit 1
+          [[ "$ISORT_STATUS" == *Failed* ]] && exit 1
+          [[ "$FLAKE8_STATUS" == *Failed* ]] && exit 1
+          [[ "$MYPY_STATUS" == *Failed* ]] && exit 1
+          true
 
   frontend-tests:
     name: Frontend Tests & Lint
@@ -275,15 +343,24 @@ jobs:
           cd langchain_agent/web
           npm run test
 
-      - name: Lint frontend
+      - name: Lint and type-check frontend
         run: |
           cd langchain_agent/web
-          npm run lint
+          ESLINT_STATUS="✅ Passed"; npm run lint 2>&1 || ESLINT_STATUS="❌ Failed"
+          TSC_STATUS="✅ Passed"; npx tsc --noEmit 2>&1 || TSC_STATUS="❌ Failed"
 
-      - name: Type-check frontend
-        run: |
-          cd langchain_agent/web
-          npx tsc --noEmit
+          {
+            echo "## Frontend Lint & Type Check"
+            echo ""
+            echo "| Tool | Status |"
+            echo "|------|--------|"
+            echo "| ESLint | $ESLINT_STATUS |"
+            echo "| TypeScript (tsc) | $TSC_STATUS |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          [[ "$ESLINT_STATUS" == *Failed* ]] && exit 1
+          [[ "$TSC_STATUS" == *Failed* ]] && exit 1
+          true
 
   build-docker:
     name: Build Docker Image
@@ -399,6 +476,22 @@ jobs:
           # Test health endpoint
           curl -f "$SERVICE_URL/api/health" || exit 1
           echo "✓ Health check passed"
+
+      - name: Generate deploy summary
+        if: always()
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "unavailable")
+          REVISION=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format='value(status.latestCreatedRevisionName)' 2>/dev/null || echo "unavailable")
+          {
+            echo "## Cloud Run Deployment"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Service URL | [$SERVICE_URL]($SERVICE_URL) |"
+            echo "| Revision | \`$REVISION\` |"
+            echo "| Image SHA | \`${{ github.sha }}\` |"
+            echo "| Region | ${{ env.REGION }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Promote to production (100% traffic)
         if: success()
@@ -588,49 +681,42 @@ jobs:
     steps:
       - name: Check workflow status
         run: |
+          result_icon() {
+            case "$1" in
+              success) echo "✅ Passed" ;;
+              failure) echo "❌ Failed" ;;
+              skipped) echo "⏭️ Skipped" ;;
+              cancelled) echo "🚫 Cancelled" ;;
+              *) echo "❓ $1" ;;
+            esac
+          }
+
+          UNIT_RESULT="${{ needs.unit-tests.result }}"
+          INT_RESULT="${{ needs.integration-tests.result }}"
+          LINT_RESULT="${{ needs.lint-backend.result }}"
+          FRONTEND_RESULT="${{ needs.frontend-tests.result }}"
+          DOCKER_RESULT="${{ needs.build-docker.result }}"
+          DEPLOY_RESULT="${{ needs.deploy-cloud-run.result }}"
+          SMOKE_RESULT="${{ needs.smoke-tests.result }}"
+
+          {
+            echo "## Workflow Summary — ${{ github.ref_name }} @ \`${{ github.sha }}\`"
+            echo ""
+            echo "| Job | Result |"
+            echo "|-----|--------|"
+            echo "| Phase 1 — Unit Tests | $(result_icon $UNIT_RESULT) |"
+            echo "| Phase 2 — Integration Tests | $(result_icon $INT_RESULT) |"
+            echo "| Linting & Type Checks | $(result_icon $LINT_RESULT) |"
+            echo "| Frontend Tests & Lint | $(result_icon $FRONTEND_RESULT) |"
+            echo "| Build Docker Image | $(result_icon $DOCKER_RESULT) |"
+            echo "| Deploy to Cloud Run | $(result_icon $DEPLOY_RESULT) |"
+            echo "| Post-Deployment Smoke Tests | $(result_icon $SMOKE_RESULT) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
           FAILED=0
+          for r in $UNIT_RESULT $INT_RESULT $LINT_RESULT $FRONTEND_RESULT $DOCKER_RESULT $DEPLOY_RESULT $SMOKE_RESULT; do
+            [ "$r" = "failure" ] && FAILED=1
+          done
 
-          if [ "${{ needs.unit-tests.result }}" = "failure" ]; then
-            echo "❌ Unit tests failed"
-            FAILED=1
-          fi
-
-          if [ "${{ needs.integration-tests.result }}" = "failure" ]; then
-            echo "❌ Integration tests failed"
-            FAILED=1
-          fi
-
-          if [ "${{ needs.lint-backend.result }}" = "failure" ]; then
-            echo "❌ Linting checks failed"
-            FAILED=1
-          fi
-
-          if [ "${{ needs.frontend-tests.result }}" = "failure" ]; then
-            echo "❌ Frontend tests/lint failed"
-            FAILED=1
-          fi
-
-          if [ "${{ needs.build-docker.result }}" = "failure" ]; then
-            echo "❌ Docker build failed"
-            FAILED=1
-          fi
-
-          if [ "${{ needs.deploy-cloud-run.result }}" = "failure" ]; then
-            echo "❌ Cloud Run deployment failed"
-            FAILED=1
-          fi
-
-          if [ "${{ needs.smoke-tests.result }}" = "failure" ]; then
-            echo "❌ Deployment smoke tests failed"
-            FAILED=1
-          fi
-
-          if [ "${{ needs.deploy-cloud-run.result }}" = "skipped" ]; then
-            echo "⏭️ Deployment skipped (not main branch)"
-          fi
-
-          if [ $FAILED -eq 1 ]; then
-            exit 1
-          fi
-
-          echo "✅ All checks passed: tests, build, deployment, and smoke tests"
+          [ $FAILED -eq 1 ] && exit 1
+          echo "✅ All checks passed"
