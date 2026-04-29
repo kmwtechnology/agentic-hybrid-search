@@ -367,10 +367,42 @@ jobs:
           [[ "$TSC_STATUS" == *Failed* ]] && FE_FAILED=1
           exit $FE_FAILED
 
+  shellcheck:
+    name: ShellCheck & Workflow Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install actionlint
+        run: |
+          bash <(curl -sS https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          sudo mv actionlint /usr/local/bin/
+
+      - name: Lint workflow files with actionlint
+        # actionlint runs shellcheck on every `run:` block inside workflow YAML,
+        # catching the class of bash -e / &&-chain bugs that hit us in production.
+        run: actionlint .github/workflows/build-deploy.yml .github/workflows/reindex.yml
+
+      - name: ShellCheck scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './langchain_agent/scripts'
+          severity: warning
+
+      - name: Generate shellcheck summary
+        if: always()
+        run: |
+          {
+            echo "## ShellCheck & Workflow Lint"
+            echo ""
+            echo "Scanned: \`langchain_agent/scripts/*.sh\` and \`.github/workflows/*.yml\` (via actionlint)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, lint-backend, frontend-tests]
+    needs: [unit-tests, integration-tests, lint-backend, frontend-tests, shellcheck]
     # Only build & push on main (or manual dispatch) — PRs run lint + tests
     # only. A broken Dockerfile will be caught by the next push to main; the
     # `make ci` gate covers the Python failures that were the common case.
@@ -530,7 +562,7 @@ jobs:
         id: service-url
         run: |
           SERVICE_URL="https://${SERVICE_NAME}-375500751528.${REGION}.run.app"
-          echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "SERVICE_URL=$SERVICE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Wait for service to be ready
         run: |
@@ -585,13 +617,13 @@ jobs:
 
           exit_code=${PIPESTATUS[0]}
 
-          if [ $exit_code -eq 0 ]; then
+          if [ "$exit_code" -eq 0 ]; then
             echo "✓ Smoke tests passed"
           else
             echo "❌ Smoke tests failed"
           fi
 
-          exit $exit_code
+          exit "$exit_code"
 
       - name: Run Cloud Run deployment tests
         env:
@@ -610,13 +642,13 @@ jobs:
 
           exit_code=${PIPESTATUS[0]}
 
-          if [ $exit_code -eq 0 ]; then
+          if [ "$exit_code" -eq 0 ]; then
             echo "✓ Cloud Run tests passed"
           else
             echo "❌ Cloud Run tests failed"
           fi
 
-          exit $exit_code
+          exit "$exit_code"
 
       - name: Run deployment data tests
         env:
@@ -635,13 +667,13 @@ jobs:
 
           exit_code=${PIPESTATUS[0]}
 
-          if [ $exit_code -eq 0 ]; then
+          if [ "$exit_code" -eq 0 ]; then
             echo "✓ Data tests passed"
           else
             echo "❌ Data tests failed"
           fi
 
-          exit $exit_code
+          exit "$exit_code"
 
       - name: Upload test results
         if: always()
@@ -656,31 +688,30 @@ jobs:
       - name: Report deployment status
         if: always()
         run: |
-          echo "## Deployment Smoke Test Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Service URL:** ${{ steps.service-url.outputs.SERVICE_URL }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Test Summary" >> $GITHUB_STEP_SUMMARY
-
-          if [ -f "langchain_agent/smoke-test-results.txt" ]; then
-            test_count=$(grep -c "PASSED\|FAILED" langchain_agent/smoke-test-results.txt || echo "0")
-            echo "- **Smoke Tests:** $test_count tests" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ -f "langchain_agent/cloud-run-test-results.txt" ]; then
-            test_count=$(grep -c "PASSED\|FAILED" langchain_agent/cloud-run-test-results.txt || echo "0")
-            echo "- **Cloud Run Tests:** $test_count tests" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ -f "langchain_agent/data-test-results.txt" ]; then
-            test_count=$(grep -c "PASSED\|FAILED" langchain_agent/data-test-results.txt || echo "0")
-            echo "- **Data Tests:** $test_count tests" >> $GITHUB_STEP_SUMMARY
-          fi
+          {
+            echo "## Deployment Smoke Test Report"
+            echo ""
+            echo "**Service URL:** ${{ steps.service-url.outputs.SERVICE_URL }}"
+            echo ""
+            echo "### Test Summary"
+            if [ -f "langchain_agent/smoke-test-results.txt" ]; then
+              test_count=$(grep -c "PASSED\|FAILED" langchain_agent/smoke-test-results.txt || echo "0")
+              echo "- **Smoke Tests:** $test_count tests"
+            fi
+            if [ -f "langchain_agent/cloud-run-test-results.txt" ]; then
+              test_count=$(grep -c "PASSED\|FAILED" langchain_agent/cloud-run-test-results.txt || echo "0")
+              echo "- **Cloud Run Tests:** $test_count tests"
+            fi
+            if [ -f "langchain_agent/data-test-results.txt" ]; then
+              test_count=$(grep -c "PASSED\|FAILED" langchain_agent/data-test-results.txt || echo "0")
+              echo "- **Data Tests:** $test_count tests"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   notify:
     name: Workflow Status Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, lint-backend, frontend-tests, build-docker, deploy-cloud-run, smoke-tests]
+    needs: [unit-tests, integration-tests, lint-backend, frontend-tests, shellcheck, build-docker, deploy-cloud-run, smoke-tests]
     if: always()
 
     steps:
@@ -700,6 +731,7 @@ jobs:
           INT_RESULT="${{ needs.integration-tests.result }}"
           LINT_RESULT="${{ needs.lint-backend.result }}"
           FRONTEND_RESULT="${{ needs.frontend-tests.result }}"
+          SHELLCHECK_RESULT="${{ needs.shellcheck.result }}"
           DOCKER_RESULT="${{ needs.build-docker.result }}"
           DEPLOY_RESULT="${{ needs.deploy-cloud-run.result }}"
           SMOKE_RESULT="${{ needs.smoke-tests.result }}"
@@ -713,13 +745,14 @@ jobs:
             echo "| Phase 2 — Integration Tests | $(result_icon $INT_RESULT) |"
             echo "| Linting & Type Checks | $(result_icon $LINT_RESULT) |"
             echo "| Frontend Tests & Lint | $(result_icon $FRONTEND_RESULT) |"
+            echo "| ShellCheck & Workflow Lint | $(result_icon $SHELLCHECK_RESULT) |"
             echo "| Build Docker Image | $(result_icon $DOCKER_RESULT) |"
             echo "| Deploy to Cloud Run | $(result_icon $DEPLOY_RESULT) |"
             echo "| Post-Deployment Smoke Tests | $(result_icon $SMOKE_RESULT) |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           FAILED=0
-          for r in $UNIT_RESULT $INT_RESULT $LINT_RESULT $FRONTEND_RESULT $DOCKER_RESULT $DEPLOY_RESULT $SMOKE_RESULT; do
+          for r in $UNIT_RESULT $INT_RESULT $LINT_RESULT $FRONTEND_RESULT $SHELLCHECK_RESULT $DOCKER_RESULT $DEPLOY_RESULT $SMOKE_RESULT; do
             [ "$r" = "failure" ] && FAILED=1
           done
 
