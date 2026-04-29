@@ -556,7 +556,15 @@ See [tests/README.md](tests/README.md) for the full layout and fixtures.
 ```bash
 make lint            # pylint
 make format          # black
+make format-fix      # black + isort (run before every commit)
 make type-check      # mypy
+make ci              # full local gate: black + isort + flake8 + mypy + unit tests + frontend
+```
+
+A git pre-commit hook (`.git/hooks/pre-commit`) automatically runs black, isort, and flake8 on every staged `.py` file. If a commit is blocked, run `make format-fix` then re-stage. The hook is local-only and not tracked by git — reinstall it by running:
+
+```bash
+cp scripts/pre-commit.sh ../.git/hooks/pre-commit && chmod +x ../.git/hooks/pre-commit
 ```
 
 ### Frontend (from `web/`)
