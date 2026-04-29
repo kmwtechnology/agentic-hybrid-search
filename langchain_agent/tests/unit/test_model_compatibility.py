@@ -108,8 +108,7 @@ class TestModelTypeAssignment:
         model = os.getenv("EMBEDDINGS_MODEL", "models/text-embedding-005")
         dim = int(os.getenv("VECTOR_DIMENSION", "768"))
 
-        # text-embedding-005 can produce variable dimensions
-        # gemini-embedding-001 produces 768
+        # text-embedding-005 with output_dimensionality=768 produces 768-dim vectors
         assert dim == 768 or "embedding" in model
 
 

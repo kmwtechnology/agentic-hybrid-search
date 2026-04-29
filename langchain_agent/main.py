@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-E-Commerce Product RAG Agent with Real-Time Streaming, Local Knowledge Base, and Persistent Memory
+E-Commerce Product RAG Agent with Real-Time Streaming, Hybrid Search, and Persistent Memory
 
-A production-grade ReAct agent for product search with the following features:
-- Real-time character-by-character streaming of agent thinking and final responses
-- Hybrid vector/lexical search using OpenSearch with semantic embeddings
-- Intelligent document reranking using LLM-as-reranker (Gemini)
-- Persistent conversation memory using PostgreSQL with LangGraph checkpointer
-- Intelligent tool usage for knowledge retrieval
-- Multi-turn conversations with context preservation
-- Real-time observability with typed WebSocket events
+A production-grade LangGraph pipeline for e-commerce product discovery:
+- 6-intent classifier (search, comparison, attribute_filter, refinement, follow_up, summary)
+- Hybrid vector + BM25 retrieval fused via Reciprocal Rank Fusion (RRF, k=60)
+- LLM-based reranking with quality gate and alpha-adjustment retry
+- Conversational query rewriting to resolve pronouns and follow-up references
+- Persistent conversation memory via PostgreSQL LangGraph checkpointer
+- Real-time token-by-token streaming over WebSocket with typed observability events
+- Per-turn Pipeline Quality Summary (NDCG@10, MRR, Recall@20, Precision@10)
 
 Powered by:
-- LLM: Google Gemini (gemini-3-flash-preview) for reasoning and reranking
-- Embeddings: Google Gemini (gemini-embedding-001) for semantic search
-- Vector Store: OpenSearch 2.19.1 with native hybrid search (vector + text)
-- Database: PostgreSQL for conversation checkpoints and metadata
-- Memory: LangGraph with PostgreSQL checkpointer
-- Framework: LangGraph with ReAct agent pattern
+- LLM: Google Gemini (gemini-3-flash-preview) for generation
+- Classify/Rerank: Google Gemini (gemini-3.1-flash-lite-preview)
+- Embeddings: Google Gemini (text-embedding-005, 768-dim) for semantic search
+- Vector Store: OpenSearch 2.19.1 with HNSW knn + BM25
+- Database: PostgreSQL for LangGraph checkpoints
+- Framework: LangGraph (graph-based pipeline, not ReAct tool-binding)
 - Observability: Pydantic-validated WebSocket events with real-time streaming
 """
 

@@ -121,10 +121,6 @@ __all__ = [
     "RERANKER_TOP_K",
     "RERANKER_BATCH_SIZE",
     "RERANKER_WARMUP_ENABLED",
-    # Agent configuration
-    "RETRIEVER_TOOL_NAME",
-    "RETRIEVER_TOOL_DESCRIPTION",
-    "AGENT_MODEL",
     # Query evaluation configuration
     "ENABLE_QUERY_EVALUATION",
     "DEFAULT_ALPHA",
@@ -370,17 +366,6 @@ LINK_CACHE_TTL_MINUTES = int(os.getenv("LINK_CACHE_TTL_MINUTES", "60"))
 # to maintain this count
 # Default: 10 (standard retrieval count)
 MIN_VALID_DOCUMENTS = int(os.getenv("MIN_VALID_DOCUMENTS", "10"))
-
-# ============================================================================
-# AGENT CONFIGURATION
-# ============================================================================
-
-# DEPRECATED: These were used for ReAct agent tool binding, now replaced by
-# direct retrieval pipeline. Kept for backward compatibility.
-# TODO: Remove in next major version
-RETRIEVER_TOOL_NAME = "knowledge_base"
-RETRIEVER_TOOL_DESCRIPTION = "Search for information in the local document index."
-AGENT_MODEL = LLM_MODEL  # DEPRECATED: Use LLM_MODEL directly
 
 # ============================================================================
 # PROJECT PATHS

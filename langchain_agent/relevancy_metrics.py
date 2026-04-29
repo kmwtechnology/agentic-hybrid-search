@@ -207,6 +207,7 @@ class ConfidenceProxy:
 
 
 def _variance(values: Sequence[float]) -> float:
+    """Return population variance; 0.0 when fewer than two values."""
     if len(values) < 2:
         return 0.0
     mean = sum(values) / len(values)

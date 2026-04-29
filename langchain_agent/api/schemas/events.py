@@ -34,7 +34,16 @@ ProgressPercent = Annotated[
 
 
 class BaseEvent(BaseModel):
-    """Base class for all WebSocket events."""
+    """Base class for all WebSocket events.
+
+    Fields:
+        type: Discriminator used by the frontend to deserialize the correct event subclass.
+        timestamp: UTC emission time; frontend uses this for ordering within a turn.
+        node: Graph node that produced the event. Frontend routes the event to the
+              correct pipeline step card regardless of emission order (e.g., an
+              OpenSearchQueryEvent with node="retriever" always lands in the retriever
+              step even if emitted after a later node starts).
+    """
 
     type: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -666,12 +675,11 @@ class ClarificationRequestedEvent(BaseEvent):
     Clarification types:
     - "format": Query doesn't specify content format (e.g., "write about X")
     - "topic": Query lacks explicit topic (e.g., "write a blog post")
-    - "content_type": DEPRECATED (was: LLM low confidence - removed in favor of query vagueness detection)
     """
 
     type: Literal["clarification_requested"] = "clarification_requested"
     node: Literal["content_type_classifier"] = "content_type_classifier"
-    clarification_type: str  # "format" | "topic" | "content_type" (deprecated)
+    clarification_type: str  # "format" | "topic"
     reason: str  # e.g., "Query doesn't specify content format"
     candidates: List[
         Dict[str, Any]
