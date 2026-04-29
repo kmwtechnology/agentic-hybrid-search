@@ -20,6 +20,8 @@ EVENTS_TS = REPO_ROOT / "web" / "src" / "types" / "events.ts"
 
 PY_LITERAL = re.compile(r"""type:\s*Literal\[\s*["']([a-z_]+)["']\s*\]""")
 TS_LITERAL = re.compile(r"""type:\s*['"]([a-z_]+)['"]""")
+PY_NODE_LITERAL = re.compile(r"""\bnode:\s*Literal\[\s*["']([a-z_]+)["']\s*\]""")
+TS_NODE_LITERAL = re.compile(r"""\bnode:\s*['"]([a-z_]+)['"]""")
 
 
 @pytest.mark.unit
@@ -55,4 +57,46 @@ def test_no_python_builtin_in_event_union() -> None:
     assert not offenders, (
         "AgentEvent union references Python builtins instead of *Event classes: "
         f"{offenders}. Pydantic would silently accept any object of these types."
+    )
+
+
+@pytest.mark.unit
+def test_event_node_names_match_between_backend_and_frontend() -> None:
+    """Per-event-type, the backend `node: Literal[...]` must equal the
+    frontend `node: '...'` value. Mismatches mean events route to the wrong
+    UI panel — see HybridSearchResultEvent.node ('tools' vs 'retriever')
+    found in the 2026-04-29 review.
+    """
+    py_src = EVENTS_PY.read_text()
+    ts_src = EVENTS_TS.read_text()
+
+    py_class_re = re.compile(r"class\s+(\w+)\s*\(BaseEvent\)\s*:.*?(?=\nclass\s+\w+|\Z)", re.DOTALL)
+    ts_iface_re = re.compile(
+        r"export\s+interface\s+(\w+)\s+extends\s+BaseEvent\s*\{(.*?)\n\}", re.DOTALL
+    )
+
+    py_nodes: dict[str, str] = {}
+    for m in py_class_re.finditer(py_src):
+        cls = m.group(1)
+        body = m.group(0)
+        n = PY_NODE_LITERAL.search(body)
+        if n:
+            py_nodes[cls] = n.group(1)
+
+    ts_nodes: dict[str, str] = {}
+    for m in ts_iface_re.finditer(ts_src):
+        cls = m.group(1)
+        body = m.group(2)
+        n = TS_NODE_LITERAL.search(body)
+        if n:
+            ts_nodes[cls] = n.group(1)
+
+    mismatches = [
+        (cls, py_nodes[cls], ts_nodes[cls])
+        for cls in py_nodes
+        if cls in ts_nodes and py_nodes[cls] != ts_nodes[cls]
+    ]
+    assert not mismatches, (
+        "Per-event `node:` literal mismatches between backend and frontend: "
+        f"{mismatches}. Frontend will route these events to the wrong panel."
     )

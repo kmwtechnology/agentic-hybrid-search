@@ -131,6 +131,9 @@ services — everything is mocked through `conftest.py`.
 | `test_vector_store.py` | `OpenSearchVectorStore` hybrid search, RRF fusion, facets, collapse |
 | `test_admin_reindex.py` | `/api/admin/reindex` background job, status polling, index health |
 | `test_e2e_ws_url_routes.py` | Pre-flight guard: every `/ws/*` URL referenced in `tests/e2e/` must resolve to a registered FastAPI WebSocket route — catches path/query-style mismatches locally before they reach Cloud Run |
+| `test_e2e_event_types.py` | Pre-flight guard: every `event["type"] == "..."` literal in `tests/e2e/` must be declared in `api/schemas/events.py`; flags use of `event["event_type"]` (wire field is `type`) |
+| `test_e2e_payload_shapes.py` | Pre-flight guard: every `json.dumps({...})` WS payload in `tests/e2e/` must match the `chat_message` / `stop_execution` contract enforced by `api/routes/chat.py` (catches stale `{"query":, "session_id":}` shapes) |
+| `test_frontend_backend_event_parity.py` | Pre-flight guard: every backend `type: Literal[...]` in `events.py` must appear in `web/src/types/events.ts`; per-event `node:` literals must match between backend and frontend; `AgentEvent` union cannot reference Python builtins |
 
 **Run time:** ~0.5 s. ~590 unit tests total. **Best for:** TDD,
 pre-commit, CI fast lane.

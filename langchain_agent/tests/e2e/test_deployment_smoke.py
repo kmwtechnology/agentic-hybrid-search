@@ -317,6 +317,9 @@ class TestSearchPipeline:
                         break
 
                 assert len(received_events) > 0, "No events received"
+                assert any(
+                    e.get("type") == "agent_complete" for e in received_events
+                ), "agent_complete event never received — server likely dropped the message"
                 assert len(response_text) > 0, "No response text generated"
         except asyncio.TimeoutError:
             pytest.fail("Timeout during search intent test")
@@ -367,6 +370,9 @@ class TestSearchPipeline:
                     except asyncio.TimeoutError:
                         break
 
+                assert any(
+                    e.get("type") == "agent_complete" for e in received_events
+                ), "agent_complete event never received"
                 assert len(response_text) > 0, "No comparison generated"
         except Exception as e:
             _fail_if_origin_blocked(e)
@@ -419,6 +425,7 @@ class TestSearchPipeline:
 
                 # Collect refined response
                 response_text = ""
+                received_complete = False
                 start_time = time.time()
                 while time.time() - start_time < WEBSOCKET_TIMEOUT:
                     try:
@@ -427,10 +434,12 @@ class TestSearchPipeline:
                         if event.get("type") == "llm_response_chunk":
                             response_text += event.get("content", "")
                         if event.get("type") == "agent_complete":
+                            received_complete = True
                             break
                     except asyncio.TimeoutError:
                         break
 
+                assert received_complete, "agent_complete event never received"
                 assert len(response_text) > 0, "No refined response generated"
         except Exception as e:
             _fail_if_origin_blocked(e)

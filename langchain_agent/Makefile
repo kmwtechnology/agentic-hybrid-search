@@ -121,6 +121,15 @@ ci-docker:
 	@docker build -f Dockerfile -t agentic-hybrid-search:ci-check .. --quiet
 	@echo "✓ Docker build succeeded"
 
+# Integration test gate — actually executes tests/integration/, not just
+# collect-only. Requires PostgreSQL + OpenSearch already running locally:
+#     docker compose up -d   (from repo root)
+# Slower (~30–120 s) so kept out of `make ci` and PR gating; runs in the
+# nightly GitHub Actions cron (.github/workflows/integration-nightly.yml).
+ci-integration: ci-tools
+	@echo "[CI] pytest tests/integration/ -m 'not slow'"
+	@PYTHONPATH=. $(VENV)/pytest tests/integration/ -m 'not slow' -q --timeout=120
+
 # Full pre-push gate. Mirrors GitHub Actions build-deploy.yml jobs:
 #   lint-backend   → ci-format + ci-lint
 #   unit-tests     → ci-test

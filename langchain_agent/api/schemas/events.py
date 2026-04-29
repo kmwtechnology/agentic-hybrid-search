@@ -233,7 +233,7 @@ class HybridSearchResultEvent(BaseEvent):
     """Emitted when hybrid search completes with candidates."""
 
     type: Literal["hybrid_search_result"] = "hybrid_search_result"
-    node: Literal["tools"] = "tools"
+    node: Literal["retriever"] = "retriever"
     candidate_count: int
     candidates: List[SearchCandidate]
 
@@ -284,7 +284,7 @@ class RerankerResultEvent(BaseEvent):
     """Emitted when reranking completes with scored documents."""
 
     type: Literal["reranker_result"] = "reranker_result"
-    node: Literal["tools"] = "tools"
+    node: Literal["reranker"] = "reranker"
     results: List[RerankedDocument]
     reranking_changed_order: bool = False
 
@@ -692,7 +692,7 @@ class ClarificationResolvedEvent(BaseEvent):
     """Emitted when user provides clarification and it's resolved."""
 
     type: Literal["clarification_resolved"] = "clarification_resolved"
-    node: Literal["format_clarification_resolver"] = "format_clarification_resolver"
+    node: Literal["content_type_clarification_resolver"] = "content_type_clarification_resolver"
     clarification_type: str  # "format" | "topic"
     original_classification: str  # Classifier's original top choice
     user_selected: str  # What user selected
