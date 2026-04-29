@@ -209,7 +209,7 @@ for i in {1..30}; do
         log "Proxy connected."
         break
     fi
-    if [ $i -eq 30 ]; then
+    if [ "$i" -eq 30 ]; then
         err "Cloud SQL Auth Proxy failed to connect after 30 seconds."
     fi
     sleep 1
@@ -223,6 +223,7 @@ log "Initializing Cloud SQL checkpoint tables..."
 echo ""
 
 # Activate virtual environment
+# shellcheck source=/dev/null
 source "$PROJECT_DIR/.venv/bin/activate"
 
 # Override database connection to use proxy
@@ -234,6 +235,7 @@ export POSTGRES_DB="$DB_NAME"
 
 # Load GOOGLE_API_KEY and OpenSearch settings from .env
 set -a
+# shellcheck source=/dev/null
 source "$PROJECT_DIR/.env"
 set +a
 

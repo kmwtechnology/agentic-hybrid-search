@@ -17,7 +17,8 @@ LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
 # Function to log messages
 log() {
     local msg="$1"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[${timestamp}] $msg" | tee -a "$LOG_FILE"
 }
 
@@ -100,10 +101,10 @@ fi
 
 # Check Python version (must be 3.13+)
 PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
-PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
-PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
+PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
 
-if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 13 ]); then
+if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 13 ]; }; then
     echo "❌ Python version too old: $PYTHON_VERSION"
     echo "   Required: Python 3.13+"
     exit 1
@@ -228,6 +229,7 @@ fi
 
 log "   Activating venv and installing dependencies..."
 echo "   Installing dependencies..."
+# shellcheck source=/dev/null
 source "$VENV_PATH/bin/activate"
 pip install -q --upgrade pip setuptools wheel
 pip install -q -r "$PROJECT_DIR/requirements.txt"
@@ -277,7 +279,7 @@ if ! docker compose ps 2>/dev/null | grep -q "opensearch.*Up"; then
             echo "✓ OpenSearch started"
             break
         fi
-        if [ $i -eq 30 ]; then
+        if [ "$i" -eq 30 ]; then
             log "❌ OpenSearch failed to start within 30 seconds"
             echo "❌ OpenSearch failed to start within 30 seconds"
             echo "   Check: docker compose logs opensearch"
@@ -301,7 +303,7 @@ if ! docker compose ps 2>/dev/null | grep -q "opensearch-dashboards.*Up"; then
             echo "✓ OpenSearch Dashboards started → http://localhost:5601"
             break
         fi
-        if [ $i -eq 30 ]; then
+        if [ "$i" -eq 30 ]; then
             log "⚠ OpenSearch Dashboards is starting (may take a moment)"
             echo "⚠ OpenSearch Dashboards is starting (may take a moment)"
             echo "   Access at: http://localhost:5601"
@@ -321,14 +323,15 @@ echo ""
 log "Step 6: Initializing database, OpenSearch, and ingesting products..."
 echo "💾 Initializing database, OpenSearch, and ingesting products..."
 
+# shellcheck source=/dev/null
 source "$PROJECT_DIR/.venv/bin/activate"
-cd "$PROJECT_DIR"
+cd "$PROJECT_DIR" || exit 1
 
 mkdir -p logs
 log "   Running: python setup.py"
 PYTHONPATH=. python setup.py 2>&1 | tee -a logs/setup.log
 
-if [ ${PIPESTATUS[0]} -eq 0 ]; then
+if [ "${PIPESTATUS[0]}" -eq 0 ]; then
     echo ""
     SAMPLE_FILE="$PARENT_DIR/esci/shopping_queries_dataset/esci_products_sample_10000.parquet"
     if [ -f "$SAMPLE_FILE" ]; then

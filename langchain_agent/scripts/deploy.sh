@@ -423,25 +423,19 @@ else
     # at build time improves initial load performance (no extra network call)
     if [ -n "$SERVICE_URL" ] && ! $DRY_RUN; then
         log "Rebuilding Docker image with discovered SERVICE_URL..."
-        run docker build \
+        if run docker build \
             --platform=linux/amd64 \
             -t "$IMAGE_URI" \
-            "$PROJECT_DIR" > /dev/null 2>&1
-
-        if [ $? -eq 0 ]; then
+            "$PROJECT_DIR" > /dev/null 2>&1; then
             log "Pushing updated Docker image..."
-            run docker push "$IMAGE_URI" > /dev/null 2>&1
-
-            if [ $? -eq 0 ]; then
+            if run docker push "$IMAGE_URI" > /dev/null 2>&1; then
                 log "Redeploying with updated image..."
-                run gcloud run deploy "$SERVICE_NAME" \
+                if run gcloud run deploy "$SERVICE_NAME" \
                     --image="$IMAGE_URI" \
                     --platform=managed \
                     --region="$REGION" \
                     --project="$PROJECT_ID" \
-                    --quiet > /dev/null 2>&1
-
-                if [ $? -eq 0 ]; then
+                    --quiet > /dev/null 2>&1; then
                     log "Service redeployed with latest configuration."
                 fi
             fi

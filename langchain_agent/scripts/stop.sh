@@ -59,7 +59,7 @@ echo ""
 
 # Stop Docker containers (PostgreSQL + OpenSearch)
 echo "Stopping Docker containers (PostgreSQL + OpenSearch)..."
-cd "$PARENT_DIR"
+cd "$PARENT_DIR" || exit 1
 docker compose down > /dev/null 2>&1
 echo "✓ Docker containers stopped"
 

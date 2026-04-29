@@ -54,7 +54,7 @@ echo "✓ Services stopped"
 
 # 2. Remove Docker containers and volumes (PostgreSQL + OpenSearch)
 echo "Removing Docker containers and volumes (PostgreSQL + OpenSearch)..."
-cd "$PARENT_DIR"
+cd "$PARENT_DIR" || exit 1
 docker compose down -v 2>/dev/null || true
 echo "✓ Docker containers and volumes removed"
 
