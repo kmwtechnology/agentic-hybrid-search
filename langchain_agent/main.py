@@ -1698,6 +1698,7 @@ Return ONLY a JSON object (use null for missing attributes):
             )
 
     def _build_intent_prompt(self, user_input: str, messages: Sequence[BaseMessage]) -> str:
+        """Build the LLM prompt for intent classification, including recent conversation context."""
         history_block = self._build_recent_context(messages, limit=6)
 
         # Available intents for e-commerce product search
@@ -1811,6 +1812,7 @@ Respond with JSON only. No other text."""
         return prompt
 
     def _label_for_message(self, message: BaseMessage) -> str:
+        """Return a human-readable role label for a message (User / Assistant / Tool)."""
         if isinstance(message, HumanMessage):
             return "User"
         if isinstance(message, AIMessage):
@@ -2344,11 +2346,13 @@ Original query: {query}
         bm25_query_opts["hybrid"] = False  # force BM25 for the baseline
 
         def _hybrid_call() -> Tuple[List[Document], float]:
+            """Run hybrid (vector + BM25) retrieval; returns docs and wall-clock ms."""
             t0 = time.time()
             docs = retriever.invoke(query)
             return docs, (time.time() - t0) * 1000.0
 
         def _bm25_call() -> Tuple[List[Document], float]:
+            """Run BM25-only retrieval with optimization toggles; returns docs and ms."""
             t0 = time.time()
             docs = self.vector_store.bm25_only_search(
                 query,
