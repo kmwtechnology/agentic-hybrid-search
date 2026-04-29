@@ -23,6 +23,8 @@ help:
 	@echo ""
 	@echo "Pre-push CI gate (mirrors GitHub Actions build-deploy.yml):"
 	@echo "  make ci                 - Run all CI checks locally before push"
+	@echo "  make ci-frontend        - Frontend tests, lint, and type-check only"
+	@echo "  make ci-docker          - Validate Dockerfile builds (no push)"
 	@echo "  make format-fix         - Auto-fix black + isort formatting"
 	@echo ""
 	@echo "Running:"
@@ -104,12 +106,28 @@ ci-test: ci-tools
 	@echo "[CI] pytest tests/unit/"
 	@PYTHONPATH=. $(VENV)/pytest tests/unit/ -q
 
+ci-frontend:
+	@echo "[CI] npm test (vitest)"
+	@cd web && npm ci --silent && npm run test
+	@echo "[CI] npm run lint (eslint)"
+	@cd web && npm run lint
+	@echo "[CI] tsc --noEmit"
+	@cd web && npx tsc --noEmit
+
+ci-docker:
+	@echo "[CI] docker build (no push)"
+	@docker build -f Dockerfile -t agentic-hybrid-search:ci-check .. --quiet
+	@echo "✓ Docker build succeeded"
+
 # Full pre-push gate. Mirrors GitHub Actions build-deploy.yml jobs:
-#   lint-backend  → ci-format + ci-lint
-#   unit-tests    → ci-test
-# Integration tests are intentionally omitted (they need a live PG +
-# OpenSearch); CI runs them after this gate passes.
-ci: ci-format ci-lint ci-test
+#   lint-backend   → ci-format + ci-lint
+#   unit-tests     → ci-test
+#   frontend-tests → ci-frontend
+# Integration tests and docker build are intentionally omitted from the
+# default gate (they need live services / are slow). Run individually:
+#   make ci-docker    — validate the Dockerfile builds cleanly
+# Integration tests require: docker compose up -d (PG + OpenSearch)
+ci: ci-format ci-lint ci-test ci-frontend
 	@echo ""
 	@echo "✅ Local CI gate passed — safe to push."
 
