@@ -210,31 +210,6 @@ class TestHorizontalScaling:
 
         assert all(results), "Some concurrent connections failed"
 
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    def test_api_handles_burst_of_requests(self):
-        """Verify API handles burst of rapid requests."""
-        import concurrent.futures
-
-        def make_request(query_id: int):
-            with httpx.Client(timeout=TIMEOUT) as client:
-                headers = {
-                    "Authorization": f"Bearer {API_KEY}",
-                    "Origin": ORIGIN_HEADER,
-                }
-                response = client.get(f"{CLOUD_RUN_URL}/api/conversations", headers=headers)
-            # 429 is rate limit — server handled but throttled, still counts as healthy behavior
-            return response.status_code in [200, 400, 429]
-
-        # Burst 20 requests (spread out slightly to avoid pure rate-limit storm)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(make_request, i) for i in range(20)]
-            results = [f.result() for f in concurrent.futures.as_completed(futures)]
-
-        # Allow some failures due to rate limiting, but most should succeed
-        success_rate = sum(results) / len(results)
-        assert success_rate > 0.7, f"Too many failures under load: {success_rate:.0%}"
-
 
 class TestLoggingFormat:
     """Structured logging and observability tests."""
@@ -296,7 +271,10 @@ class TestEnvironmentConfiguration:
     def test_api_key_from_secret_manager(self):
         """Verify API key is loaded from Secret Manager, not hardcoded."""
         # If we get a 401/403 with invalid key, it means the app has its own key from Secret Manager.
-        # 429 is also acceptable (prior burst test may have tripped rate limits).
+        # The burst test is in TestBurstLoadLast and runs after this, so the rate-limit budget
+        # for /api/conversations is intact. A 429 here means a new test was added between
+        # this one and TestBurstLoadLast that exhausts the budget — fix the ordering, don't
+        # skip the assertion.
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(
                 f"{CLOUD_RUN_URL}/api/conversations",
@@ -306,13 +284,11 @@ class TestEnvironmentConfiguration:
                 },
             )
 
-        if response.status_code == 429:
-            pytest.skip("Rate limited from prior burst test; cannot verify auth rejection")
         # Should reject with 401/403, not 500 (which would mean misconfiguration)
         assert response.status_code in [
             401,
             403,
-        ], f"API key validation failed: {response.status_code}"
+        ], f"API key validation failed: {response.status_code} (body: {response.text[:200]})"
 
 
 class TestDatabaseConnectivity:
@@ -365,6 +341,42 @@ class TestOpenSearchIndex:
         doc_count = data.get("document_count", 0)
 
         assert doc_count > 0, f"No product documents indexed: {doc_count}"
+
+
+class TestBurstLoadLast:
+    """Burst-load tests that exhaust the rate-limit budget.
+
+    Kept at the end of the module on purpose: these tests fire >10 requests
+    against rate-limited endpoints (10/min on /api/conversations), which would
+    cause downstream tests sharing the same source IP to receive 429 and skip
+    real assertions. Anything that depends on a healthy rate-limit budget
+    must run before this class.
+    """
+
+    @pytest.mark.e2e
+    @pytest.mark.slow
+    def test_api_handles_burst_of_requests(self):
+        """Verify API handles burst of rapid requests."""
+        import concurrent.futures
+
+        def make_request(query_id: int):
+            with httpx.Client(timeout=TIMEOUT) as client:
+                headers = {
+                    "Authorization": f"Bearer {API_KEY}",
+                    "Origin": ORIGIN_HEADER,
+                }
+                response = client.get(f"{CLOUD_RUN_URL}/api/conversations", headers=headers)
+            # 429 is rate limit — server handled but throttled, still counts as healthy behavior
+            return response.status_code in [200, 400, 429]
+
+        # Burst 20 requests (spread out slightly to avoid pure rate-limit storm)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(make_request, i) for i in range(20)]
+            results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+        # Allow some failures due to rate limiting, but most should succeed
+        success_rate = sum(results) / len(results)
+        assert success_rate > 0.7, f"Too many failures under load: {success_rate:.0%}"
 
 
 # Make async tests work with pytest

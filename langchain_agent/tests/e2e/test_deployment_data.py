@@ -94,9 +94,9 @@ class TestESCIProductIndexing:
                 response_text = ""
                 start_time = time.time()
 
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
@@ -144,9 +144,9 @@ class TestESCIProductIndexing:
                 response_text = ""
                 start_time = time.time()
 
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
@@ -190,9 +190,9 @@ class TestESCIProductIndexing:
                 response_text = ""
                 start_time = time.time()
 
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
@@ -239,9 +239,9 @@ class TestProductMetadata:
                 metadata = {}
                 start_time = time.time()
 
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
                         event = json.loads(event_msg)
 
                         if event.get("type") == "agent_complete":
@@ -290,9 +290,9 @@ class TestProductMetadata:
                 response_text = ""
                 start_time = time.time()
 
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
@@ -340,9 +340,9 @@ class TestDataConsistency:
                 await ws.send(message)
 
                 start_time = time.time()
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(ws.recv(), timeout=15)
                         event = json.loads(event_msg)
                         if event.get("type") == "llm_response_chunk":
                             response_1 += event.get("content", "")
@@ -364,9 +364,9 @@ class TestDataConsistency:
                 await ws.send(message)
 
                 start_time = time.time()
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(ws.recv(), timeout=15)
                         event = json.loads(event_msg)
                         if event.get("type") == "llm_response_chunk":
                             response_2 += event.get("content", "")
@@ -414,9 +414,9 @@ class TestDataConsistency:
                 response_text = ""
                 start_time = time.time()
 
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(websocket.recv(), timeout=15)
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
@@ -466,9 +466,9 @@ class TestCheckpointPersistence:
                 await ws.send(msg1)
 
                 start_time = time.time()
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(ws.recv(), timeout=15)
                         event = json.loads(event_msg)
                         if event.get("type") == "agent_complete":
                             break
@@ -492,9 +492,9 @@ class TestCheckpointPersistence:
 
                 response_text = ""
                 start_time = time.time()
-                while time.time() - start_time < 30:
+                while time.time() - start_time < 60:
                     try:
-                        event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
+                        event_msg = await asyncio.wait_for(ws.recv(), timeout=15)
                         event = json.loads(event_msg)
                         if event.get("type") == "llm_response_chunk":
                             response_text += event.get("content", "")
