@@ -180,6 +180,65 @@ async def test_verify_same_origin_raises_403_no_headers():
 
 
 # ---------------------------------------------------------------------------
+# Regression: Host fallback must NOT override an explicit disallowed Origin.
+#
+# On Cloud Run, `Host` is the destination domain (e.g.
+# "agentic-hybrid-search-375500751528.us-central1.run.app") and matches
+# *.run.app on every request regardless of who sent it. If verify_same_origin
+# treated Host as a same-origin signal whenever Origin was disallowed, the
+# entire origin allow-list would be defeated for the production deployment.
+#
+# This was the 2026-04-29 smoke failure root cause:
+#   GET /api/conversations  Origin: https://evil.example.com
+#                           Host:   <service>.run.app
+#   → returned 200 instead of 403.
+#
+# The contract: Host is consulted ONLY when both Origin and Referer are
+# absent (the legitimate same-origin GET case where the browser omits Origin).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_verify_same_origin_disallowed_origin_with_run_app_host_rejected():
+    """The smoke-test regression: disallowed Origin + Cloud Run Host MUST 403."""
+    request = _make_request(
+        origin="https://evil.example.com",
+        host="agentic-hybrid-search-375500751528.us-central1.run.app",
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await verify_same_origin(request)
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_verify_same_origin_disallowed_origin_with_localhost_host_rejected():
+    request = _make_request(origin="https://evil.example.com", host="localhost:5173")
+    with pytest.raises(HTTPException) as exc_info:
+        await verify_same_origin(request)
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_verify_same_origin_disallowed_referer_with_run_app_host_rejected():
+    """Disallowed Referer (no Origin) + Cloud Run Host: Referer is authoritative."""
+    request = _make_request(
+        referer="https://evil.example.com/path",
+        host="my-service.us-central1.run.app",
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await verify_same_origin(request)
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_verify_same_origin_no_origin_no_referer_run_app_host_allowed():
+    """Same-origin GET (no Origin, no Referer) with Cloud Run Host falls through to host fallback."""
+    request = _make_request(host="my-service.us-central1.run.app")
+    result = await verify_same_origin(request)
+    assert result is True
+
+
+# ---------------------------------------------------------------------------
 # verify_websocket_origin — async
 # ---------------------------------------------------------------------------
 

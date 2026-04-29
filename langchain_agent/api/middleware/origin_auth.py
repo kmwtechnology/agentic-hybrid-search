@@ -116,13 +116,26 @@ async def verify_same_origin(request: Request) -> bool:
         f"Origin auth check: method={method}, origin={origin}, referer={referer}, host={host}"
     )
 
-    # First try Origin and Referer headers
-    if is_allowed_origin(origin, referer):
-        logger.debug(f"Request allowed via origin/referer check")
-        return True
+    # If Origin or Referer is present, it is the source of truth.
+    # An explicit disallowed Origin must be rejected — the Host header is the
+    # destination, not the source, and on Cloud Run it always matches *.run.app
+    # regardless of who sent the request, so falling back to Host here would
+    # defeat origin enforcement entirely.
+    if origin or referer:
+        if is_allowed_origin(origin, referer):
+            logger.debug("Request allowed via origin/referer check")
+            return True
+        logger.warning(
+            f"Request blocked (disallowed origin/referer): "
+            f"origin={origin}, referer={referer}, host={host}, method={method}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Origin not allowed. This API is only accessible from the UI.",
+        )
 
-    # Fallback for same-origin requests: check Host header
-    # Same-origin requests from the UI will have a Host that matches allowed origins
+    # No Origin and no Referer — typical for same-origin GETs which omit
+    # Origin by browser design. Fall back to Host (destination) matching.
     if host:
         allowed_origins = get_allowed_origins()
 

@@ -616,11 +616,15 @@ jobs:
         run: |
           cd langchain_agent
 
+          # --timeout=120: the refinement test sends two sequential chat
+          # messages; each takes 16-25 s end-to-end on Cloud Run (reranker
+          # silence + LLM streaming + network), so a 30 s ceiling races the
+          # second message every time. 120 s comfortably covers both.
           pytest tests/e2e/test_deployment_smoke.py \
             -v \
             --tb=short \
             -m "e2e and slow" \
-            --timeout=30 \
+            --timeout=120 \
             --asyncio-mode=auto \
             2>&1 | tee smoke-test-results.txt
 
@@ -646,7 +650,7 @@ jobs:
             -v \
             --tb=short \
             -m "e2e and slow" \
-            --timeout=30 \
+            --timeout=120 \
             --asyncio-mode=auto \
             2>&1 | tee cloud-run-test-results.txt
 
@@ -672,7 +676,7 @@ jobs:
             -v \
             --tb=short \
             -m "e2e and slow" \
-            --timeout=30 \
+            --timeout=120 \
             --asyncio-mode=auto \
             2>&1 | tee data-test-results.txt
 
