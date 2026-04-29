@@ -120,7 +120,8 @@ services — everything is mocked through `conftest.py`.
 | `test_link_verifier.py` | URL validation, TTL cache, timeout handling |
 | `test_llm_streaming_content_blocks.py` | Streaming event emission, token assembly |
 | `test_model_compatibility.py` | Gemini model ID handling, version compatibility |
-| `test_origin_auth.py` | Origin/Referer allow-list, WebSocket auth checks |
+| `test_origin_auth.py` | Origin/Referer allow-list, WebSocket auth checks, Host-fallback contract (disallowed Origin + `*.run.app` Host MUST 403 — Host fallback only fires when both Origin and Referer are absent) |
+| `test_origin_auth_contract.py` | TestClient-based regression test wiring `verify_same_origin` into a FastAPI app; replays the exact production header combos from the 2026-04-29 smoke failure |
 | `test_pipeline_nodes.py` | Node input/output contracts across the pipeline |
 | `test_pipeline_summary_event.py` | `_build_pipeline_summary` accumulation, ground-truth vs. confidence-proxy fallback, latency table assembly |
 | `test_relevancy_metrics.py` | NDCG@k / MRR / Recall@k / Precision@k, `compute_stage_metrics`, `confidence_from_scores`, `count_rank_changes`, `latency_cost_benefit` (43 tests, no NumPy) |
@@ -134,8 +135,9 @@ services — everything is mocked through `conftest.py`.
 | `test_e2e_event_types.py` | Pre-flight guard: every `event["type"] == "..."` literal in `tests/e2e/` must be declared in `api/schemas/events.py`; flags use of `event["event_type"]` (wire field is `type`) |
 | `test_e2e_payload_shapes.py` | Pre-flight guard: every `json.dumps({...})` WS payload in `tests/e2e/` must match the `chat_message` / `stop_execution` contract enforced by `api/routes/chat.py` (catches stale `{"query":, "session_id":}` shapes) |
 | `test_frontend_backend_event_parity.py` | Pre-flight guard: every backend `type: Literal[...]` in `events.py` must appear in `web/src/types/events.ts`; per-event `node:` literals must match between backend and frontend; `AgentEvent` union cannot reference Python builtins |
+| `test_smoke_test_budget.py` | Pre-flight guard: AST-walks each smoke / cloud-run / data e2e test, counts `chat_message` sends, computes a worst-case Cloud Run budget (`SETUP_OVERHEAD_S=5` + `PER_CHAT_MESSAGE_BUDGET_S=25` × sends), and asserts the workflow's `pytest --timeout=N` covers it. Also asserts inner `asyncio.wait_for(timeout=...)` ≤ workflow `--timeout` and `WEBSOCKET_TIMEOUT` ≥ per-message budget. Tighten constants only if you have new wall-clock data — they reflect production observation, not aspirational SLOs. |
 
-**Run time:** ~0.5 s. ~590 unit tests total. **Best for:** TDD,
+**Run time:** ~0.9 s. ~612 unit tests total. **Best for:** TDD,
 pre-commit, CI fast lane.
 
 ### Integration (`tests/integration/`)
