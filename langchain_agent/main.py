@@ -2363,9 +2363,9 @@ Original query: {query}
             return docs, (time.time() - t0) * 1000.0
 
         def _stock_bm25_call() -> Tuple[List[Document], float]:
-            # Vanilla BM25 reference — ignores all optimization toggles. Gives
-            # the Pipeline Quality Summary card a fixed anchor so users can
-            # see what their fuzzy/synonyms/phonetic toggles actually buy.
+            """Run vanilla BM25 (no optimization toggles) as a fixed baseline for the Pipeline Quality Summary."""
+            # Ignores all optimization toggles so the card can show what
+            # fuzzy/synonyms/phonetic actually buy over plain BM25.
             t0 = time.time()
             docs = self.vector_store.stock_bm25_search(
                 query,
