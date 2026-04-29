@@ -467,7 +467,6 @@ jobs:
             --image=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REGISTRY_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --platform=managed \
-            --allow-unauthenticated \
             --set-env-vars="\
           POSTGRES_HOST=136.111.249.119,\
           POSTGRES_DB=langchain_agent,\
