@@ -95,6 +95,7 @@ class TestRequestTimeout:
     async def test_websocket_maintains_connection(self):
         """Verify WebSocket connection can be maintained."""
         from websockets.asyncio.client import connect as ws_connect
+        from websockets.protocol import State
 
         thread_id = "timeout-test-001"
         ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
@@ -110,8 +111,10 @@ class TestRequestTimeout:
                 # Keep connection alive for a bit
                 await asyncio.sleep(2)
 
-                # Should still be connected
-                assert not websocket.closed, "WebSocket closed prematurely"
+                # Should still be connected (websockets v14+ exposes state, not closed)
+                assert (
+                    websocket.state is State.OPEN
+                ), f"WebSocket closed prematurely: {websocket.state}"
         except asyncio.TimeoutError:
             pytest.fail("WebSocket connection timed out")
         except Exception as e:
