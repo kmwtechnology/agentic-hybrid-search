@@ -28,6 +28,7 @@ env:
   REGION: us-central1
   SERVICE_NAME: agentic-hybrid-search
   ARTIFACT_REGISTRY_REPO: agentic-hybrid-search
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Cancel stale PR runs when a new push lands on the same branch — saves CI
 # minutes on rapid-fire pushes. Main-branch runs are NEVER cancelled so we
