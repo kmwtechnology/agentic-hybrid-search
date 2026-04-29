@@ -266,29 +266,12 @@ class TestEnvironmentConfiguration:
         for pattern in sensitive_patterns:
             assert pattern not in response_text, f"Potential credential leak in response: {pattern}"
 
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    def test_api_key_from_secret_manager(self):
-        """Verify API key is loaded from Secret Manager, not hardcoded."""
-        # If we get a 401/403 with invalid key, it means the app has its own key from Secret Manager.
-        # The burst test is in TestBurstLoadLast and runs after this, so the rate-limit budget
-        # for /api/conversations is intact. A 429 here means a new test was added between
-        # this one and TestBurstLoadLast that exhausts the budget — fix the ordering, don't
-        # skip the assertion.
-        with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(
-                f"{CLOUD_RUN_URL}/api/conversations",
-                headers={
-                    "Authorization": "Bearer obviously-fake-key-xyz",
-                    "Origin": ORIGIN_HEADER,
-                },
-            )
-
-        # Should reject with 401/403, not 500 (which would mean misconfiguration)
-        assert response.status_code in [
-            401,
-            403,
-        ], f"API key validation failed: {response.status_code} (body: {response.text[:200]})"
+    # Removed test_api_key_from_secret_manager: the deployment retired the API
+    # key model in favor of same-origin auth (see api/middleware/origin_auth.py
+    # and the docstring in TestOriginBasedAuth in test_deployment_smoke.py). A
+    # bad `Authorization: Bearer` header is silently ignored when Origin
+    # matches, so a 401/403 assertion is no longer correct. Origin-based auth
+    # is exercised by test_request_with_disallowed_origin_rejected.
 
 
 class TestDatabaseConnectivity:
