@@ -12,7 +12,6 @@ from pydantic import ValidationError
 
 from reranker import GeminiReranker, RerankerScore, RerankerScores
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -131,9 +130,7 @@ class TestScoreDocuments:
         reranker = _make_reranker()
         docs = [_doc("low"), _doc("high"), _doc("mid")]
         reranker.structured_llm = MagicMock()
-        reranker.structured_llm.invoke.return_value = _mock_scores(
-            (0, 0.3), (1, 0.9), (2, 0.6)
-        )
+        reranker.structured_llm.invoke.return_value = _mock_scores((0, 0.3), (1, 0.9), (2, 0.6))
         result = reranker.score_documents("query", docs)
         scores = [s for _, s in result]
         assert scores == sorted(scores, reverse=True)

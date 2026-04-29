@@ -143,7 +143,9 @@ class TestLinkVerifier:
         urls = ["https://a.com", "https://b.com"]
 
         with patch.object(verifier, "verify_url") as mock_verify:
-            mock_verify.side_effect = lambda u: (True, "Status 200") if "a" in u else (False, "Status 404")
+            mock_verify.side_effect = lambda u: (
+                (True, "Status 200") if "a" in u else (False, "Status 404")
+            )
             results = verifier.verify_urls(urls)
 
         assert "https://a.com" in results

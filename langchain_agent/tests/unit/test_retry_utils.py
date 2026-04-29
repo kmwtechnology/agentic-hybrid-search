@@ -9,7 +9,13 @@ import psycopg
 import pytest
 
 from exceptions import DatabaseError, LLMError
-from retry_utils import is_transient_error, retry_database, retry_llm, retry_network, with_retry_context
+from retry_utils import (
+    is_transient_error,
+    retry_database,
+    retry_llm,
+    retry_network,
+    with_retry_context,
+)
 
 
 @pytest.mark.unit
