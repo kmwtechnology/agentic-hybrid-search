@@ -1,5 +1,7 @@
 # Agentic Hybrid Search — Test Suite
 
+> Related docs: [repo root README](../../README.md) · [langchain_agent/README.md](../README.md) · [tests/e2e/README.md](e2e/README.md)
+
 Pytest-based tests organized by scope. All commands assume you're in
 `langchain_agent/` with `PYTHONPATH=.` (bare imports across the project
 require it).
@@ -128,6 +130,7 @@ services — everything is mocked through `conftest.py`.
 | `test_search_optimizations.py` | BM25 synonym expansion, fuzzy, phrase-boost, phonetic config |
 | `test_vector_store.py` | `OpenSearchVectorStore` hybrid search, RRF fusion, facets, collapse |
 | `test_admin_reindex.py` | `/api/admin/reindex` background job, status polling, index health |
+| `test_e2e_ws_url_routes.py` | Pre-flight guard: every `/ws/*` URL referenced in `tests/e2e/` must resolve to a registered FastAPI WebSocket route — catches path/query-style mismatches locally before they reach Cloud Run |
 
 **Run time:** ~0.5 s. ~590 unit tests total. **Best for:** TDD,
 pre-commit, CI fast lane.
@@ -250,10 +253,55 @@ service, and that `CLOUD_RUN_URL` has the correct scheme + host.
 
 ## Performance Testing
 
-See [`PERFORMANCE_TESTING.md`](PERFORMANCE_TESTING.md) for the full
-perf-testing workflow (latency profiling, load, stress). The k6 script
-(`load_test_phase3.js`) can be run against either localhost or a
-deployed instance.
+The performance suite lives in `tests/e2e/` and is split across four files:
+
+| File | Markers | Focus |
+|------|---------|-------|
+| `test_performance_load.py` | `load`, `performance` | Concurrent users (1/5/10/20), p50/p95/p99 latency, throughput, regression detection |
+| `test_real_world_scenarios.py` | `performance` | 9 user-journey scenarios (shopper, expert, content creator, support, mobile, power, accessibility, cold start, network jitter) |
+| `test_stress.py` | `stress`, `slow` | Sustained 50-user/60s load, 100-req burst, connection pool, error recovery, leak detection |
+| `test_latency_profiling.py` | `profile` | Per-stage latency (embedding, vector, rerank, full pipeline), α comparison, cache effectiveness |
+
+```bash
+PYTHONPATH=. pytest -m load -v
+PYTHONPATH=. pytest -m stress -v
+PYTHONPATH=. pytest -m profile -v
+PYTHONPATH=. pytest tests/e2e/test_real_world_scenarios.py -v
+```
+
+Results land in `tests/performance_results/`, `tests/stress_results/`,
+`tests/profiling_results/`. Baselines (`baseline.json`) are committed for
+regression comparison; >10% latency regression fails CI.
+
+Key thresholds: p50 <5s single-user, error rate <10% (1u) → <25% (20u),
+sustained-50u success >70%, no detectable memory leak. Per-stage budgets:
+embed <2s, vector <3s, rerank <5s, full pipeline <15s.
+
+The k6 script (`load_test_phase3.js`) can be run against localhost or a
+deployed instance for HTTP-level load testing outside pytest.
+
+## Frontend Tests (Vitest)
+
+Frontend tests live alongside the React source in
+`langchain_agent/web/src/**/__tests__/` and run via Vitest:
+
+```bash
+cd langchain_agent/web
+npm run test            # 101 tests
+npm run test -- --watch
+npm run test -- --coverage
+```
+
+Coverage spans Zustand stores (`chatStore`, `observabilityStore`),
+WebSocket hooks (`useWebSocket`, `useRecentSearches`), and observability
+components — `IntentClassifierDetails`, `IntentDisplay`,
+`PipelineSummaryCard`, `SearchOptimizationDetails`,
+`TypeaheadSuggestions`. Tests verify: intent badge colors (search/blue,
+attribute_filter/purple, follow_up/cyan, summary/purple), confidence
+visualization (green ≥0.7 / yellow <0.7), low-confidence clarification
+warning, query expansion display for follow-up intents, boundary cases
+(0.0 / 0.7 / 1.0 confidence), and event-type contracts matching
+`api/schemas/events.py`.
 
 ## Writing New Tests
 

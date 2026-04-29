@@ -1,5 +1,7 @@
 # Agentic Hybrid Search
 
+> Other docs: [langchain_agent/README.md](langchain_agent/README.md) · [tests/README.md](langchain_agent/tests/README.md) · [tests/e2e/README.md](langchain_agent/tests/e2e/README.md)
+
 A production-grade **LangGraph RAG agent** for Amazon ESCI e-commerce product search.
 Combines hybrid retrieval (vector + BM25 via RRF), LLM-based reranking, intent
 routing, and real-time WebSocket streaming. Deployed on
@@ -270,7 +272,6 @@ Pure-Python metric implementations live in
 agentic-hybrid-search/
 ├── README.md                     # This file
 ├── CLAUDE.md                     # Repo-specific Claude Code guidance
-├── DEPLOYMENT_TESTING_QUICKSTART.md
 ├── docker-compose.yml            # PostgreSQL + OpenSearch (local dev)
 ├── LICENSE
 ├── langchain_agent/              # Main application (see its README)

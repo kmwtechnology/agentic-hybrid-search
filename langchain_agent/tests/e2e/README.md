@@ -1,5 +1,7 @@
 # End-to-End Tests
 
+> Related docs: [repo root README](../../../README.md) · [langchain_agent/README.md](../../README.md) · [tests/README.md](../README.md)
+
 E2E tests exercise a **deployed Cloud Run instance** end to end — health,
 auth, WebSocket streaming, pipeline correctness across all 6 intents,
 ESCI data presence, latency profile, and behavior under load.
@@ -150,10 +152,73 @@ Load and stress runs emit JSON:
 Commit baselines you care about next to the suite so
 `TestRegressionDetection` can compare future runs against them.
 
+## Bash Smoke Test (`scripts/smoke_test.sh`)
+
+curl-based smoke test for CI/CD pipelines without pytest:
+
+```bash
+./scripts/smoke_test.sh http://localhost:8000
+./scripts/smoke_test.sh https://agentic-hybrid-search-xyz.us-central1.run.app
+API_KEY=my-key TIMEOUT=20 ./scripts/smoke_test.sh https://my-deployment
+```
+
+Validates connectivity, `/api/health`, PostgreSQL + OpenSearch status,
+auth (valid/invalid/missing key), and response time. Color-coded output;
+non-zero exit on any failure.
+
+## GitHub Actions Smoke Test
+
+`.github/workflows/build-deploy.yml` runs the e2e smoke suite
+automatically after a successful Cloud Run deploy on `main`. The
+deployed service URL is discovered via `gcloud run services describe`,
+the workflow waits up to 30s for the revision to become ready, then runs
+`pytest tests/e2e/ -m "e2e and slow"` with a 30s per-test timeout.
+Results upload as workflow artifacts; the GitHub step summary surfaces
+pass/fail counts.
+
+Trigger manually:
+
+```bash
+gh workflow run build-deploy.yml --ref main
+gh run list --workflow=build-deploy.yml --limit 5
+```
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CLOUD_RUN_URL` | `http://localhost:8000` | Deployment under test |
+| `API_KEY` | `test-api-key` | API auth for protected routes |
+| `TIMEOUT` | 30 (pytest), 10 (curl) | Request timeout in seconds |
+| `PYTHONPATH` | (unset) | Must be `.` for pytest module resolution |
+
+## Latency Targets
+
+- Health check: <100 ms
+- Search intent: <5 s (excluding network)
+- Generation: <10 s (excluding network)
+- WebSocket connection: <1 s
+- Concurrent: 5+ simultaneous; 20-request burst with >70% success
+
+## Troubleshooting
+
+**Connection refused** — verify the service is up
+(`curl $CLOUD_RUN_URL/api/health`); confirm the Cloud Run URL format via
+`gcloud run services describe agentic-hybrid-search --region=us-central1`.
+
+**Tests timeout** — bump `TIMEOUT=60`; check Cloud Run logs via
+`gcloud run services logs read agentic-hybrid-search --region=us-central1`.
+
+**WebSocket fails** — check ingress (`gcloud run services describe ...
+--format="value(status.ingress)"`); confirm `CORS_ORIGINS` matches the
+test origin.
+
+**Data tests fail** — check document count
+(`curl $CLOUD_RUN_URL/api/health | grep document_count`); re-ingest via
+`POST /api/admin/reindex` if empty.
+
 ## See Also
 
-- [`DEPLOYMENT_TESTING.md`](DEPLOYMENT_TESTING.md) — full testing
-  workflow from deploy to sign-off
-- [`../PERFORMANCE_TESTING.md`](../PERFORMANCE_TESTING.md) — perf-testing
-  methodology shared across integration and e2e
-- [`../README.md`](../README.md) — overall test suite layout
+- [`../README.md`](../README.md) — overall test suite layout, performance + frontend testing
+- [`../../README.md`](../../README.md) — application overview
+- [`../../../README.md`](../../../README.md) — repo root

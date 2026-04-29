@@ -89,10 +89,10 @@ class TestESCIProductIndexing:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
 
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -133,10 +133,10 @@ class TestESCIProductIndexing:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
 
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -175,10 +175,10 @@ class TestESCIProductIndexing:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
 
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -220,7 +220,7 @@ class TestProductMetadata:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             metadata = event.get("metadata", {})
                             break
                     except asyncio.TimeoutError:
@@ -265,10 +265,10 @@ class TestProductMetadata:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
 
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -310,9 +310,9 @@ class TestDataConsistency:
                     try:
                         event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         event = json.loads(event_msg)
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_1 += event.get("chunk", "")
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -330,9 +330,9 @@ class TestDataConsistency:
                     try:
                         event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         event = json.loads(event_msg)
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_2 += event.get("chunk", "")
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -377,10 +377,10 @@ class TestDataConsistency:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
 
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -424,7 +424,7 @@ class TestCheckpointPersistence:
                     try:
                         event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         event = json.loads(event_msg)
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -442,9 +442,9 @@ class TestCheckpointPersistence:
                     try:
                         event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         event = json.loads(event_msg)
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break

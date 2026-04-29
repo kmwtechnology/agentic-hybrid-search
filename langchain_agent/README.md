@@ -1,5 +1,7 @@
 # Agentic Hybrid Search — E-Commerce Product Search Agent
 
+> See also: [repo root README](../README.md) · [tests/README.md](tests/README.md) · [tests/e2e/README.md](tests/e2e/README.md)
+
 A production-grade LangGraph RAG agent for e-commerce product discovery. Uses Google Gemini for LLM inference and embeddings, OpenSearch for hybrid vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 
 **Capabilities:**
@@ -549,7 +551,7 @@ PYTHONPATH=. pytest tests/e2e/            # requires deployed Cloud Run
 PYTHONPATH=. pytest --cov=. --cov-report=html
 ```
 
-See [tests/README.md](tests/README.md) for the full layout and fixtures.
+See [tests/README.md](tests/README.md) for the full layout and fixtures, and [tests/e2e/README.md](tests/e2e/README.md) for Cloud Run smoke/regression scenarios.
 
 ### Lint / format / types
 

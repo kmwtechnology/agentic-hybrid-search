@@ -222,10 +222,10 @@ class TestWebSocketConnectivity:
                 message = await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
                 event = json.loads(message)
 
-                assert "event_type" in event, "Missing event_type"
+                assert "type" in event, "Missing event_type"
                 assert (
-                    event["event_type"] == "ConnectionEstablished"
-                ), f"Expected ConnectionEstablished, got {event.get('event_type')}"
+                    event["type"] == "connection_established"
+                ), f"Expected ConnectionEstablished, got {event.get('type')}"
         except asyncio.TimeoutError:
             pytest.fail("Timeout waiting for ConnectionEstablished event")
         except Exception as e:
@@ -254,7 +254,7 @@ class TestWebSocketConnectivity:
                 response = await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
                 event = json.loads(response)
 
-                assert "event_type" in event, "Response missing event_type"
+                assert "type" in event, "Response missing event_type"
         except asyncio.TimeoutError:
             pytest.fail("Timeout waiting for response after sending message")
         except Exception as e:
@@ -295,11 +295,11 @@ class TestSearchPipeline:
                         received_events.append(event)
 
                         # Collect LLM response chunks
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
 
                         # Break on agent complete
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -343,10 +343,10 @@ class TestSearchPipeline:
                         event = json.loads(event_msg)
                         received_events.append(event)
 
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
 
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -380,7 +380,7 @@ class TestSearchPipeline:
                     try:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -398,9 +398,9 @@ class TestSearchPipeline:
                     try:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -440,9 +440,9 @@ class TestCitations:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
 
-                        if event.get("event_type") == "LLMResponseChunkEvent":
+                        if event.get("type") == "llm_response_chunk":
                             response_text += event.get("chunk", "")
-                        elif event.get("event_type") == "AgentCompleteEvent":
+                        elif event.get("type") == "agent_complete":
                             metadata = event.get("metadata", {})
                             break
                     except asyncio.TimeoutError:
@@ -485,7 +485,7 @@ class TestResponseTiming:
                     try:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
@@ -527,7 +527,7 @@ class TestResponseTiming:
                     try:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
-                        if event.get("event_type") == "AgentCompleteEvent":
+                        if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
                         break
