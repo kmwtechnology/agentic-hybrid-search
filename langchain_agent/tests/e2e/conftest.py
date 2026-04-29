@@ -27,14 +27,11 @@ import httpx
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 ORIGIN_HEADER = DEPLOYMENT_URL
 # Login password for the gate — set in the GH Actions secret + .env locally.
-# Falls back to the legacy API_KEY value if a deployment hasn't migrated yet,
-# but the helper raises a clear error if neither is set.
-LOGIN_PASSWORD = os.environ.get("LOGIN_PASSWORD") or os.environ.get("API_KEY")
+LOGIN_PASSWORD = os.environ.get("LOGIN_PASSWORD")
 LOGIN_TIMEOUT_S = 30
 
 # Module-level cache populated on first successful login. Pytest runs tests
-# in a single process per worker so this survives across the test session;
-# reset it explicitly in tests that exercise logout flows.
+# in a single process per worker so this survives across the test session.
 _AUTH_COOKIE: Optional[str] = None
 
 
@@ -47,8 +44,8 @@ def _login_and_get_cookie() -> str:
     if not LOGIN_PASSWORD:
         raise AssertionError(
             "LOGIN_PASSWORD env var is unset. The deployment's shared-password "
-            "login gate cannot be unlocked without it. Set LOGIN_PASSWORD (or "
-            "API_KEY for legacy deployments) in the test environment."
+            "login gate cannot be unlocked without it. Set LOGIN_PASSWORD in "
+            "the test environment."
         )
 
     with httpx.Client(timeout=LOGIN_TIMEOUT_S) as client:
@@ -80,16 +77,6 @@ def get_auth_cookie() -> str:
     if _AUTH_COOKIE is None:
         _AUTH_COOKIE = _login_and_get_cookie()
     return _AUTH_COOKIE
-
-
-def reset_auth_cookie() -> None:
-    """Clear the cached cookie so the next call re-logs in.
-
-    Use in tests that intentionally invalidate the session (e.g. logout
-    or session-expiry tests).
-    """
-    global _AUTH_COOKIE
-    _AUTH_COOKIE = None
 
 
 def auth_ws_headers(extra: Optional[dict[str, str]] = None) -> dict[str, str]:
