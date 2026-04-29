@@ -139,7 +139,9 @@ class TestGracefulShutdown:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Send a message
-                msg = json.dumps({"query": "test query", "session_id": thread_id})
+                msg = json.dumps(
+                    {"type": "chat_message", "message": "test query", "thread_id": thread_id}
+                )
                 await websocket.send(msg)
 
                 # Should receive response without abrupt termination

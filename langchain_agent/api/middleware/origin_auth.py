@@ -134,8 +134,8 @@ async def verify_same_origin(request: Request) -> bool:
                 logger.debug(f"Request allowed via host match: {host}")
                 return True
 
-        # Check if Host matches Cloud Run domain pattern (*.a.run.app)
-        if re.match(r".*\.a\.run\.app$", host):
+        # Check if Host matches Cloud Run domain pattern (*.run.app)
+        if re.match(r".+\.run\.app$", host):
             logger.debug(f"Request allowed via Cloud Run pattern: {host}")
             return True
 

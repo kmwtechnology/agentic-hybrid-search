@@ -298,6 +298,18 @@ export interface CacheHitEvent extends BaseEvent {
   cached_result: Record<string, unknown>
 }
 
+// Metrics events
+export interface MetricsEvent extends BaseEvent {
+  type: 'metrics'
+  query_evaluation_ms?: number
+  retrieval_ms?: number
+  reranking_ms?: number
+  document_grading_ms?: number
+  llm_generation_ms?: number
+  response_grading_ms?: number
+  total_ms: number
+}
+
 // Confidence score events
 export interface ConfidenceScoreEvent extends BaseEvent {
   type: 'confidence_score'
@@ -447,6 +459,7 @@ export type AgentEvent =
   | PipelineSummaryEvent
   | TokenBudgetEvent
   | CacheHitEvent
+  | MetricsEvent
   | ConfidenceScoreEvent
   | LinkVerificationEvent
   | DocumentReplacementEvent

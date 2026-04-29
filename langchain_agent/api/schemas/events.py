@@ -707,7 +707,7 @@ class ClarificationResolvedEvent(BaseEvent):
 
 AgentEvent = (
     ConnectionEstablished
-    | ConnectionError
+    | ConnectionErrorEvent
     | ConversationContextEvent
     | NodeStartEvent
     | NodeEndEvent

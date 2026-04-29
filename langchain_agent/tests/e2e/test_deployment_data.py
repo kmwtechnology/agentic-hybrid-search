@@ -77,7 +77,9 @@ class TestESCIProductIndexing:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search for a common product
-                message = json.dumps({"query": "headphones", "session_id": thread_id})
+                message = json.dumps(
+                    {"type": "chat_message", "message": "headphones", "thread_id": thread_id}
+                )
                 await websocket.send(message)
 
                 # Collect response to verify products were retrieved
@@ -90,7 +92,7 @@ class TestESCIProductIndexing:
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
 
                         if event.get("type") == "agent_complete":
                             break
@@ -121,7 +123,11 @@ class TestESCIProductIndexing:
 
                 # Search with a descriptive query (should use vector search)
                 message = json.dumps(
-                    {"query": "I need to cancel noise from my environment", "session_id": thread_id}
+                    {
+                        "type": "chat_message",
+                        "message": "I need to cancel noise from my environment",
+                        "thread_id": thread_id,
+                    }
                 )
                 await websocket.send(message)
 
@@ -134,7 +140,7 @@ class TestESCIProductIndexing:
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
 
                         if event.get("type") == "agent_complete":
                             break
@@ -164,7 +170,9 @@ class TestESCIProductIndexing:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search with specific brand name (should use lexical search)
-                message = json.dumps({"query": "Sony products", "session_id": thread_id})
+                message = json.dumps(
+                    {"type": "chat_message", "message": "Sony products", "thread_id": thread_id}
+                )
                 await websocket.send(message)
 
                 response_text = ""
@@ -176,7 +184,7 @@ class TestESCIProductIndexing:
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
 
                         if event.get("type") == "agent_complete":
                             break
@@ -209,7 +217,9 @@ class TestProductMetadata:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
-                message = json.dumps({"query": "headphones", "session_id": thread_id})
+                message = json.dumps(
+                    {"type": "chat_message", "message": "headphones", "thread_id": thread_id}
+                )
                 await websocket.send(message)
 
                 metadata = {}
@@ -253,7 +263,11 @@ class TestProductMetadata:
 
                 # Search by brand
                 message = json.dumps(
-                    {"query": "Apple brand wireless earbuds", "session_id": thread_id}
+                    {
+                        "type": "chat_message",
+                        "message": "Apple brand wireless earbuds",
+                        "thread_id": thread_id,
+                    }
                 )
                 await websocket.send(message)
 
@@ -266,7 +280,7 @@ class TestProductMetadata:
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
 
                         if event.get("type") == "agent_complete":
                             break
@@ -302,7 +316,9 @@ class TestDataConsistency:
             async with ws_connect(ws_url_1, subprotocols=["websocket"]) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
-                message = json.dumps({"query": "laptop", "session_id": thread_id_1})
+                message = json.dumps(
+                    {"type": "chat_message", "message": "laptop", "thread_id": thread_id_1}
+                )
                 await ws.send(message)
 
                 start_time = time.time()
@@ -311,7 +327,7 @@ class TestDataConsistency:
                         event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         event = json.loads(event_msg)
                         if event.get("type") == "llm_response_chunk":
-                            response_1 += event.get("chunk", "")
+                            response_1 += event.get("content", "")
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
@@ -322,7 +338,9 @@ class TestDataConsistency:
             async with ws_connect(ws_url_2, subprotocols=["websocket"]) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
-                message = json.dumps({"query": "laptop", "session_id": thread_id_2})
+                message = json.dumps(
+                    {"type": "chat_message", "message": "laptop", "thread_id": thread_id_2}
+                )
                 await ws.send(message)
 
                 start_time = time.time()
@@ -331,7 +349,7 @@ class TestDataConsistency:
                         event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         event = json.loads(event_msg)
                         if event.get("type") == "llm_response_chunk":
-                            response_2 += event.get("chunk", "")
+                            response_2 += event.get("content", "")
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
@@ -366,7 +384,9 @@ class TestDataConsistency:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
-                message = json.dumps({"query": "Find any product", "session_id": thread_id})
+                message = json.dumps(
+                    {"type": "chat_message", "message": "Find any product", "thread_id": thread_id}
+                )
                 await websocket.send(message)
 
                 response_text = ""
@@ -378,7 +398,7 @@ class TestDataConsistency:
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
 
                         if event.get("type") == "agent_complete":
                             break
@@ -416,7 +436,9 @@ class TestCheckpointPersistence:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
-                msg1 = json.dumps({"query": "Find headphones", "session_id": thread_id})
+                msg1 = json.dumps(
+                    {"type": "chat_message", "message": "Find headphones", "thread_id": thread_id}
+                )
                 await ws.send(msg1)
 
                 start_time = time.time()
@@ -433,7 +455,13 @@ class TestCheckpointPersistence:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
-                msg2 = json.dumps({"query": "What was I looking for?", "session_id": thread_id})
+                msg2 = json.dumps(
+                    {
+                        "type": "chat_message",
+                        "message": "What was I looking for?",
+                        "thread_id": thread_id,
+                    }
+                )
                 await ws.send(msg2)
 
                 response_text = ""
@@ -443,7 +471,7 @@ class TestCheckpointPersistence:
                         event_msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         event = json.loads(event_msg)
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:

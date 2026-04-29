@@ -247,7 +247,13 @@ class TestWebSocketConnectivity:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 # Send test message
-                message = json.dumps({"query": "Find wireless headphones", "session_id": thread_id})
+                message = json.dumps(
+                    {
+                        "type": "chat_message",
+                        "message": "Find wireless headphones",
+                        "thread_id": thread_id,
+                    }
+                )
                 await websocket.send(message)
 
                 # Should receive events in response
@@ -280,7 +286,13 @@ class TestSearchPipeline:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 # Send search query
-                message = json.dumps({"query": "Find wireless headphones", "session_id": thread_id})
+                message = json.dumps(
+                    {
+                        "type": "chat_message",
+                        "message": "Find wireless headphones",
+                        "thread_id": thread_id,
+                    }
+                )
                 await websocket.send(message)
 
                 # Collect response events
@@ -296,7 +308,7 @@ class TestSearchPipeline:
 
                         # Collect LLM response chunks
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
 
                         # Break on agent complete
                         if event.get("type") == "agent_complete":
@@ -328,7 +340,11 @@ class TestSearchPipeline:
 
                 # Send comparison query
                 message = json.dumps(
-                    {"query": "Compare wireless headphones vs earbuds", "session_id": thread_id}
+                    {
+                        "type": "chat_message",
+                        "message": "Compare wireless headphones vs earbuds",
+                        "thread_id": thread_id,
+                    }
                 )
                 await websocket.send(message)
 
@@ -344,7 +360,7 @@ class TestSearchPipeline:
                         received_events.append(event)
 
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
 
                         if event.get("type") == "agent_complete":
                             break
@@ -371,7 +387,13 @@ class TestSearchPipeline:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 # First search
-                message1 = json.dumps({"query": "Show me headphones", "session_id": thread_id})
+                message1 = json.dumps(
+                    {
+                        "type": "chat_message",
+                        "message": "Show me headphones",
+                        "thread_id": thread_id,
+                    }
+                )
                 await websocket.send(message1)
 
                 # Collect first response
@@ -387,7 +409,11 @@ class TestSearchPipeline:
 
                 # Second message with refinement
                 message2 = json.dumps(
-                    {"query": "Now only show wireless ones", "session_id": thread_id}
+                    {
+                        "type": "chat_message",
+                        "message": "Now only show wireless ones",
+                        "thread_id": thread_id,
+                    }
                 )
                 await websocket.send(message2)
 
@@ -399,7 +425,7 @@ class TestSearchPipeline:
                         event_msg = await asyncio.wait_for(websocket.recv(), timeout=5)
                         event = json.loads(event_msg)
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
@@ -427,7 +453,9 @@ class TestCitations:
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
-                message = json.dumps({"query": "Find headphones", "session_id": thread_id})
+                message = json.dumps(
+                    {"type": "chat_message", "message": "Find headphones", "thread_id": thread_id}
+                )
                 await websocket.send(message)
 
                 # Collect complete response
@@ -441,7 +469,7 @@ class TestCitations:
                         event = json.loads(event_msg)
 
                         if event.get("type") == "llm_response_chunk":
-                            response_text += event.get("chunk", "")
+                            response_text += event.get("content", "")
                         elif event.get("type") == "agent_complete":
                             metadata = event.get("metadata", {})
                             break
@@ -474,7 +502,11 @@ class TestResponseTiming:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 message = json.dumps(
-                    {"query": "Find headphones under $100", "session_id": thread_id}
+                    {
+                        "type": "chat_message",
+                        "message": "Find headphones under $100",
+                        "thread_id": thread_id,
+                    }
                 )
 
                 start_time = time.time()
@@ -514,8 +546,9 @@ class TestResponseTiming:
 
                 message = json.dumps(
                     {
-                        "query": "Generate comparison between wireless and wired headphones",
-                        "session_id": thread_id,
+                        "type": "chat_message",
+                        "message": "Generate comparison between wireless and wired headphones",
+                        "thread_id": thread_id,
                     }
                 )
 
