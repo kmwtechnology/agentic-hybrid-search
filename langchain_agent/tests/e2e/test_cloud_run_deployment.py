@@ -91,7 +91,7 @@ class TestRequestTimeout:
         from websockets.client import connect as ws_connect
 
         thread_id = "timeout-test-001"
-        ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
@@ -131,7 +131,7 @@ class TestGracefulShutdown:
         from websockets.client import connect as ws_connect
 
         thread_id = "graceful-shutdown-001"
-        ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
@@ -182,7 +182,7 @@ class TestHorizontalScaling:
         origin_blocked = [False]
 
         async def make_connection(thread_id: str):
-            ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+            ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
             try:
                 async with ws_connect(ws_url, subprotocols=["websocket"]) as ws:
                     msg = await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)

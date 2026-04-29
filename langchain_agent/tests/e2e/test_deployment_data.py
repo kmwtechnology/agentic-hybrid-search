@@ -69,7 +69,7 @@ class TestESCIProductIndexing:
         from websockets.client import connect as ws_connect
 
         thread_id = "hybrid-search-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
@@ -113,7 +113,7 @@ class TestESCIProductIndexing:
         from websockets.client import connect as ws_connect
 
         thread_id = "vector-search-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
@@ -157,7 +157,7 @@ class TestESCIProductIndexing:
         from websockets.client import connect as ws_connect
 
         thread_id = "lexical-search-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
@@ -203,7 +203,7 @@ class TestProductMetadata:
         from websockets.client import connect as ws_connect
 
         thread_id = "metadata-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
@@ -245,7 +245,7 @@ class TestProductMetadata:
         from websockets.client import connect as ws_connect
 
         thread_id = "brand-search-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
@@ -293,8 +293,8 @@ class TestDataConsistency:
 
         thread_id_1 = "consistency-1"
         thread_id_2 = "consistency-2"
-        ws_url_1 = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id_1}"
-        ws_url_2 = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id_2}"
+        ws_url_1 = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id_1}"
+        ws_url_2 = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id_2}"
 
         try:
             # First search
@@ -360,7 +360,7 @@ class TestDataConsistency:
         from websockets.client import connect as ws_connect
 
         thread_id = "data-integrity-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
@@ -409,7 +409,7 @@ class TestCheckpointPersistence:
         from websockets.client import connect as ws_connect
 
         thread_id = "checkpoint-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             # Send first message

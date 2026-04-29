@@ -195,7 +195,7 @@ class TestWebSocketConnectivity:
     async def test_websocket_accepts_valid_connection(self):
         """Verify WebSocket endpoint accepts valid connection."""
         thread_id = "test-thread-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
@@ -212,7 +212,7 @@ class TestWebSocketConnectivity:
     async def test_websocket_receives_connection_established(self):
         """Verify WebSocket sends ConnectionEstablished event on connect."""
         thread_id = "test-thread-002"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
@@ -237,7 +237,7 @@ class TestWebSocketConnectivity:
     async def test_websocket_accepts_message(self):
         """Verify WebSocket endpoint accepts incoming messages."""
         thread_id = "test-thread-003"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
@@ -270,7 +270,7 @@ class TestSearchPipeline:
     async def test_search_intent_returns_results(self):
         """Test search intent returns products with citations."""
         thread_id = "test-search-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
@@ -317,7 +317,7 @@ class TestSearchPipeline:
     async def test_comparison_intent_returns_results(self):
         """Test comparison intent between products."""
         thread_id = "test-compare-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
@@ -361,7 +361,7 @@ class TestSearchPipeline:
     async def test_refinement_intent_constrains_results(self):
         """Test refinement intent adds constraints to prior search."""
         thread_id = "test-refinement-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
@@ -419,7 +419,7 @@ class TestCitations:
     async def test_citations_include_product_urls(self):
         """Verify citations in responses include valid product URLs."""
         thread_id = "test-citations-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
@@ -465,7 +465,7 @@ class TestResponseTiming:
     async def test_search_response_time_under_5_seconds(self):
         """Verify search responses complete in under 5 seconds."""
         thread_id = "test-timing-search-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
@@ -504,7 +504,7 @@ class TestResponseTiming:
     async def test_generation_response_time_under_10_seconds(self):
         """Verify generation responses complete in under 10 seconds."""
         thread_id = "test-timing-gen-001"
-        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
+        ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             async with ws_connect(
