@@ -20,13 +20,16 @@ from websockets.client import connect as ws_connect
 from websockets.exceptions import InvalidStatusCode, WebSocketException
 
 
-def _skip_if_origin_blocked(exc: BaseException) -> None:
-    """Skip test when the deployment rejects WebSocket connections due to
-    origin restriction (HTTP 403). Production deployments are locked to
-    the UI origin and can't be exercised from a generic CI runner."""
+def _fail_if_origin_blocked(exc: BaseException) -> None:
+    """Fail (not skip) when the deployment rejects with origin errors.
+    With the correct Origin header sent on every ws_connect call this should
+    never trigger — if it does, the origin allow-list is misconfigured."""
     msg = str(exc).lower()
     if "http 403" in msg or "rejected websocket" in msg:
-        pytest.skip("Deployment is origin-restricted; cannot test WebSocket from smoke test")
+        pytest.fail(
+            f"WebSocket rejected despite Origin={ORIGIN_HEADER}. "
+            "Check CORS/origin config on Cloud Run."
+        )
 
 
 # Configuration
@@ -141,9 +144,11 @@ class TestAuthentication:
             response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
 
         # Should get 200 (or 400 for bad params) but NOT 401 auth error.
-        # Accept 403 only when origin-restricted (deployment blocks non-UI callers).
         if response.status_code == 403 and "origin" in response.text.lower():
-            pytest.skip("Deployment is origin-restricted; cannot test auth from smoke test")
+            pytest.fail(
+                f"Origin rejected despite Origin={ORIGIN_HEADER}. "
+                "Check CORS/origin config on Cloud Run."
+            )
         if response.status_code == 429:
             pytest.skip("Rate limited; cannot verify auth acceptance")
         assert response.status_code in [
@@ -193,11 +198,13 @@ class TestWebSocketConnectivity:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Should connect without error
                 assert websocket is not None
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"WebSocket connection failed: {e}")
 
     @pytest.mark.e2e
@@ -208,7 +215,9 @@ class TestWebSocketConnectivity:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Receive first message (should be ConnectionEstablished)
                 message = await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
                 event = json.loads(message)
@@ -220,7 +229,7 @@ class TestWebSocketConnectivity:
         except asyncio.TimeoutError:
             pytest.fail("Timeout waiting for ConnectionEstablished event")
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"WebSocket test failed: {e}")
 
     @pytest.mark.e2e
@@ -231,7 +240,9 @@ class TestWebSocketConnectivity:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
@@ -247,7 +258,7 @@ class TestWebSocketConnectivity:
         except asyncio.TimeoutError:
             pytest.fail("Timeout waiting for response after sending message")
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"WebSocket messaging test failed: {e}")
 
 
@@ -262,7 +273,9 @@ class TestSearchPipeline:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
@@ -296,7 +309,7 @@ class TestSearchPipeline:
         except asyncio.TimeoutError:
             pytest.fail("Timeout during search intent test")
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"Search intent test failed: {e}")
 
     @pytest.mark.e2e
@@ -307,7 +320,9 @@ class TestSearchPipeline:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
@@ -338,7 +353,7 @@ class TestSearchPipeline:
 
                 assert len(response_text) > 0, "No comparison generated"
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"Comparison intent test failed: {e}")
 
     @pytest.mark.e2e
@@ -349,7 +364,9 @@ class TestSearchPipeline:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
@@ -390,7 +407,7 @@ class TestSearchPipeline:
 
                 assert len(response_text) > 0, "No refined response generated"
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"Refinement intent test failed: {e}")
 
 
@@ -405,7 +422,9 @@ class TestCitations:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 message = json.dumps({"query": "Find headphones", "session_id": thread_id})
@@ -434,7 +453,7 @@ class TestCitations:
                     "citations" in metadata or "sources" in metadata or len(response_text) > 0
                 ), "Response should include citations or sources"
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"Citations test failed: {e}")
 
 
@@ -449,7 +468,9 @@ class TestResponseTiming:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 message = json.dumps(
@@ -475,7 +496,7 @@ class TestResponseTiming:
                     elapsed < 8
                 ), f"Search took {elapsed:.1f}s, should be under 5s (allowing for network)"
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"Response timing test failed: {e}")
 
     @pytest.mark.e2e
@@ -486,7 +507,9 @@ class TestResponseTiming:
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat/{thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
                 message = json.dumps(
@@ -515,7 +538,7 @@ class TestResponseTiming:
                     elapsed < 15
                 ), f"Generation took {elapsed:.1f}s, should be under 10s (allowing for network)"
         except Exception as e:
-            _skip_if_origin_blocked(e)
+            _fail_if_origin_blocked(e)
             pytest.fail(f"Generation timing test failed: {e}")
 
 

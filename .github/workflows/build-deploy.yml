@@ -535,9 +535,21 @@ jobs:
     needs: deploy-cloud-run
     if: success()
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -550,11 +562,16 @@ jobs:
           cd langchain_agent
           pip install pytest pytest-asyncio pytest-timeout httpx websockets
 
-      - name: Get Cloud Run service URL
+      - name: Get Cloud Run service URL and API key
         id: service-url
         run: |
           SERVICE_URL="https://${SERVICE_NAME}-375500751528.${REGION}.run.app"
           echo "SERVICE_URL=$SERVICE_URL" >> "$GITHUB_OUTPUT"
+          API_KEY=$(gcloud secrets versions access latest \
+            --secret=agentic-hybrid-search-api-key \
+            --project="${PROJECT_ID}" 2>/dev/null)
+          echo "::add-mask::$API_KEY"
+          echo "API_KEY=$API_KEY" >> "$GITHUB_OUTPUT"
 
       - name: Wait for service to be ready
         run: |
@@ -595,6 +612,7 @@ jobs:
       - name: Run deployment smoke tests
         env:
           CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
+          API_KEY: ${{ steps.service-url.outputs.API_KEY }}
           PYTHONPATH: langchain_agent
         run: |
           cd langchain_agent
@@ -620,6 +638,7 @@ jobs:
       - name: Run Cloud Run deployment tests
         env:
           CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
+          API_KEY: ${{ steps.service-url.outputs.API_KEY }}
           PYTHONPATH: langchain_agent
         run: |
           cd langchain_agent
@@ -645,6 +664,7 @@ jobs:
       - name: Run deployment data tests
         env:
           CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
+          API_KEY: ${{ steps.service-url.outputs.API_KEY }}
           PYTHONPATH: langchain_agent
         run: |
           cd langchain_agent
