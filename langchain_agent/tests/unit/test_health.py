@@ -5,8 +5,9 @@ Mocks psycopg, create_opensearch_client, and config values so no live
 services are required.
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi.testclient import TestClient
 
 from api.main import app

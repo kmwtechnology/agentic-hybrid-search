@@ -4,8 +4,9 @@ Unit tests for api/middleware/origin_auth.py.
 All tests are pure unit tests — no network calls, no FastAPI app.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from fastapi import HTTPException
 
 from api.middleware.origin_auth import (
@@ -14,7 +15,6 @@ from api.middleware.origin_auth import (
     verify_same_origin,
     verify_websocket_origin,
 )
-
 
 # ---------------------------------------------------------------------------
 # get_allowed_origins
@@ -97,9 +97,7 @@ def test_is_allowed_origin_uses_referer_when_origin_absent():
 
 
 def test_is_allowed_origin_referer_cloud_run():
-    assert (
-        is_allowed_origin(None, referer="https://my-service.a.run.app/dashboard") is True
-    )
+    assert is_allowed_origin(None, referer="https://my-service.a.run.app/dashboard") is True
 
 
 def test_is_allowed_origin_referer_unknown_host_rejected():
@@ -108,9 +106,7 @@ def test_is_allowed_origin_referer_unknown_host_rejected():
 
 def test_is_allowed_origin_origin_takes_priority_over_referer():
     # Good origin + bad referer → allowed
-    assert (
-        is_allowed_origin("http://localhost:5173", referer="https://evil.com/") is True
-    )
+    assert is_allowed_origin("http://localhost:5173", referer="https://evil.com/") is True
 
 
 def test_is_allowed_origin_bad_origin_good_referer():
