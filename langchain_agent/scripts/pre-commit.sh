@@ -31,7 +31,7 @@ $VENV/isort --check-only $ABS_STAGED 2>&1 || {
 echo "[pre-commit] ✓ Formatting OK"
 
 echo "[pre-commit] flake8 ..."
-$VENV/flake8 $ABS_STAGED 2>&1 || {
+$VENV/flake8 --config="$REPO_ROOT/langchain_agent/.flake8" $ABS_STAGED 2>&1 || {
   echo ""
   echo "  Fix the flake8 errors above, then re-stage and commit."
   exit 1

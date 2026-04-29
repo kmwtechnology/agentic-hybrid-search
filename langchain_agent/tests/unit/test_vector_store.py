@@ -206,3 +206,333 @@ class TestHitToDocument:
         hit = {"_source": {"chunk_text": "text"}}  # no _score key
         doc = OpenSearchVectorStore._hit_to_document(hit, retrieval_score=None)
         assert "retrieval_score" not in doc.metadata
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by search tests
+# ---------------------------------------------------------------------------
+
+
+def _make_full_store():
+    """Return an OpenSearchVectorStore with all required attrs mocked."""
+    mock_client = MagicMock()
+    mock_embeddings = MagicMock()
+    mock_embeddings.embed_query.return_value = [0.1] * 768
+
+    store = OpenSearchVectorStore.__new__(OpenSearchVectorStore)
+    store.client = mock_client
+    store.index_name = "test_index"
+    store.collection_id = "esci_products"
+    store.search_pipeline = "hybrid-search-pipeline"
+    store.embeddings = mock_embeddings
+    store._hybrid_supported = None
+
+    # Attach a disabled embedding cache so _get_embedding always hits the mock
+    from embedding_cache import EmbeddingCache
+
+    store._embedding_cache = EmbeddingCache(enabled=False)
+    return store, mock_client, mock_embeddings
+
+
+def _hit(doc_id="doc1", score=0.8, title="Product A"):
+    return {
+        "_id": doc_id,
+        "_score": score,
+        "_source": {
+            "chunk_text": f"text for {title}",
+            "title": title,
+            "source": "s",
+            "product_id": doc_id,
+            "collection_id": "esci_products",
+        },
+    }
+
+
+def _search_resp(*hits):
+    return {"hits": {"hits": list(hits)}}
+
+
+# ---------------------------------------------------------------------------
+# TestGetEmbedding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGetEmbedding:
+    def test_calls_embed_query(self):
+        store, _, mock_emb = _make_full_store()
+        result = store._get_embedding("blue shoes")
+        mock_emb.embed_query.assert_called_once_with("blue shoes")
+        assert len(result) == 768
+
+    def test_raises_embedding_error_on_failure(self):
+        from exceptions import EmbeddingError
+
+        store, _, mock_emb = _make_full_store()
+        mock_emb.embed_query.side_effect = Exception("API down")
+        with pytest.raises(EmbeddingError):
+            store._get_embedding("query")
+
+
+# ---------------------------------------------------------------------------
+# TestCheckHybridSupport
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCheckHybridSupport:
+    def test_returns_cached_value(self):
+        store, _, _ = _make_full_store()
+        store._hybrid_supported = True
+        assert store._check_hybrid_support() is True
+        store.client.info.assert_not_called()
+
+    def test_returns_false_for_old_version(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.info.return_value = {"version": {"number": "2.9.0"}}
+        assert store._check_hybrid_support() is False
+
+    def test_returns_false_when_neural_plugin_missing(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.info.return_value = {"version": {"number": "2.10.0"}}
+        mock_client.cat.plugins.return_value = [{"component": "other-plugin"}]
+        assert store._check_hybrid_support() is False
+
+    def test_returns_true_when_neural_plugin_present(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.info.return_value = {"version": {"number": "2.19.1"}}
+        mock_client.cat.plugins.return_value = [{"component": "neural-search"}]
+        assert store._check_hybrid_support() is True
+
+    def test_returns_false_on_exception(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.info.side_effect = Exception("connection error")
+        assert store._check_hybrid_support() is False
+
+
+# ---------------------------------------------------------------------------
+# TestSimilaritySearch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSimilaritySearch:
+    def test_returns_documents(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp(_hit("p1"), _hit("p2"))
+        results = store.similarity_search("headphones", k=2)
+        assert len(results) == 2
+        assert results[0].metadata["product_id"] == "p1"
+
+    def test_passes_k_to_query(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp()
+        store.similarity_search("query", k=5)
+        body = mock_client.search.call_args[1]["body"]
+        assert body["size"] == 5
+
+    def test_returns_empty_on_exception(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.side_effect = Exception("down")
+        results = store.similarity_search("query")
+        assert results == []
+
+
+# ---------------------------------------------------------------------------
+# TestHybridSearch — routing logic
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHybridSearch:
+    def test_raises_on_invalid_k(self):
+        from exceptions import SearchValidationError
+
+        store, _, _ = _make_full_store()
+        with pytest.raises(SearchValidationError):
+            store.hybrid_search("query", k=0)
+
+    def test_raises_when_fetch_k_less_than_k(self):
+        from exceptions import SearchValidationError
+
+        store, _, _ = _make_full_store()
+        with pytest.raises(SearchValidationError):
+            store.hybrid_search("query", k=10, fetch_k=5)
+
+    def test_alpha_zero_uses_text_search(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp(_hit())
+        results = store.hybrid_search("query", k=1, fetch_k=10, alpha=0.0)
+        assert len(results) == 1
+        # Text-only: only one search call
+        assert mock_client.search.call_count == 1
+
+    def test_alpha_one_uses_similarity_search(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp(_hit())
+        results = store.hybrid_search("query", k=1, fetch_k=10, alpha=1.0)
+        assert len(results) == 1
+
+    def test_hybrid_disabled_via_optimizations_uses_text(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp(_hit())
+        store.hybrid_search("q", k=1, fetch_k=10, alpha=0.5, optimizations={"hybrid": False})
+        assert mock_client.search.call_count == 1
+
+    def test_raises_search_validation_error_for_bad_alpha(self):
+        from exceptions import SearchValidationError
+
+        store, _, _ = _make_full_store()
+        store._hybrid_supported = False  # skip native path
+        with pytest.raises(SearchValidationError):
+            store.hybrid_search("query", k=1, fetch_k=10, alpha=1.5)
+
+
+# ---------------------------------------------------------------------------
+# TestHybridSearchRrf
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHybridSearchRrf:
+    def test_fuses_vector_and_text_results(self):
+        store, mock_client, mock_emb = _make_full_store()
+        store._hybrid_supported = False
+        mock_client.search.side_effect = [
+            _search_resp(_hit("p1", 0.9), _hit("p2", 0.7)),  # vector
+            _search_resp(_hit("p2", 0.8), _hit("p3", 0.6)),  # text
+        ]
+        results = store.hybrid_search("query", k=3, fetch_k=10, alpha=0.5)
+        ids = [r.metadata["product_id"] for r in results]
+        assert "p2" in ids  # appears in both → highest RRF score
+
+    def test_top_k_limit_respected(self):
+        store, mock_client, _ = _make_full_store()
+        store._hybrid_supported = False
+        mock_client.search.side_effect = [
+            _search_resp(*[_hit(f"v{i}") for i in range(5)]),
+            _search_resp(*[_hit(f"t{i}") for i in range(5)]),
+        ]
+        results = store.hybrid_search("query", k=3, fetch_k=10, alpha=0.5)
+        assert len(results) == 3
+
+
+# ---------------------------------------------------------------------------
+# TestTextSearch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestTextSearch:
+    def test_returns_documents(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp(_hit("p1"))
+        results = store._text_search("headphones", k=1)
+        assert len(results) == 1
+        assert results[0].metadata["product_id"] == "p1"
+
+    def test_returns_empty_on_exception(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.side_effect = Exception("down")
+        assert store._text_search("query") == []
+
+    def test_applies_extra_filters(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp()
+        store._text_search("query", filters=[{"term": {"product_brand": "Sony"}}])
+        body = mock_client.search.call_args[1]["body"]
+        filter_terms = body["query"]["bool"]["filter"]
+        brands = [f.get("term", {}).get("product_brand") for f in filter_terms]
+        assert "Sony" in brands
+
+
+# ---------------------------------------------------------------------------
+# TestBm25OnlyAndStockBm25
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBm25Searches:
+    def test_bm25_only_delegates_to_text_search(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp(_hit())
+        results = store.bm25_only_search("query", k=1)
+        assert len(results) == 1
+        assert mock_client.search.call_count == 1
+
+    def test_stock_bm25_returns_documents(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp(_hit("p1"), _hit("p2"))
+        results = store.stock_bm25_search("query", k=2)
+        assert len(results) == 2
+
+    def test_stock_bm25_uses_standard_analyzer(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.return_value = _search_resp()
+        store.stock_bm25_search("query")
+        body = mock_client.search.call_args[1]["body"]
+        mm = body["query"]["bool"]["must"][0]["multi_match"]
+        assert mm["analyzer"] == "standard"
+
+    def test_stock_bm25_returns_empty_on_exception(self):
+        store, mock_client, _ = _make_full_store()
+        mock_client.search.side_effect = Exception("down")
+        assert store.stock_bm25_search("query") == []
+
+
+# ---------------------------------------------------------------------------
+# TestOpenSearchRetrieverInvoke
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestOpenSearchRetrieverInvoke:
+    def _make_retriever(self, search_type="hybrid"):
+        store, mock_client, _ = _make_full_store()
+        store._hybrid_supported = False
+        mock_client.search.return_value = _search_resp(_hit("p1"), _hit("p2"))
+        retriever = OpenSearchRetriever(
+            vector_store=store,
+            search_type=search_type,
+            k=2,
+            fetch_k=10,
+            alpha=0.5,
+        )
+        return retriever, mock_client
+
+    def test_invoke_with_dict_input(self):
+        retriever, _ = self._make_retriever()
+        results = retriever.invoke({"input": "query"})
+        assert len(results) > 0
+
+    def test_invoke_with_string_input(self):
+        retriever, _ = self._make_retriever()
+        results = retriever.invoke("headphones")
+        assert len(results) > 0
+
+    def test_invoke_similarity_type(self):
+        retriever, mock_client = self._make_retriever(search_type="similarity")
+        mock_client.search.return_value = _search_resp(_hit("p1"))
+        results = retriever.invoke("query")
+        assert len(results) > 0
+
+    def test_invoke_unknown_search_type_raises(self):
+        retriever, _ = self._make_retriever()
+        retriever.search_type = "unknown"
+        with pytest.raises(ValueError):
+            retriever.invoke("query")
+
+    def test_collapses_duplicates_for_esci(self):
+        store, mock_client, _ = _make_full_store()
+        store._hybrid_supported = False
+        # Two hits with same product_id → should collapse to 1
+        mock_client.search.side_effect = [
+            _search_resp(_hit("p1", 0.9), _hit("p1", 0.7)),
+            _search_resp(),
+        ]
+        retriever = OpenSearchRetriever(
+            vector_store=store, search_type="hybrid", k=4, fetch_k=10, alpha=0.5
+        )
+        results = retriever.invoke("query")
+        assert all(r.metadata["product_id"] == "p1" for r in results)
+        assert len(results) == 1
