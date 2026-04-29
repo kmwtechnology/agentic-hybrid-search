@@ -17,14 +17,20 @@ import pytest
 # Configuration
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 TIMEOUT = 30
+# Same-origin Origin header so the deployment's verify_same_origin allow-list
+# accepts the WebSocket handshake.
+ORIGIN_HEADER = DEPLOYMENT_URL
 
 
 def _skip_if_origin_blocked(exc: BaseException) -> None:
-    """Skip test when the deployment rejects WebSocket connections due to
-    origin restriction (HTTP 403)."""
+    """Fail when the deployment rejects WebSocket connections despite the
+    same-origin Origin header — that means the allow-list is misconfigured."""
     msg = str(exc).lower()
     if "http 403" in msg or "rejected websocket" in msg:
-        pytest.skip("Deployment is origin-restricted; cannot test WebSocket from smoke test")
+        pytest.fail(
+            f"WebSocket rejected despite Origin={ORIGIN_HEADER}. "
+            "Check origin_auth allow-list on Cloud Run."
+        )
 
 
 class TestESCIProductIndexing:
@@ -66,13 +72,15 @@ class TestESCIProductIndexing:
         import asyncio
         import time
 
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "hybrid-search-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
@@ -112,13 +120,15 @@ class TestESCIProductIndexing:
         import asyncio
         import time
 
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "vector-search-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search with a descriptive query (should use vector search)
@@ -160,13 +170,15 @@ class TestESCIProductIndexing:
         import asyncio
         import time
 
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "lexical-search-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search with specific brand name (should use lexical search)
@@ -208,13 +220,15 @@ class TestProductMetadata:
         import asyncio
         import time
 
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "metadata-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 message = json.dumps(
@@ -252,13 +266,15 @@ class TestProductMetadata:
         import asyncio
         import time
 
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "brand-search-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 # Search by brand
@@ -303,7 +319,7 @@ class TestDataConsistency:
         import asyncio
         import time
 
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id_1 = "consistency-1"
         thread_id_2 = "consistency-2"
@@ -313,7 +329,9 @@ class TestDataConsistency:
         try:
             # First search
             response_1 = ""
-            async with ws_connect(ws_url_1, subprotocols=["websocket"]) as ws:
+            async with ws_connect(
+                ws_url_1, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
                 message = json.dumps(
@@ -335,7 +353,9 @@ class TestDataConsistency:
 
             # Second search (same query)
             response_2 = ""
-            async with ws_connect(ws_url_2, subprotocols=["websocket"]) as ws:
+            async with ws_connect(
+                ws_url_2, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
                 message = json.dumps(
@@ -375,13 +395,15 @@ class TestDataConsistency:
         import asyncio
         import time
 
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "data-integrity-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
                 message = json.dumps(
@@ -426,14 +448,16 @@ class TestCheckpointPersistence:
         import asyncio
         import time
 
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "checkpoint-001"
         ws_url = f"{DEPLOYMENT_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
             # Send first message
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as ws:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
                 msg1 = json.dumps(
@@ -452,7 +476,9 @@ class TestCheckpointPersistence:
                         break
 
             # Send follow-up message (should maintain context)
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as ws:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
                 msg2 = json.dumps(

@@ -21,14 +21,20 @@ import pytest
 CLOUD_RUN_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 API_KEY = os.environ.get("API_KEY", "test-api-key")
 TIMEOUT = 30
+# Same-origin Origin header so the deployment's verify_same_origin allow-list
+# accepts the WebSocket handshake.
+ORIGIN_HEADER = CLOUD_RUN_URL
 
 
 def _skip_if_origin_blocked(exc: BaseException) -> None:
-    """Skip test when the deployment rejects WebSocket connections due to
-    origin restriction (HTTP 403)."""
+    """Fail when the deployment rejects WebSocket connections despite the
+    same-origin Origin header — that means the allow-list is misconfigured."""
     msg = str(exc).lower()
     if "http 403" in msg or "rejected websocket" in msg:
-        pytest.skip("Deployment is origin-restricted; cannot test WebSocket from smoke test")
+        pytest.fail(
+            f"WebSocket rejected despite Origin={ORIGIN_HEADER}. "
+            "Check origin_auth allow-list on Cloud Run."
+        )
 
 
 class TestCloudRunConnectivity:
@@ -88,13 +94,15 @@ class TestRequestTimeout:
     @pytest.mark.slow
     async def test_websocket_maintains_connection(self):
         """Verify WebSocket connection can be maintained."""
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "timeout-test-001"
         ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Receive initial message
                 msg = await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
                 assert msg is not None
@@ -128,13 +136,15 @@ class TestGracefulShutdown:
     @pytest.mark.slow
     async def test_in_flight_requests_not_abruptly_terminated(self):
         """Verify in-flight WebSocket messages complete gracefully."""
-        from websockets.client import connect as ws_connect
+        from websockets.asyncio.client import connect as ws_connect
 
         thread_id = "graceful-shutdown-001"
         ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
 
         try:
-            async with ws_connect(ws_url, subprotocols=["websocket"]) as websocket:
+            async with ws_connect(
+                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+            ) as websocket:
                 # Skip connection established
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
@@ -179,28 +189,22 @@ class TestHorizontalScaling:
     @pytest.mark.slow
     async def test_concurrent_websocket_connections(self):
         """Verify multiple concurrent WebSocket connections work."""
-        from websockets.client import connect as ws_connect
-
-        origin_blocked = [False]
+        from websockets.asyncio.client import connect as ws_connect
 
         async def make_connection(thread_id: str):
             ws_url = f"{CLOUD_RUN_URL.replace('http', 'ws')}/ws/chat?thread_id={thread_id}"
-            try:
-                async with ws_connect(ws_url, subprotocols=["websocket"]) as ws:
-                    msg = await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
-                    return msg is not None
-            except Exception as e:
-                msg = str(e).lower()
-                if "http 403" in msg or "rejected websocket" in msg:
-                    origin_blocked[0] = True
-                return False
+            async with ws_connect(
+                ws_url,
+                subprotocols=["websocket"],
+                additional_headers={"Origin": ORIGIN_HEADER},
+            ) as ws:
+                msg = await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
+                return msg is not None
 
         # Create 5 concurrent connections
         tasks = [make_connection(f"concurrent-{i}") for i in range(5)]
         results = await asyncio.gather(*tasks)
 
-        if origin_blocked[0]:
-            pytest.skip("Deployment is origin-restricted; cannot test WebSocket from smoke test")
         assert all(results), "Some concurrent connections failed"
 
     @pytest.mark.e2e
@@ -209,16 +213,13 @@ class TestHorizontalScaling:
         """Verify API handles burst of rapid requests."""
         import concurrent.futures
 
-        origin_blocked = [False]
-
         def make_request(query_id: int):
             with httpx.Client(timeout=TIMEOUT) as client:
-                headers = {"Authorization": f"Bearer {API_KEY}"}
+                headers = {
+                    "Authorization": f"Bearer {API_KEY}",
+                    "Origin": ORIGIN_HEADER,
+                }
                 response = client.get(f"{CLOUD_RUN_URL}/api/conversations", headers=headers)
-            # Origin-restricted deployment returns 403; treat as "server handled"
-            if response.status_code == 403 and "origin" in response.text.lower():
-                origin_blocked[0] = True
-                return True
             # 429 is rate limit — server handled but throttled, still counts as healthy behavior
             return response.status_code in [200, 400, 429]
 
@@ -227,8 +228,6 @@ class TestHorizontalScaling:
             futures = [executor.submit(make_request, i) for i in range(20)]
             results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
-        if origin_blocked[0]:
-            pytest.skip("Deployment is origin-restricted; cannot test API burst from smoke test")
         # Allow some failures due to rate limiting, but most should succeed
         success_rate = sum(results) / len(results)
         assert success_rate > 0.7, f"Too many failures under load: {success_rate:.0%}"
@@ -298,7 +297,10 @@ class TestEnvironmentConfiguration:
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(
                 f"{CLOUD_RUN_URL}/api/conversations",
-                headers={"Authorization": "Bearer obviously-fake-key-xyz"},
+                headers={
+                    "Authorization": "Bearer obviously-fake-key-xyz",
+                    "Origin": ORIGIN_HEADER,
+                },
             )
 
         if response.status_code == 429:

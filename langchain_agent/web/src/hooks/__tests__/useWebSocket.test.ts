@@ -117,8 +117,10 @@ beforeEach(() => {
   act(() => { result.current.disconnect() })
 
   // Reset stores
-  useChatStore.setState(CHAT_INITIAL)
-  useObservabilityStore.setState(OBS_INITIAL)
+  act(() => {
+    useChatStore.setState(CHAT_INITIAL)
+    useObservabilityStore.setState(OBS_INITIAL)
+  })
 })
 
 afterEach(() => {
@@ -183,8 +185,10 @@ describe('useWebSocket', () => {
     it('with is_complete finalizes streaming', () => {
       setupConnected()
       // Add a streaming assistant message first
-      useChatStore.getState().addMessage({
-        id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+      act(() => {
+        useChatStore.getState().addMessage({
+          id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+        })
       })
       sendEvent({ type: 'llm_response_chunk', timestamp: 't', content: 'Done', is_complete: true })
       const state = useChatStore.getState()
@@ -196,9 +200,11 @@ describe('useWebSocket', () => {
   describe('agent_complete', () => {
     it('finalizes streaming and ends execution', () => {
       setupConnected()
-      useObservabilityStore.setState({ isExecuting: true })
-      useChatStore.getState().addMessage({
-        id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+      act(() => {
+        useObservabilityStore.setState({ isExecuting: true })
+        useChatStore.getState().addMessage({
+          id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+        })
       })
       sendEvent({
         type: 'agent_complete',
@@ -214,8 +220,10 @@ describe('useWebSocket', () => {
 
     it('with citations sets citations on last message', () => {
       setupConnected()
-      useChatStore.getState().addMessage({
-        id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+      act(() => {
+        useChatStore.getState().addMessage({
+          id: 'a1', role: 'assistant', content: '', timestamp: new Date(), isStreaming: true,
+        })
       })
       const citations = [{ url: 'https://example.com', title: 'Example', text: 'text' }]
       sendEvent({

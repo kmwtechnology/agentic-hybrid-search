@@ -83,6 +83,8 @@ jobs:
           cd langchain_agent
           PYTHONPATH=. pytest tests/unit/ \
             -v \
+            -ra \
+            -n auto \
             --tb=short \
             --timeout=30 \
             --cov=. \
@@ -152,9 +154,9 @@ jobs:
           POSTGRES_DB: agentic_hybrid_search_test
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 3s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 15
         ports:
           - 5432:5432
 
@@ -167,9 +169,9 @@ jobs:
           DISABLE_SECURITY_PLUGIN: "true"
         options: >-
           --health-cmd "curl -s http://localhost:9200 > /dev/null || exit 1"
-          --health-interval 10s
+          --health-interval 3s
           --health-timeout 10s
-          --health-retries 10
+          --health-retries 30
         ports:
           - 9200:9200
 
@@ -225,6 +227,7 @@ jobs:
           cd langchain_agent
           PYTHONPATH=. pytest tests/integration/ \
             -v \
+            -ra \
             --tb=short \
             --timeout=60 \
             --cov=. \
@@ -542,13 +545,13 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -622,6 +625,7 @@ jobs:
           # second message every time. 120 s comfortably covers both.
           pytest tests/e2e/test_deployment_smoke.py \
             -v \
+            -ra \
             --tb=short \
             -m "e2e and slow" \
             --timeout=120 \
@@ -648,6 +652,7 @@ jobs:
 
           pytest tests/e2e/test_cloud_run_deployment.py \
             -v \
+            -ra \
             --tb=short \
             -m "e2e and slow" \
             --timeout=120 \
@@ -674,6 +679,7 @@ jobs:
 
           pytest tests/e2e/test_deployment_data.py \
             -v \
+            -ra \
             --tb=short \
             -m "e2e and slow" \
             --timeout=120 \
