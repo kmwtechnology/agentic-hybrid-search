@@ -170,20 +170,40 @@ testing workflow.
 
 | File | Focus |
 |------|-------|
-| `test_deployment_smoke.py` | Health check, auth, basic round-trip |
-| `test_cloud_run_deployment.py` | Cold start, scaling, service metadata |
-| `test_deployment_data.py` | Product index population, sample queries |
+| `test_deployment_smoke.py` | Health check, auth, basic round-trip (18 tests) |
+| `test_cloud_run_deployment.py` | Cold start, scaling, service metadata, rate-limit ordering (17 tests) |
+| `test_deployment_data.py` | Product index population, sample queries, checkpoint persistence (10 tests) |
 | `test_real_world_scenarios.py` | All 6 intents against live data with realistic queries |
 | `test_latency_profiling.py` | Per-node latency breakdown |
 | `test_performance_load.py` | Sustained load, throughput, p95/p99 |
 | `test_stress.py` | Concurrent users, failure modes under pressure |
 
-**Run time:** ~10 s – several minutes (load/stress). **Requires:**
-deployed Cloud Run URL and an `API_KEY` with access. Set:
+> **2026-04-29:** the smoke / cloud-run / data trio (45 tests) all
+> execute on every push to `main` against the live Cloud Run deploy.
+> Until 2026-04-29 the cloud-run + data files silently skipped 12
+> tests because they used the legacy `websockets.client.connect`
+> without an Origin header — both files now use
+> `websockets.asyncio.client` + `additional_headers={"Origin":
+> ORIGIN_HEADER}` to match the smoke pattern. **Always run e2e files
+> against a real backend before pushing** — `make ci` only does
+> `--collect-only` on `tests/e2e/`.
+
+**Run time:** ~10 s – several minutes (load/stress). **Requires:** a
+backend URL and an `API_KEY`. Two common configurations:
 
 ```bash
-export CLOUD_RUN_URL="https://agentic-hybrid-search-xyz.us-central1.run.app"
-export API_KEY="..."
+# Against the deployed Cloud Run service:
+export CLOUD_RUN_URL="https://agentic-hybrid-search-375500751528.us-central1.run.app"
+export API_KEY="$(gcloud secrets versions access latest \
+  --secret=agentic-hybrid-search-api-key \
+  --project=gen-lang-client-0250737934)"
+PYTHONPATH=. pytest tests/e2e/ -v
+
+# Against a local backend (faster iteration):
+docker compose up -d                           # PostgreSQL + OpenSearch
+make dev-api                                   # backend on :8000
+export CLOUD_RUN_URL="http://localhost:8000"   # in dev allow-list
+export API_KEY="$(grep '^API_KEY=' .env | cut -d= -f2)"
 PYTHONPATH=. pytest tests/e2e/ -v
 ```
 
