@@ -19,6 +19,12 @@ import pytest
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import WebSocketException
 
+from tests.e2e.conftest import (
+    auth_rest_headers,
+    auth_ws_headers,
+    get_auth_cookie,
+)
+
 
 def _fail_if_origin_blocked(exc: BaseException) -> None:
     """Fail (not skip) when the deployment rejects with origin errors.
@@ -128,36 +134,58 @@ class TestDeploymentHealth:
 
 
 class TestAuthentication:
-    """Origin-based authentication tests.
+    """Two-layer authentication tests: same-origin + shared-password session.
 
-    The production deployment gates protected routes via origin/referer
-    matching (`api/middleware/origin_auth.py:verify_same_origin`), not via
-    API keys. The `Authorization: Bearer ...` header is accepted but not
-    enforced — the API key model was retired in favor of same-origin
-    enforcement on Cloud Run.
+    The deployment gates protected routes via two layers (in order):
+    1. `api/middleware/origin_auth.py:verify_same_origin` — blocks cross-site.
+    2. `api/middleware/session_auth.py:verify_session` — blocks anyone-with-the-URL
+       who hasn't entered the shared password.
+
+    These tests probe the contract from the outside; the unit-test guard at
+    `tests/unit/test_origin_auth_contract.py` exercises the origin layer in
+    isolation.
     """
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_request_with_valid_origin_accepted(self):
-        """Same-origin request (Origin matches deployment URL) is accepted."""
-        headers = {"Origin": ORIGIN_HEADER}
-
+    def test_request_with_valid_origin_and_session_accepted(self):
+        """Valid origin + valid session cookie → 200 on protected route."""
         with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
+            response = client.get(
+                f"{DEPLOYMENT_URL}/api/conversations", headers=auth_rest_headers()
+            )
 
         if response.status_code == 429:
             pytest.skip("Rate limited; cannot verify origin acceptance")
         assert response.status_code in [
             200,
             400,
-        ], f"Valid origin rejected: {response.status_code} - {response.text}"
+        ], f"Valid origin+session rejected: {response.status_code} - {response.text}"
+
+    @pytest.mark.e2e
+    @pytest.mark.slow
+    def test_request_with_valid_origin_no_session_returns_401(self):
+        """Valid origin but no session cookie → 401 (login gate active)."""
+        headers = {"Origin": ORIGIN_HEADER}
+        with httpx.Client(timeout=TIMEOUT) as client:
+            response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
+
+        if response.status_code == 429:
+            pytest.skip("Rate limited; cannot verify session gate")
+        assert response.status_code == 401, (
+            f"Unauthenticated request should 401, got {response.status_code}. "
+            "If this is 200 the login gate is bypassed."
+        )
 
     @pytest.mark.e2e
     @pytest.mark.slow
     def test_request_with_disallowed_origin_rejected(self):
-        """Cross-origin request (Origin does not match) is rejected with 403."""
-        headers = {"Origin": "https://evil.example.com"}
+        """Cross-origin request (Origin does not match) is rejected with 403.
+
+        Origin auth runs *before* session auth, so even an authenticated
+        cookie cannot rescue a disallowed Origin.
+        """
+        headers = {"Origin": "https://evil.example.com", "Cookie": get_auth_cookie()}
 
         with httpx.Client(timeout=TIMEOUT) as client:
             response = client.get(f"{DEPLOYMENT_URL}/api/conversations", headers=headers)
@@ -170,19 +198,29 @@ class TestAuthentication:
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_request_with_missing_origin_falls_back_to_host(self):
-        """No Origin/Referer falls back to Host check; same-host request allowed."""
+    def test_health_endpoint_does_not_require_session(self):
+        """Health endpoint stays public — no session cookie required."""
         with httpx.Client(timeout=TIMEOUT) as client:
-            response = client.get(f"{DEPLOYMENT_URL}/api/conversations")
+            response = client.get(f"{DEPLOYMENT_URL}/api/health")
 
-        if response.status_code == 429:
-            pytest.skip("Rate limited; cannot verify host fallback")
-        # Host header is auto-set by httpx to the deployment host, which the
-        # middleware accepts via the Cloud Run domain pattern.
-        assert response.status_code in [
-            200,
-            400,
-        ], f"Same-host request should be accepted, got {response.status_code}"
+        assert (
+            response.status_code == 200
+        ), f"/api/health must remain public for monitoring; got {response.status_code}"
+
+    @pytest.mark.e2e
+    @pytest.mark.slow
+    def test_login_endpoint_round_trips_a_session_cookie(self):
+        """POST /api/auth/login on a valid password returns a Set-Cookie header.
+
+        This is the smoke-test corollary of the conftest helper: if the
+        deployment ever stops setting the cookie (misconfigured
+        SessionMiddleware, https_only mismatch), every other test in the
+        suite would fail confusingly. Surfacing it here makes the cause obvious.
+        """
+        with httpx.Client(timeout=TIMEOUT) as client:
+            # Just confirm the cookie helper works against the live deployment.
+            cookie = get_auth_cookie()
+        assert cookie and "=" in cookie, f"Login did not return a usable cookie: {cookie!r}"
 
 
 class TestWebSocketConnectivity:
@@ -197,7 +235,7 @@ class TestWebSocketConnectivity:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Should connect without error
                 assert websocket is not None
@@ -214,7 +252,7 @@ class TestWebSocketConnectivity:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Receive first message (should be ConnectionEstablished)
                 message = await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
@@ -239,7 +277,7 @@ class TestWebSocketConnectivity:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
@@ -278,7 +316,7 @@ class TestSearchPipeline:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
@@ -334,7 +372,7 @@ class TestSearchPipeline:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
@@ -385,7 +423,7 @@ class TestSearchPipeline:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
@@ -456,7 +494,7 @@ class TestCitations:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
@@ -504,7 +542,7 @@ class TestResponseTiming:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 
@@ -551,7 +589,7 @@ class TestResponseTiming:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
 

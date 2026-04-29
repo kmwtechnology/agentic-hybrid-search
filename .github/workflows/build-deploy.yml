@@ -72,6 +72,9 @@ jobs:
           OPENSEARCH_PORT=9200
           OPENSEARCH_USE_SSL=false
           API_KEY=test-api-key-12345
+          LOGIN_PASSWORD=test-login-pw
+          SESSION_SECRET=ci-test-session-secret-must-be-at-least-32-chars-long
+          SESSION_COOKIE_SECURE=false
           LLM_MODEL=gemini-3-flash-preview
           RERANKER_MODEL=gemini-3.1-flash-lite-preview
           QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview
@@ -205,6 +208,9 @@ jobs:
           OPENSEARCH_PORT=9200
           OPENSEARCH_USE_SSL=false
           API_KEY=test-api-key-12345
+          LOGIN_PASSWORD=test-login-pw
+          SESSION_SECRET=ci-test-session-secret-must-be-at-least-32-chars-long
+          SESSION_COOKIE_SECURE=false
           LLM_MODEL=gemini-3-flash-preview
           RERANKER_MODEL=gemini-3.1-flash-lite-preview
           QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview
@@ -574,6 +580,13 @@ jobs:
             --project="${PROJECT_ID}" 2>/dev/null)
           echo "::add-mask::$API_KEY"
           echo "API_KEY=$API_KEY" >> "$GITHUB_OUTPUT"
+          # The shared-password gate (PR #8 / feat/login-gate). The e2e
+          # conftest helper logs in via /api/auth/login on every test run.
+          LOGIN_PASSWORD=$(gcloud secrets versions access latest \
+            --secret=agentic-hybrid-search-login-password \
+            --project="${PROJECT_ID}" 2>/dev/null)
+          echo "::add-mask::$LOGIN_PASSWORD"
+          echo "LOGIN_PASSWORD=$LOGIN_PASSWORD" >> "$GITHUB_OUTPUT"
 
       - name: Wait for service to be ready
         run: |
@@ -615,6 +628,7 @@ jobs:
         env:
           CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
           API_KEY: ${{ steps.service-url.outputs.API_KEY }}
+          LOGIN_PASSWORD: ${{ steps.service-url.outputs.LOGIN_PASSWORD }}
           PYTHONPATH: langchain_agent
         run: |
           cd langchain_agent
@@ -646,6 +660,7 @@ jobs:
         env:
           CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
           API_KEY: ${{ steps.service-url.outputs.API_KEY }}
+          LOGIN_PASSWORD: ${{ steps.service-url.outputs.LOGIN_PASSWORD }}
           PYTHONPATH: langchain_agent
         run: |
           cd langchain_agent
@@ -673,6 +688,7 @@ jobs:
         env:
           CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
           API_KEY: ${{ steps.service-url.outputs.API_KEY }}
+          LOGIN_PASSWORD: ${{ steps.service-url.outputs.LOGIN_PASSWORD }}
           PYTHONPATH: langchain_agent
         run: |
           cd langchain_agent

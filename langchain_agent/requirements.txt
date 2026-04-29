@@ -18,6 +18,8 @@ pydantic>=2.10.0
 # Security and rate limiting
 slowapi>=0.1.9
 python-dotenv>=1.0.0
+# Required by Starlette SessionMiddleware (signed cookie used by login gate).
+itsdangerous>=2.2.0
 
 # Retry logic
 tenacity>=8.2.0

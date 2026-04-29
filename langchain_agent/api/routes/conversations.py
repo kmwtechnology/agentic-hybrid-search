@@ -20,6 +20,7 @@ from slowapi.util import get_remote_address
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.middleware.origin_auth import verify_same_origin
+from api.middleware.session_auth import verify_session
 from config import DATABASE_URL, RATE_LIMIT_CONVERSATIONS
 from logging_config import get_logger
 
@@ -178,6 +179,7 @@ async def list_conversations(
         List of conversation summaries ordered by most recent first.
     """
     await verify_same_origin(request)
+    await verify_session(request)
 
     try:
         with psycopg.connect(DATABASE_URL) as conn:
@@ -261,6 +263,7 @@ async def get_conversation(request: Request, thread_id: str):
         Full conversation details with message history.
     """
     await verify_same_origin(request)
+    await verify_session(request)
     thread_id = validate_thread_id(thread_id)
 
     try:
@@ -374,6 +377,7 @@ async def clear_all_conversations(request: Request):
         204 No Content on success.
     """
     await verify_same_origin(request)
+    await verify_session(request)
 
     try:
         with psycopg.connect(DATABASE_URL) as conn:
@@ -441,6 +445,7 @@ async def delete_conversation(request: Request, thread_id: str):
         204 No Content on success.
     """
     await verify_same_origin(request)
+    await verify_session(request)
     thread_id = validate_thread_id(thread_id)
 
     try:

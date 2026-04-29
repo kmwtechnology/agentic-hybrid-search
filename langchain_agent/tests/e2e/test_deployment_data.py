@@ -14,6 +14,8 @@ import os
 import httpx
 import pytest
 
+from tests.e2e.conftest import auth_ws_headers
+
 # Configuration
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 TIMEOUT = 30
@@ -79,7 +81,7 @@ class TestESCIProductIndexing:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Skip ConnectionEstablished
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
@@ -127,7 +129,7 @@ class TestESCIProductIndexing:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
@@ -177,7 +179,7 @@ class TestESCIProductIndexing:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
@@ -227,7 +229,7 @@ class TestProductMetadata:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
@@ -277,7 +279,7 @@ class TestProductMetadata:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
@@ -334,7 +336,7 @@ class TestDataConsistency:
             # First search
             response_1 = ""
             async with ws_connect(
-                ws_url_1, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url_1, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
@@ -358,7 +360,7 @@ class TestDataConsistency:
             # Second search (same query)
             response_2 = ""
             async with ws_connect(
-                ws_url_2, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url_2, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
@@ -406,7 +408,7 @@ class TestDataConsistency:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
 
@@ -466,7 +468,7 @@ class TestCheckpointPersistence:
         try:
             # Send first message
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 
@@ -487,7 +489,7 @@ class TestCheckpointPersistence:
 
             # Send follow-up message (should maintain context)
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as ws:
                 await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
 

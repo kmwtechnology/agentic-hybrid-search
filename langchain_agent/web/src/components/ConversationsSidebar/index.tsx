@@ -4,7 +4,8 @@
 
 import { useEffect, useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Trash2, MessageSquare, RefreshCw, BookOpen, HelpCircle } from 'lucide-react'
+import { Plus, Trash2, MessageSquare, RefreshCw, BookOpen, HelpCircle, LogOut } from 'lucide-react'
+import { useAuthStore } from '../../stores/authStore'
 import { useChatStore, type ConversationSummary } from '../../stores/chatStore'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import { ConversationItem } from './ConversationItem'
@@ -28,8 +29,21 @@ export function ConversationsSidebar({ onConversationSelect }: ConversationsSide
   } = useChatStore()
 
   const { clearState } = useObservabilityStore()
+  const logout = useAuthStore((s) => s.logout)
   const [error, setError] = useState<string | null>(null)
   const [confirmingClearAll, setConfirmingClearAll] = useState(false)
+  const [confirmingLogout, setConfirmingLogout] = useState(false)
+
+  const handleLogout = useCallback(async () => {
+    if (!confirmingLogout) {
+      setConfirmingLogout(true)
+      // Auto-revert the confirm state after 3 s so the button doesn't sit
+      // primed forever after a misclick.
+      setTimeout(() => setConfirmingLogout(false), 3000)
+      return
+    }
+    await logout()
+  }, [confirmingLogout, logout])
 
   // Fetch conversations on mount
   useEffect(() => {
@@ -182,6 +196,19 @@ export function ConversationsSidebar({ onConversationSelect }: ConversationsSide
             {confirmingClearAll ? 'Click again to confirm' : 'Clear All'}
           </button>
         )}
+        <button
+          onClick={handleLogout}
+          aria-label={confirmingLogout ? 'Click again to confirm sign out' : 'Sign out'}
+          title="Sign out — clears the session cookie and returns to the login screen"
+          className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 ${
+            confirmingLogout
+              ? 'bg-blue-900/70 text-blue-200 hover:bg-blue-800'
+              : 'bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-gray-100'
+          }`}
+        >
+          <LogOut className="w-4 h-4" />
+          {confirmingLogout ? 'Click again to confirm' : 'Sign out'}
+        </button>
       </div>
     </div>
   )

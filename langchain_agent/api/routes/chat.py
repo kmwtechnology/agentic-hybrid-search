@@ -19,6 +19,7 @@ from slowapi.util import get_remote_address
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from api.middleware.origin_auth import verify_same_origin, verify_websocket_origin
+from api.middleware.session_auth import verify_session, verify_websocket_session
 from api.schemas.events import (
     AgentCompleteEvent,
     AgentErrorEvent,
@@ -283,6 +284,11 @@ async def websocket_chat(websocket: WebSocket):
     # Verify same-origin authentication before accepting connection
     if not await verify_websocket_origin(websocket):
         return  # Connection closed by verify function
+
+    # Verify the session cookie carries an authenticated login. Closes with
+    # 4401 on failure so the SPA can route back to the login screen.
+    if not await verify_websocket_session(websocket):
+        return
 
     # Get or generate thread ID
     thread_id = websocket.query_params.get("thread_id")
@@ -591,6 +597,7 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
     """
     # Verify same-origin authentication
     await verify_same_origin(request)
+    await verify_session(request)
 
     thread_id = chat_request.thread_id or f"conversation_{uuid.uuid4().hex[:8]}"
 
