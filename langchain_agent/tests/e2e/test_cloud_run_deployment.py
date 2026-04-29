@@ -17,6 +17,8 @@ from typing import Optional
 import httpx
 import pytest
 
+from tests.e2e.conftest import auth_rest_headers, auth_ws_headers
+
 # Configuration
 CLOUD_RUN_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 API_KEY = os.environ.get("API_KEY", "test-api-key")
@@ -102,7 +104,7 @@ class TestRequestTimeout:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Receive initial message
                 msg = await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
@@ -146,7 +148,7 @@ class TestGracefulShutdown:
 
         try:
             async with ws_connect(
-                ws_url, subprotocols=["websocket"], additional_headers={"Origin": ORIGIN_HEADER}
+                ws_url, subprotocols=["websocket"], additional_headers=auth_ws_headers()
             ) as websocket:
                 # Skip connection established
                 await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
@@ -199,7 +201,7 @@ class TestHorizontalScaling:
             async with ws_connect(
                 ws_url,
                 subprotocols=["websocket"],
-                additional_headers={"Origin": ORIGIN_HEADER},
+                additional_headers=auth_ws_headers(),
             ) as ws:
                 msg = await asyncio.wait_for(ws.recv(), timeout=TIMEOUT)
                 return msg is not None
@@ -344,11 +346,12 @@ class TestBurstLoadLast:
 
         def make_request(query_id: int):
             with httpx.Client(timeout=TIMEOUT) as client:
-                headers = {
-                    "Authorization": f"Bearer {API_KEY}",
-                    "Origin": ORIGIN_HEADER,
-                }
-                response = client.get(f"{CLOUD_RUN_URL}/api/conversations", headers=headers)
+                # Use the session cookie + same-origin headers; without
+                # them every request would 401 and the burst test would
+                # measure auth rejection, not load behavior.
+                response = client.get(
+                    f"{CLOUD_RUN_URL}/api/conversations", headers=auth_rest_headers()
+                )
             # 429 is rate limit — server handled but throttled, still counts as healthy behavior
             return response.status_code in [200, 400, 429]
 

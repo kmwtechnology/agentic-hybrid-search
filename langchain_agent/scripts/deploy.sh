@@ -304,6 +304,11 @@ store_secret() {
 
 store_secret "agentic-hybrid-search-google-api-key" "GOOGLE_API_KEY (from https://aistudio.google.com/apikey)"
 store_secret "agentic-hybrid-search-api-key" "API_KEY (app authentication key, or press Enter to auto-generate)"
+# Login gate: shared password the audience types into the UI. Prompted so
+# the operator can pick something memorable; if blank, auto-generated below.
+store_secret "agentic-hybrid-search-login-password" "LOGIN_PASSWORD (shared demo password, or press Enter to auto-generate)"
+# Session-cookie signing secret. Auto-generated below — never prompted, no
+# operator should ever type a 32-byte random string by hand.
 
 # Auto-generate API_KEY if not provided
 if $DRY_RUN; then
@@ -316,9 +321,37 @@ elif ! gcloud secrets describe "agentic-hybrid-search-api-key" --project="$PROJE
     log "Auto-generated API_KEY and stored in Secret Manager."
 fi
 
+# Auto-generate LOGIN_PASSWORD if the operator skipped the prompt above.
+if $DRY_RUN; then
+    echo "[DRY RUN] Auto-generate LOGIN_PASSWORD if missing"
+elif ! gcloud secrets describe "agentic-hybrid-search-login-password" --project="$PROJECT_ID" &>/dev/null; then
+    LOGIN_PASSWORD_VALUE=$(openssl rand -hex 6)
+    echo -n "$LOGIN_PASSWORD_VALUE" | gcloud secrets create "agentic-hybrid-search-login-password" \
+        --data-file=- \
+        --project="$PROJECT_ID"
+    log "Auto-generated LOGIN_PASSWORD and stored in Secret Manager."
+    log "  Value: $LOGIN_PASSWORD_VALUE  (share this with your audience.)"
+fi
+
+# Auto-generate SESSION_SECRET (always; never prompted).
+if $DRY_RUN; then
+    echo "[DRY RUN] Auto-generate SESSION_SECRET if missing"
+elif ! gcloud secrets describe "agentic-hybrid-search-session-secret" --project="$PROJECT_ID" &>/dev/null; then
+    SESSION_SECRET_VALUE=$(openssl rand -hex 32)
+    echo -n "$SESSION_SECRET_VALUE" | gcloud secrets create "agentic-hybrid-search-session-secret" \
+        --data-file=- \
+        --project="$PROJECT_ID"
+    log "Auto-generated SESSION_SECRET and stored in Secret Manager."
+fi
+
 # Grant Secret Manager access to the Compute Engine default service account
 log "Granting secret access to Cloud Run service account..."
-for secret_name in agentic-hybrid-search-google-api-key agentic-hybrid-search-api-key agentic-hybrid-search-db-password; do
+for secret_name in \
+    agentic-hybrid-search-google-api-key \
+    agentic-hybrid-search-api-key \
+    agentic-hybrid-search-login-password \
+    agentic-hybrid-search-session-secret \
+    agentic-hybrid-search-db-password; do
     run gcloud secrets add-iam-policy-binding "$secret_name" \
         --member="serviceAccount:${COMPUTE_SA}" \
         --role="roles/secretmanager.secretAccessor" \
@@ -395,6 +428,8 @@ OPENSEARCH_INDEX_NAME=agentic_hybrid_search_docs" \
     --set-secrets="\
 GOOGLE_API_KEY=agentic-hybrid-search-google-api-key:latest,\
 API_KEY=agentic-hybrid-search-api-key:latest,\
+LOGIN_PASSWORD=agentic-hybrid-search-login-password:latest,\
+SESSION_SECRET=agentic-hybrid-search-session-secret:latest,\
 POSTGRES_PASSWORD=agentic-hybrid-search-db-password:latest,\
 OPENSEARCH_USER=agentic-hybrid-search-opensearch-user:latest,\
 OPENSEARCH_PASSWORD=agentic-hybrid-search-opensearch-password:latest" \

@@ -1,8 +1,12 @@
 /**
  * API utility with same-origin authentication.
  *
- * Uses origin-based authentication: only requests from the UI
- * (same domain) are accepted. No API key needed.
+ * Two-layer auth model:
+ * 1. Same-origin (Origin/Referer/Host) enforced by the backend on every route.
+ * 2. Shared-password session cookie (HttpOnly) set by POST /api/auth/login.
+ *
+ * The cookie rides automatically because every request below carries
+ * `credentials: 'include'`. No API key is sent in headers or query params.
  */
 
 // When frontend and API are on the same domain (Cloud Run, localhost),
@@ -12,9 +16,6 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 /**
  * Create headers for API requests.
- *
- * Note: No API key is needed. The browser automatically sends the Origin header,
- * which the server validates to ensure requests come from the UI.
  */
 function createHeaders(additionalHeaders?: Record<string, string>): Record<string, string> {
   return {
@@ -24,7 +25,7 @@ function createHeaders(additionalHeaders?: Record<string, string>): Record<strin
 }
 
 /**
- * Make an authenticated API request.
+ * Make an API request that includes the session cookie.
  *
  * @param endpoint - API endpoint (e.g., '/api/conversations')
  * @param options - Fetch options (method, body, etc.)
@@ -43,6 +44,11 @@ export async function apiFetch(
   return fetch(url, {
     ...options,
     headers,
+    // Send the session cookie set by /api/auth/login. Without this, the
+    // browser would drop the cookie even on same-origin requests when
+    // `credentials` defaults to 'same-origin' isn't relied on (e.g. when
+    // VITE_API_URL points at a different port during local dev).
+    credentials: 'include',
   })
 }
 

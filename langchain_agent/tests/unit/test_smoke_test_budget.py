@@ -34,7 +34,9 @@ DATA_TEST_FILE = REPO_ROOT / "langchain_agent" / "tests" / "e2e" / "test_deploym
 
 # Realistic Cloud Run cost multipliers, derived from 2026-04-29 production
 # logs (Gemini 3 Flash + reranker scoring 40 docs + network).
-SETUP_OVERHEAD_S = 5  # ws_connect + connection_established
+# Setup includes: POST /api/auth/login round-trip (cookie acquisition for the
+# login gate) + ws_connect + connection_established.
+SETUP_OVERHEAD_S = 7  # login round-trip + ws_connect + connection_established
 PER_CHAT_MESSAGE_BUDGET_S = 25  # 16-22 s observed worst case
 PER_RECV_BUDGET_CAP_S = 15  # cap on inner asyncio.wait_for timeouts
 

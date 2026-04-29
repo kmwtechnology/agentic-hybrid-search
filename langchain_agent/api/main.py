@@ -30,10 +30,19 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.middleware.sessions import SessionMiddleware
 
 from api.middleware.auth import AuthConfigurationError
-from api.routes import admin, chat, conversations, health, suggest
-from config import API_KEY, RATE_LIMIT_ENABLED
+from api.routes import admin, auth, chat, conversations, health, suggest
+from config import (
+    API_KEY,
+    LOGIN_PASSWORD,
+    RATE_LIMIT_ENABLED,
+    SESSION_COOKIE_NAME,
+    SESSION_COOKIE_SECURE,
+    SESSION_MAX_AGE_SECONDS,
+    SESSION_SECRET,
+)
 from logging_config import configure_logging, get_logger
 
 # Configure structured logging
@@ -61,6 +70,17 @@ async def lifespan(app: FastAPI):
             "API_KEY environment variable is not set. "
             "Authentication is required. Set API_KEY in your .env file."
         )
+    if not LOGIN_PASSWORD:
+        raise AuthConfigurationError(
+            "LOGIN_PASSWORD environment variable is not set. "
+            "The shared-password login gate is required. "
+            "Set LOGIN_PASSWORD in your .env file."
+        )
+    if not SESSION_SECRET or len(SESSION_SECRET) < 32:
+        raise AuthConfigurationError(
+            "SESSION_SECRET must be set to a value of at least 32 characters. "
+            "Generate one with `openssl rand -hex 32`."
+        )
 
     logger.info(
         "api_started",
@@ -68,6 +88,7 @@ async def lifespan(app: FastAPI):
         websocket="ws://localhost:8000/ws/chat",
         docs="http://localhost:8000/docs",
         auth_required=True,
+        login_gate=True,
     )
 
     yield  # Application runs here
@@ -95,6 +116,14 @@ tags_metadata = [
             "Typeahead autocomplete with spell correction. Edge-ngram prefix matching on "
             "`title_suggest` and `brand_suggest` fields, with Levenshtein + SequenceMatcher "
             "spell correction and a distance-1 fuzzy fallback for single-character typos."
+        ),
+    },
+    {
+        "name": "auth",
+        "description": (
+            "Shared-password login gate. `POST /api/auth/login` validates the password and "
+            "sets an HttpOnly session cookie; `POST /api/auth/logout` clears it; "
+            "`GET /api/auth/status` reports whether the current request is authenticated."
         ),
     },
     {
@@ -187,8 +216,24 @@ app.add_middleware(
     allow_origin_regex=r"https://.*\.a\.run\.app",  # Accept all Cloud Run URLs
 )
 
+# Session cookie for the shared-password login gate. Added AFTER CORS so it
+# runs first on the incoming request (Starlette middleware is reverse-add
+# order on the way in), populating ``request.session`` before any route or
+# WebSocket handler reads it. The lifespan check above kills startup if
+# SESSION_SECRET is missing/short, so the placeholder below is only ever
+# consulted during boot before traffic is served.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET or "unconfigured-startup-will-fail",
+    session_cookie=SESSION_COOKIE_NAME,
+    https_only=SESSION_COOKIE_SECURE,
+    same_site="lax",
+    max_age=SESSION_MAX_AGE_SECONDS,
+)
+
 # Register REST routes
 app.include_router(health.router, prefix="/api", tags=["health"])
+app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(conversations.router, prefix="/api", tags=["conversations"])
 app.include_router(suggest.router, prefix="/api", tags=["suggest"])
 app.include_router(admin.router, tags=["admin"])

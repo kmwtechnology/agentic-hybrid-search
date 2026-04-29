@@ -143,7 +143,7 @@ fi
 # ============================================================================
 
 log "Deleting Secret Manager secrets..."
-for secret_name in agentic-hybrid-search-google-api-key agentic-hybrid-search-api-key agentic-hybrid-search-db-password agentic-hybrid-search-opensearch-user agentic-hybrid-search-opensearch-password; do
+for secret_name in agentic-hybrid-search-google-api-key agentic-hybrid-search-api-key agentic-hybrid-search-login-password agentic-hybrid-search-session-secret agentic-hybrid-search-db-password agentic-hybrid-search-opensearch-user agentic-hybrid-search-opensearch-password; do
     if gcloud secrets describe "$secret_name" --project="$PROJECT_ID" &>/dev/null; then
         gcloud secrets delete "$secret_name" --project="$PROJECT_ID" --quiet
         log "Deleted secret: $secret_name"
