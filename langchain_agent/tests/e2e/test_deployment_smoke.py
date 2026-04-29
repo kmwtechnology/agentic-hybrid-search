@@ -16,8 +16,8 @@ from typing import Optional
 
 import httpx
 import pytest
-from websockets.client import connect as ws_connect
-from websockets.exceptions import InvalidStatusCode, WebSocketException
+from websockets.asyncio.client import connect as ws_connect
+from websockets.exceptions import WebSocketException
 
 
 def _fail_if_origin_blocked(exc: BaseException) -> None:
