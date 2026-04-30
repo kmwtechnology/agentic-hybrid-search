@@ -89,6 +89,8 @@ class ObservableAgentService:
         self._agent: Optional[EcommerceSearchAgent] = None
         self._initialized = False
         self._lock = asyncio.Lock()
+        self._warmup_complete = False
+        self._warmup_lock = asyncio.Lock()
 
     async def ensure_initialized(self):
         """Initialize the agent if not already done."""
@@ -124,9 +126,13 @@ class ObservableAgentService:
         from config import ENABLE_RERANKING, RERANKER_WARMUP_ENABLED
 
         if not (ENABLE_RERANKING and RERANKER_WARMUP_ENABLED):
+            async with self._warmup_lock:
+                self._warmup_complete = True
             return
 
         if not self._agent or not self._agent.reranker:
+            async with self._warmup_lock:
+                self._warmup_complete = True
             return
 
         try:
@@ -135,6 +141,14 @@ class ObservableAgentService:
             logger.info("Reranker warmup completed in background")
         except Exception as e:
             logger.warning(f"Reranker warmup failed (will lazy-init on first request): {e}")
+        finally:
+            async with self._warmup_lock:
+                self._warmup_complete = True
+
+    async def _wait_for_warmup(self) -> None:
+        """Poll until warmup is complete (up to caller's timeout)."""
+        while not self._warmup_complete:
+            await asyncio.sleep(0.1)
 
     async def _load_conversation_context(self, thread_id: str) -> int:
         """
@@ -198,6 +212,18 @@ class ObservableAgentService:
         metrics: Dict[str, float] = {}
 
         try:
+            # Wait for warmup to complete (non-blocking wait with timeout)
+            async with self._warmup_lock:
+                if not self._warmup_complete:
+                    logger.info("Waiting for reranker warmup to complete...")
+                    # Give warmup up to 60s to complete; if it times out, proceed anyway
+                    try:
+                        await asyncio.wait_for(self._wait_for_warmup(), timeout=60.0)
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "Reranker warmup did not complete in time; proceeding with lazy init"
+                        )
+
             # Set thread for conversation persistence
             self._agent.set_thread_id(thread_id)
 
