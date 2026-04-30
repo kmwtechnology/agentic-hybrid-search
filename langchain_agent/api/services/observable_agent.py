@@ -853,46 +853,59 @@ class ObservableAgentService:
                                     tool_args=tool_call["args"],
                                 )
                             )
-                    elif msg.content:
-                        # For responses without tool calls, check if content needs parsing
-                        # (handles Ollama models that format reasoning as "Reasoning: ... \nAnswer: ...")
-                        content = msg.content
-                        # Extract text if content is a list of content blocks (Gemini format)
-                        if isinstance(content, list):
-                            text_parts = []
-                            for block in content:
-                                if isinstance(block, dict) and "text" in block:
-                                    text_parts.append(block["text"])
-                            content = "".join(text_parts) if text_parts else ""
-                        reasoning_extracted, response_content = self._parse_structured_response(
-                            content
-                        )
 
-                        # Emit reasoning if extracted from content
-                        if reasoning_extracted and not reasoning:
-                            await emit(LLMReasoningStartEvent())
-                            await emit(
-                                LLMReasoningChunkEvent(
-                                    content=reasoning_extracted,
-                                    is_complete=True,
-                                )
+                    # Always emit response event if there's content or tool calls
+                    # If content is empty but msg exists, emit empty response to signal completion
+                    if msg.content or (hasattr(msg, "tool_calls") and msg.tool_calls):
+                        if msg.content:
+                            # For responses without tool calls, check if content needs parsing
+                            # (handles Ollama models that format reasoning as "Reasoning: ... \nAnswer: ...")
+                            content = msg.content
+                            # Extract text if content is a list of content blocks (Gemini format)
+                            if isinstance(content, list):
+                                text_parts = []
+                                for block in content:
+                                    if isinstance(block, dict) and "text" in block:
+                                        text_parts.append(block["text"])
+                                content = "".join(text_parts) if text_parts else ""
+                            reasoning_extracted, response_content = self._parse_structured_response(
+                                content
                             )
 
-                        if already_streamed:
-                            # Response was already streamed token-by-token to chat window
-                            # Just emit completion marker
-                            await emit(
-                                LLMResponseChunkEvent(
-                                    content="",
-                                    is_complete=True,
+                            # Emit reasoning if extracted from content
+                            if reasoning_extracted and not reasoning:
+                                await emit(LLMReasoningStartEvent())
+                                await emit(
+                                    LLMReasoningChunkEvent(
+                                        content=reasoning_extracted,
+                                        is_complete=True,
+                                    )
                                 )
-                            )
-                        else:
-                            # Emit full response (fallback for non-streaming models)
+
+                            if already_streamed:
+                                # Response was already streamed token-by-token to chat window
+                                # Just emit completion marker
+                                await emit(
+                                    LLMResponseChunkEvent(
+                                        content="",
+                                        is_complete=True,
+                                    )
+                                )
+                            else:
+                                # Emit full response (fallback for non-streaming models)
+                                await emit(LLMResponseStartEvent())
+                                await emit(
+                                    LLMResponseChunkEvent(
+                                        content=response_content,
+                                        is_complete=True,
+                                    )
+                                )
+                        elif not already_streamed:
+                            # Emit empty response if no content but message was generated
                             await emit(LLMResponseStartEvent())
                             await emit(
                                 LLMResponseChunkEvent(
-                                    content=response_content,
+                                    content="",
                                     is_complete=True,
                                 )
                             )
