@@ -638,16 +638,16 @@ jobs:
         run: |
           cd langchain_agent
 
-          # --timeout=120: the refinement test sends two sequential chat
-          # messages; each takes 16-25 s end-to-end on Cloud Run (reranker
-          # silence + LLM streaming + network), so a 30 s ceiling races the
-          # second message every time. 120 s comfortably covers both.
+          # --timeout=180: increased from 120 to accommodate cross-encoder model
+          # initialization (~60s on first request) + full pipeline processing.
+          # Per-message budget: 90-120s on Cloud Run (model load + retrieval +
+          # reranking + LLM streaming + network overhead).
           pytest tests/e2e/test_deployment_smoke.py \
             -v \
             -ra \
             --tb=short \
             -m "e2e and slow" \
-            --timeout=120 \
+            --timeout=180 \
             --asyncio-mode=auto \
             2>&1 | tee smoke-test-results.txt
 
@@ -675,7 +675,7 @@ jobs:
             -ra \
             --tb=short \
             -m "e2e and slow" \
-            --timeout=120 \
+            --timeout=180 \
             --asyncio-mode=auto \
             2>&1 | tee cloud-run-test-results.txt
 
@@ -703,7 +703,7 @@ jobs:
             -ra \
             --tb=short \
             -m "e2e and slow" \
-            --timeout=120 \
+            --timeout=180 \
             --asyncio-mode=auto \
             2>&1 | tee data-test-results.txt
 
