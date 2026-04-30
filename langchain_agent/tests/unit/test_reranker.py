@@ -211,7 +211,7 @@ class TestRerank:
 
 def _make_cross_reranker() -> CrossEncoderReranker:
     """Return a CrossEncoderReranker with a mocked CrossEncoder model."""
-    with patch("reranker.CrossEncoder"):
+    with patch("sentence_transformers.CrossEncoder"):
         reranker = CrossEncoderReranker(model_name="cross-encoder/ms-marco-MiniLM-L-12-v2")
     return reranker
 
