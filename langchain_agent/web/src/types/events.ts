@@ -388,6 +388,18 @@ export interface ConfidenceProxy {
 
 export type GenerationVerdict = 'llm_better' | 'tied' | 'llm_worse'
 
+export type HallucinationCategory =
+  | 'fabrication'
+  | 'cross_product_bleed'
+  | 'inference'
+  | 'overreach'
+
+export interface FlaggedClaim {
+  claim: string
+  category: HallucinationCategory
+  reasoning?: string
+}
+
 export interface GenerationJudgment {
   verdict: GenerationVerdict
   pairwise_justification: string
@@ -395,7 +407,7 @@ export interface GenerationJudgment {
   answer_relevance: number
   citation_accuracy: number
   context_utilization: number
-  hallucinations: string[]
+  hallucinations: FlaggedClaim[]
 }
 
 export type PipelineStageName = 'stock_bm25' | 'bm25' | 'hybrid' | 'reranked'

@@ -506,6 +506,21 @@ class ConfidenceProxy(BaseModel):
     confidence_label: Literal["high", "medium", "low"]
 
 
+HallucinationCategoryT = Literal["fabrication", "cross_product_bleed", "inference", "overreach"]
+
+
+class FlaggedClaim(BaseModel):
+    """One flagged claim from the LLM-as-judge, tiered by severity.
+
+    Mirrors ``judge.FlaggedClaim``. ``fabrication`` and ``cross_product_bleed``
+    are retry-worthy; ``inference`` and ``overreach`` are surface-only.
+    """
+
+    claim: str
+    category: HallucinationCategoryT
+    reasoning: str = ""
+
+
 class GenerationJudgment(BaseModel):
     """LLM-as-judge result for the agent's synthesized response.
 
@@ -520,7 +535,7 @@ class GenerationJudgment(BaseModel):
     answer_relevance: float
     citation_accuracy: float
     context_utilization: float
-    hallucinations: List[str] = []
+    hallucinations: List[FlaggedClaim] = []
 
 
 class PipelineSummaryEvent(BaseEvent):

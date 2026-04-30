@@ -19,12 +19,62 @@ import { useState } from 'react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import type {
   ConfidenceLabel,
+  FlaggedClaim,
   GenerationJudgment,
   GenerationVerdict,
+  HallucinationCategory,
   LatencyStage,
   PipelineSummaryEvent,
   StageMetrics,
 } from '../../types/events'
+
+const CATEGORY_TONE: Record<
+  HallucinationCategory,
+  { label: string; chip: string; tooltip: string }
+> = {
+  fabrication: {
+    label: 'Fabrication',
+    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
+    tooltip:
+      'Outright wrong fact (e.g. "Made in USA" when the product\'s FACTS say nothing of the sort). Triggers auto-correction retry.',
+  },
+  cross_product_bleed: {
+    label: 'Cross-product bleed',
+    chip: 'bg-rose-900/40 text-rose-200 border-rose-700/50',
+    tooltip:
+      'A fact transferred from one retrieved product to a different one. Triggers auto-correction retry.',
+  },
+  inference: {
+    label: 'Inference',
+    chip: 'bg-amber-900/40 text-amber-200 border-amber-700/50',
+    tooltip:
+      'Paraphrase or over-claim from the source. Surfaced for review but does NOT trigger the ~20s retry.',
+  },
+  overreach: {
+    label: 'Overreach',
+    chip: 'bg-amber-900/40 text-amber-200 border-amber-700/50',
+    tooltip:
+      'A general claim beyond what is grounded. Surfaced for review but does NOT trigger the ~20s retry.',
+  },
+}
+
+const RETRY_WORTHY_CATEGORIES: ReadonlySet<HallucinationCategory> = new Set([
+  'fabrication',
+  'cross_product_bleed',
+])
+
+function partitionFlags(flags: readonly FlaggedClaim[]): {
+  hallucinated: FlaggedClaim[]
+  overreached: FlaggedClaim[]
+} {
+  const hallucinated: FlaggedClaim[] = []
+  const overreached: FlaggedClaim[] = []
+  for (const f of flags) {
+    if (RETRY_WORTHY_CATEGORIES.has(f.category)) hallucinated.push(f)
+    else overreached.push(f)
+  }
+  return { hallucinated, overreached }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -406,18 +456,52 @@ function GenerationCard({
             hint="Fraction of retrieved products meaningfully referenced"
           />
         </div>
-        {judgment.hallucinations.length > 0 && (
-          <div className="border-t border-gray-700/50 pt-2 space-y-1">
-            <span className="text-[11px] uppercase tracking-wide text-rose-300">
-              Hallucinations flagged ({judgment.hallucinations.length})
-            </span>
-            <ul className="text-xs text-rose-200/90 list-disc list-outside ml-4 space-y-0.5 break-words">
-              {judgment.hallucinations.map((h, i) => (
-                <li key={i}>{h}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {judgment.hallucinations.length > 0 && (() => {
+          const { hallucinated, overreached } = partitionFlags(judgment.hallucinations)
+          const headerLabel =
+            hallucinated.length > 0 && overreached.length > 0
+              ? `${hallucinated.length} hallucinated / ${overreached.length} overreached`
+              : hallucinated.length > 0
+                ? `Hallucinations flagged (${hallucinated.length})`
+                : `Overreaches flagged (${overreached.length})`
+          const headerTone = hallucinated.length > 0 ? 'text-rose-300' : 'text-amber-300'
+          return (
+            <div className="border-t border-gray-700/50 pt-2 space-y-1.5">
+              <span
+                className={`text-[11px] uppercase tracking-wide ${headerTone}`}
+                title="Red = fabrication / cross-product bleed (retry-worthy). Amber = inference / overreach (surfaced only, no retry)."
+              >
+                {headerLabel}
+              </span>
+              <ul className="text-xs list-none space-y-1.5 break-words">
+                {judgment.hallucinations.map((h, i) => {
+                  const tone = CATEGORY_TONE[h.category]
+                  const itemColor = RETRY_WORTHY_CATEGORIES.has(h.category)
+                    ? 'text-rose-200/90'
+                    : 'text-amber-200/90'
+                  return (
+                    <li key={i} className={itemColor}>
+                      <span className="flex items-start gap-1.5">
+                        <span
+                          className={`flex-none text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-full border whitespace-nowrap ${tone.chip}`}
+                          title={tone.tooltip}
+                        >
+                          {tone.label}
+                        </span>
+                        <span className="leading-snug">{h.claim}</span>
+                      </span>
+                      {h.reasoning && (
+                        <span className="block ml-[6.5rem] text-[11px] text-gray-400 italic leading-snug">
+                          {h.reasoning}
+                        </span>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import random
 import time
+from enum import Enum
 from typing import List, Literal, Optional
 
 from langchain_core.documents import Document
@@ -36,6 +37,44 @@ logger = logging.getLogger(__name__)
 
 
 Verdict = Literal["llm_better", "tied", "llm_worse"]
+
+
+class HallucinationCategory(str, Enum):
+    """Tier a flagged claim by severity so the retry gate can route on it.
+
+    ``fabrication`` and ``cross_product_bleed`` are dangerous and trigger the
+    auto-correction retry. ``inference`` and ``overreach`` are surfaced to the
+    user but skip the ~20–30s retry — regenerating typically makes the answer
+    worse, not better.
+    """
+
+    fabrication = "fabrication"
+    cross_product_bleed = "cross_product_bleed"
+    inference = "inference"
+    overreach = "overreach"
+
+
+# Categories that justify the auto-correction retry path.
+RETRY_ELIGIBLE_CATEGORIES: frozenset[HallucinationCategory] = frozenset(
+    {HallucinationCategory.fabrication, HallucinationCategory.cross_product_bleed}
+)
+
+
+class FlaggedClaim(BaseModel):
+    """A single judged claim from the LLM response that wasn't fully grounded."""
+
+    claim: str = Field(description="The unsupported claim, quoted or paraphrased.")
+    category: HallucinationCategory = Field(
+        description=(
+            "Severity tier: fabrication / cross_product_bleed (retry-worthy) "
+            "vs inference / overreach (surface only)."
+        ),
+    )
+    reasoning: str = Field(
+        default="",
+        description="One-sentence why this claim landed in this category.",
+        max_length=300,
+    )
 
 
 class JudgmentResult(BaseModel):
@@ -75,11 +114,11 @@ class JudgmentResult(BaseModel):
             "meaningfully references."
         ),
     )
-    hallucinations: List[str] = Field(
+    hallucinations: List[FlaggedClaim] = Field(
         default_factory=list,
         description=(
             "Specific claims in the LLM response NOT supported by the retrieved "
-            "products. Empty list if no hallucinations found."
+            "products, each tagged with a severity category. Empty list if none."
         ),
         max_length=10,
     )
@@ -90,15 +129,39 @@ class JudgmentResult(BaseModel):
         if v is None:
             return []
         if isinstance(v, str):
-            return [v] if v.strip() else []
-        return list(v)
+            stripped = v.strip()
+            return (
+                [{"claim": stripped, "category": HallucinationCategory.fabrication}]
+                if stripped
+                else []
+            )
+        coerced: list = []
+        for item in v:
+            if isinstance(item, FlaggedClaim):
+                coerced.append(item)
+            elif isinstance(item, str):
+                if item.strip():
+                    coerced.append(
+                        {
+                            "claim": item.strip(),
+                            "category": HallucinationCategory.fabrication,
+                        }
+                    )
+            elif isinstance(item, dict):
+                coerced.append(item)
+            else:
+                coerced.append(item)
+        return coerced
 
 
 _JUDGE_SYSTEM = (
     "You are an impartial evaluator of an e-commerce product-search assistant. "
     "You will judge how well a synthesized response addresses a user's query, "
     "compared to a deterministic raw-list response. Score strictly on the "
-    "axes provided. Be specific about hallucinations — quote or paraphrase."
+    "axes provided. For each flagged claim, quote or paraphrase the claim AND "
+    "tier it into a category (fabrication, cross_product_bleed, inference, or "
+    "overreach) so downstream gating can distinguish dangerous fabrications "
+    "from harmless over-paraphrases."
 )
 
 
@@ -152,7 +215,16 @@ Pairwise verdict — which response is more useful TO THIS USER for THIS query?
   • "tied": Both equally useful, or both poor.
   • "llm_worse": The raw-list response is more useful ({llm_label} added confusion, hallucination, or omitted relevant products).
 
-List specific hallucinations: claims in {llm_label} that aren't supported by the retrieved products. Empty list if none.
+List specific flagged claims in {llm_label} — claims not fully supported by the retrieved products. For EACH flagged claim, return an object with:
+  • claim: the unsupported text (quoted or paraphrased)
+  • category: ONE of
+      - "fabrication": an outright wrong fact (e.g. "Made in USA" when the product's FACTS say nothing of the sort)
+      - "cross_product_bleed": a fact that's true of one retrieved product but transferred to a different one
+      - "inference": a paraphrase that goes slightly beyond the source (e.g. "designed to aid plaque removal" when the FACTS say "chewy texture cleans teeth")
+      - "overreach": a general claim that exceeds what's grounded in any FACTS block (e.g. "best-selling in its category")
+  • reasoning: one short sentence explaining why this category fits
+
+Be strict on fabrication / cross_product_bleed — those are the dangerous ones. Use inference / overreach for paraphrases or general claims that aren't dangerous lies. Empty list if no flags.
 
 Provide a 1-2 sentence justification for the pairwise verdict."""
 

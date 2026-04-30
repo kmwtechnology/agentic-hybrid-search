@@ -293,10 +293,16 @@ class TestLlmJudgeNodeHallucinationRetry:
     def test_retries_when_faithfulness_low_and_hallucinations_found(self):
         from langchain_core.documents import Document
 
+        from judge import HallucinationCategory
+
+        first_flag = MagicMock()
+        first_flag.claim = "fake claim"
+        first_flag.category = HallucinationCategory.fabrication
+
         first_result = MagicMock()
         first_result.verdict = "B_BETTER"
         first_result.faithfulness = 0.60
-        first_result.hallucinations = ["fake claim"]
+        first_result.hallucinations = [first_flag]
         first_result.model_dump.return_value = {"faithfulness": 0.60}
 
         second_result = MagicMock()
@@ -336,10 +342,16 @@ class TestLlmJudgeNodeHallucinationRetry:
     def test_does_not_retry_when_retry_already_used(self):
         from langchain_core.documents import Document
 
+        from judge import HallucinationCategory
+
+        first_flag = MagicMock()
+        first_flag.claim = "fake claim"
+        first_flag.category = HallucinationCategory.fabrication
+
         first_result = MagicMock()
         first_result.verdict = "B_BETTER"
         first_result.faithfulness = 0.60
-        first_result.hallucinations = ["fake claim"]
+        first_result.hallucinations = [first_flag]
         first_result.model_dump.return_value = {"faithfulness": 0.60}
 
         mock_judge = MagicMock()
@@ -363,3 +375,105 @@ class TestLlmJudgeNodeHallucinationRetry:
         assert result["judgment"]["faithfulness"] == 0.60
         assert "hallucination_retry_used" not in result
         assert mock_judge.judge.call_count == 1
+
+    def test_skips_retry_when_only_inference_or_overreach_flags(self):
+        """Issue #6: inference-only / overreach-only flags must NOT trigger
+        the ~20s auto-correction retry — regenerating those usually makes the
+        answer worse, not better."""
+        from langchain_core.documents import Document
+
+        from judge import HallucinationCategory
+
+        inference_flag = MagicMock()
+        inference_flag.claim = "designed to aid plaque removal"
+        inference_flag.category = HallucinationCategory.inference
+
+        overreach_flag = MagicMock()
+        overreach_flag.claim = "best-selling in its category"
+        overreach_flag.category = HallucinationCategory.overreach
+
+        flagged_result = MagicMock()
+        flagged_result.verdict = "tied"
+        flagged_result.faithfulness = 0.70  # below 0.85 threshold
+        flagged_result.hallucinations = [inference_flag, overreach_flag]
+        flagged_result.model_dump.return_value = {"faithfulness": 0.70}
+
+        mock_judge = MagicMock()
+        mock_judge.judge.return_value = flagged_result
+        self.agent.judge = mock_judge
+
+        doc = Document(page_content="chewy texture cleans teeth", metadata={})
+        state = {
+            "messages": [AIMessage(content="response with paraphrase")],
+            "optimizations": {"llm": True, "llm_judge": True},
+            "intent": "search",
+            "user_query": "dental chews",
+            "retrieved_documents": [doc],
+            "hallucination_retry_used": False,
+        }
+
+        with patch.object(self.agent, "_format_search_results", return_value="formatted"):
+            result = self.agent.llm_judge_node(state)
+
+        # Should NOT retry — only one judge call, no corrected_response.
+        assert mock_judge.judge.call_count == 1
+        assert "corrected_response" not in result
+        assert "hallucination_retry_used" not in result
+        assert result["judgment"]["faithfulness"] == 0.70
+
+    def test_retries_when_mixed_flags_include_fabrication(self):
+        """One retry-worthy flag in a mixed list is enough to trigger retry."""
+        from langchain_core.documents import Document
+
+        from judge import HallucinationCategory
+
+        inference_flag = MagicMock()
+        inference_flag.claim = "minor over-paraphrase"
+        inference_flag.category = HallucinationCategory.inference
+
+        bleed_flag = MagicMock()
+        bleed_flag.claim = "Made in USA"  # transferred from another product
+        bleed_flag.category = HallucinationCategory.cross_product_bleed
+
+        first_result = MagicMock()
+        first_result.verdict = "tied"
+        first_result.faithfulness = 0.60
+        first_result.hallucinations = [inference_flag, bleed_flag]
+        first_result.model_dump.return_value = {"faithfulness": 0.60}
+
+        second_result = MagicMock()
+        second_result.verdict = "llm_better"
+        second_result.faithfulness = 0.95
+        second_result.hallucinations = []
+        second_result.model_dump.return_value = {"faithfulness": 0.95}
+
+        mock_judge = MagicMock()
+        mock_judge.judge.side_effect = [first_result, second_result]
+        self.agent.judge = mock_judge
+
+        doc = Document(page_content="content", metadata={})
+        state = {
+            "messages": [AIMessage(content="response")],
+            "optimizations": {"llm": True, "llm_judge": True},
+            "intent": "search",
+            "user_query": "q",
+            "retrieved_documents": [doc],
+            "hallucination_retry_used": False,
+        }
+
+        captured_forbidden: list = []
+
+        def _capture(query, docs, original, hallucinations):
+            captured_forbidden.extend(hallucinations)
+            return "corrected response"
+
+        with (
+            patch.object(self.agent, "_format_search_results", return_value="formatted"),
+            patch.object(self.agent, "_regenerate_without_hallucinations", side_effect=_capture),
+        ):
+            result = self.agent.llm_judge_node(state)
+
+        assert result["hallucination_retry_used"] is True
+        # Only the retry-worthy claim text should be passed to the regenerator —
+        # we don't want the model to try to "fix" inference flags.
+        assert captured_forbidden == ["Made in USA"]
