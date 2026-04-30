@@ -1,4 +1,4 @@
-.PHONY: help setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools
+.PHONY: help setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -20,6 +20,12 @@ help:
 	@echo "  make lint               - Run code quality checks (pylint)"
 	@echo "  make format             - Format code with black"
 	@echo "  make type-check         - Check types with mypy (if installed)"
+	@echo ""
+	@echo "Benchmarking & Performance:"
+	@echo "  make benchmark-esci     - ESCI relevancy benchmark (full, with adaptive intent)"
+	@echo "  make benchmark-esci-fast- ESCI benchmark (fast, deterministic, no LLM alpha)"
+	@echo "  make smoke-local        - Local smoke test suite (~90s)"
+	@echo "  make smoke-local-quick  - Focused search-intent smoke test (~13s, pre-commit gate)"
 	@echo ""
 	@echo "Pre-push CI gate (mirrors GitHub Actions build-deploy.yml):"
 	@echo "  make ci                 - Run all CI checks locally before push"
@@ -153,6 +159,14 @@ smoke-local:
 
 smoke-local-quick:
 	@bash scripts/smoke_local.sh -k test_search_intent_returns_results -q --tb=short
+
+benchmark-esci-fast:
+	@echo "Running ESCI relevancy benchmark (fast mode, deterministic)..."
+	PYTHONPATH=. $(VENV)/python benchmark_esci.py --limit 5000 --hard-only --fast
+
+benchmark-esci:
+	@echo "Running ESCI relevancy benchmark (full mode, with Gemini intent classification)..."
+	PYTHONPATH=. $(VENV)/python benchmark_esci.py --limit 5000 --hard-only
 
 format-fix:
 	@echo "Auto-fixing formatting (black + isort) across the whole package..."
