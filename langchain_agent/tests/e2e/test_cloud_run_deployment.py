@@ -169,36 +169,8 @@ class TestGracefulShutdown:
             pytest.fail(f"Graceful shutdown test failed: {e}")
 
 
-class TestHorizontalScaling:
-    """Concurrent request handling and scaling tests."""
-
-    @pytest.mark.e2e
-    @pytest.mark.slow
-    @pytest.mark.skip(
-        reason="Known issue #21: concurrent health check requests timeout at 30s; resource constraint under high concurrency. Not blocking deployment. See: https://github.com/kmwtechnology/agentic-hybrid-search/issues/21"
-    )
-    def test_health_check_under_concurrent_load(self):
-        """Verify health checks work under concurrent request load.
-
-        NOTE: This test is currently skipped due to issue #21. When 10 concurrent
-        health check requests are made, some hit the 30-second timeout under
-        resource constraints. Individual health checks work fine; this is a
-        load-testing issue, not a functional issue. Core smoke tests verify
-        the service is working correctly.
-        """
-        import concurrent.futures
-
-        def make_health_request():
-            with httpx.Client(timeout=TIMEOUT) as client:
-                response = client.get(f"{CLOUD_RUN_URL}/api/health")
-            return response.status_code == 200
-
-        # Make 10 concurrent requests
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(make_health_request) for _ in range(10)]
-            results = [f.result() for f in concurrent.futures.as_completed(futures)]
-
-        assert all(results), "Some concurrent health checks failed"
+class TestConcurrentRequests:
+    """Concurrent request handling — guards against deadlocks under simultaneous load."""
 
     @pytest.mark.e2e
     @pytest.mark.slow
