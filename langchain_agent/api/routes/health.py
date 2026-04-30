@@ -79,8 +79,8 @@ async def health_check():
             with conn.cursor() as cur:
                 cur.execute("SELECT 1")
                 status["postgres"] = True
-    except Exception as e:
-        status["postgres_error"] = str(e)
+    except Exception:
+        status["postgres_error"] = "Database connection failed"
 
     # Check OpenSearch vector store has documents
     try:
@@ -94,13 +94,11 @@ async def health_check():
         doc_count = result["count"]
         status["vector_store"] = doc_count > 0
         status["document_count"] = doc_count
-    except Exception as e:
-        status["vector_store_error"] = str(e)
+    except Exception:
+        status["vector_store_error"] = "Vector store connection failed"
 
-    # Check Google AI API key is configured
+    # Check Google AI API key is configured (don't leak the fact it's missing)
     status["google_ai"] = bool(GOOGLE_API_KEY)
-    if not GOOGLE_API_KEY:
-        status["google_ai_error"] = "GOOGLE_API_KEY not set"
 
     # Overall status
     if not all([status["postgres"], status["google_ai"]]):

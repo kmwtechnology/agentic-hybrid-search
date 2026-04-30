@@ -1,6 +1,12 @@
 """
 Admin routes for operational tasks: re-indexing, health checks, index management.
 Provides endpoints to manage the search index and re-ingest data when mappings change.
+
+Protected by two-layer auth:
+1. Origin check (``verify_same_origin``) — blocks cross-site usage
+2. Session cookie OR admin token:
+   - Session: normal authenticated user via LoginScreen
+   - Admin token: automation (GitHub Actions) via X-Admin-Token header
 """
 
 import logging
@@ -8,8 +14,11 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
+
+from api.middleware.origin_auth import verify_same_origin
+from api.middleware.session_auth import verify_admin_token, verify_session
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +168,7 @@ def perform_reindex(
 
 @router.get("/reindex", response_model=ReindexResponse)
 async def trigger_reindex(
+    request: Request,
     background_tasks: BackgroundTasks,
     limit: int = 10000,
     reset_index: bool = True,
@@ -167,6 +177,8 @@ async def trigger_reindex(
 ) -> ReindexResponse:
     """
     Trigger re-indexing of OpenSearch index.
+
+    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
 
     Use when:
     - Index mappings have changed (e.g., added new fields for BM25 optimizations)
@@ -191,6 +203,12 @@ async def trigger_reindex(
     GET /api/admin/reindex?reset_index=true&limit=10000&reindex_judgments=true
     ```
     """
+    await verify_same_origin(request)
+    try:
+        await verify_session(request)
+    except HTTPException:
+        await verify_admin_token(request)
+
     logger.info(
         f"Re-index triggered: limit={limit}, reset_index={reset_index}, "
         f"force_resample={force_resample}, reindex_judgments={reindex_judgments}"
@@ -228,9 +246,11 @@ async def trigger_reindex(
 
 
 @router.get("/reindex/status")
-async def reindex_status() -> dict[str, Any]:
+async def reindex_status(request: Request) -> dict[str, Any]:
     """
     Return the current state of the in-process re-index job.
+
+    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
 
     Status values:
     - `idle`    — no re-index has ever run in this container.
@@ -244,13 +264,21 @@ async def reindex_status() -> dict[str, Any]:
     for low-concurrency admin workflows (default Cloud Run routing reuses the
     warm instance), but is not guaranteed under load.
     """
+    await verify_same_origin(request)
+    try:
+        await verify_session(request)
+    except HTTPException:
+        await verify_admin_token(request)
+
     return _read_reindex_state()
 
 
 @router.get("/diagnose")
-async def diagnose(q: str = "sony") -> dict:
+async def diagnose(request: Request, q: str = "sony") -> dict:
     """
     Probe the live index for a query across multiple fields.
+
+    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
 
     Diagnostic-only: answers "is there Sony data in the index, and which fields
     index it?" Compares hit counts for the suggest fields (title_suggest /
@@ -261,6 +289,11 @@ async def diagnose(q: str = "sony") -> dict:
 
     Also returns whether the mapping includes the suggest fields at all.
     """
+    await verify_same_origin(request)
+    try:
+        await verify_session(request)
+    except HTTPException:
+        await verify_admin_token(request)
     try:
         from config import OPENSEARCH_INDEX_NAME
         from vector_store import create_opensearch_client
@@ -302,8 +335,10 @@ async def diagnose(q: str = "sony") -> dict:
 
 
 @router.get("/health")
-async def admin_health() -> dict:
+async def admin_health(request: Request) -> dict:
     """Index-level health probe for the OpenSearch product index.
+
+    **Authentication:** Requires session (user login) OR X-Admin-Token header (automation).
 
     Distinct from ``/api/health`` (which probes Postgres + OpenSearch
     cluster + Google AI reachability) — this endpoint reports the state
@@ -321,6 +356,11 @@ async def admin_health() -> dict:
         - ``unhealthy`` — OpenSearch is unreachable; ``error`` carries the
           exception message for debugging.
     """
+    await verify_same_origin(request)
+    try:
+        await verify_session(request)
+    except HTTPException:
+        await verify_admin_token(request)
     try:
         from config import OPENSEARCH_INDEX_NAME
         from vector_store import create_opensearch_client

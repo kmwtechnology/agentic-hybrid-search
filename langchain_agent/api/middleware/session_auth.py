@@ -9,9 +9,14 @@ and on the WebSocket handshake.
 Layered with ``origin_auth.verify_same_origin`` (defense in depth):
 * origin auth blocks cross-site usage
 * session auth blocks anyone-with-the-URL who hasn't entered the password
+
+Admin routes may bypass session authentication if a valid X-Admin-Token
+header is present (for unattended automation like GitHub Actions).
 """
 
+import hmac
 import logging
+import os
 
 from fastapi import HTTPException, Request, WebSocket, status
 
@@ -84,3 +89,50 @@ async def verify_websocket_session(websocket: WebSocket) -> bool:
         reason="Authentication required. Please log in.",
     )
     return False
+
+
+async def verify_admin_token(request: Request) -> bool:
+    """Verify X-Admin-Token header for admin routes (GitHub Actions, etc.).
+
+    Alternative to verify_session for automation that cannot store session
+    cookies. Token is compared via hmac.compare_digest to prevent timing attacks.
+
+    Raises 401 if token is invalid or missing.
+    Returns True on success.
+    """
+    admin_token = os.environ.get("ADMIN_TOKEN", "")
+    if not admin_token:
+        logger.warning("admin_token_check_skipped", extra={"reason": "ADMIN_TOKEN not configured"})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin token not configured on server.",
+        )
+
+    provided_token = request.headers.get("X-Admin-Token", "")
+    if not provided_token:
+        logger.info(
+            "admin_token_missing",
+            extra={
+                "path": request.url.path,
+                "client": request.client.host if request.client else None,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="X-Admin-Token header required.",
+        )
+
+    if not hmac.compare_digest(provided_token, admin_token):
+        logger.warning(
+            "admin_token_invalid",
+            extra={
+                "path": request.url.path,
+                "client": request.client.host if request.client else None,
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin token.",
+        )
+
+    return True
