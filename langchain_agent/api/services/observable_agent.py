@@ -294,64 +294,60 @@ class ObservableAgentService:
             }
 
             # Stream through the graph (with 150s timeout to prevent hangs)
-            try:
-
-                async def stream_graph():
-                    async for event in self._astream_graph(
-                        initial_state, config, emit, node_start_times, metrics
-                    ):
-                        # Extract final response from agent completions
-                        if isinstance(event, dict):
-                            if "messages" in event:
-                                for msg in event.get("messages", []):
-                                    if isinstance(msg, AIMessage) and msg.content:
-                                        if not (hasattr(msg, "tool_calls") and msg.tool_calls):
-                                            content = msg.content
-                                            # Extract text if content is a list of content blocks (Gemini format)
-                                            if isinstance(content, list):
-                                                text_parts = []
-                                                for block in content:
-                                                    if isinstance(block, dict) and "text" in block:
-                                                        text_parts.append(block["text"])
-                                                final_response = (
-                                                    "".join(text_parts) if text_parts else ""
-                                                )
-                                            else:
-                                                final_response = content
-                                            logger.debug(
-                                                f"Extracted final_response: {len(final_response or '')} chars"
+            async def stream_graph_with_timeout():
+                nonlocal final_response, documents_used, citations
+                async for event in self._astream_graph(
+                    initial_state, config, emit, node_start_times, metrics
+                ):
+                    # Extract final response from agent completions
+                    if isinstance(event, dict):
+                        if "messages" in event:
+                            for msg in event.get("messages", []):
+                                if isinstance(msg, AIMessage) and msg.content:
+                                    if not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                                        content = msg.content
+                                        # Extract text if content is a list of content blocks (Gemini format)
+                                        if isinstance(content, list):
+                                            text_parts = []
+                                            for block in content:
+                                                if isinstance(block, dict) and "text" in block:
+                                                    text_parts.append(block["text"])
+                                            final_response = (
+                                                "".join(text_parts) if text_parts else ""
                                             )
+                                        else:
+                                            final_response = content
+                                        logger.debug(
+                                            f"Extracted final_response: {len(final_response or '')} chars"
+                                        )
 
-                            if "retrieved_documents" in event:
-                                documents_used = len(event["retrieved_documents"])
-                                # The reranker_node overwrites retrieved_documents with the
-                                # post-rerank list. We always store the latest seen list as
-                                # the post-rerank ranking; if the reranker is skipped this
-                                # equals the pre-rerank list (which is the right behavior).
-                                pipeline_state["post_rerank_documents"] = list(
-                                    event["retrieved_documents"]
-                                )
-                            for key in (
-                                "user_query",
-                                "pre_rerank_documents",
-                                "bm25_documents",
-                                "stock_bm25_documents",
-                                "judgments",
-                                "judgment",
-                                "original_judgment",
-                                "corrected_response",
-                                "hallucination_retry_used",
-                                "bm25_latency_ms",
-                                "stock_bm25_latency_ms",
-                                "retriever_latency_ms",
-                                "reranker_latency_ms",
-                            ):
-                                if key in event and event[key] is not None:
-                                    pipeline_state[key] = event[key]
-                            if "citations" in event and isinstance(event["citations"], list):
-                                citations = event["citations"]
+                        if "retrieved_documents" in event:
+                            documents_used = len(event["retrieved_documents"])
+                            pipeline_state["post_rerank_documents"] = list(
+                                event["retrieved_documents"]
+                            )
+                        for key in (
+                            "user_query",
+                            "pre_rerank_documents",
+                            "bm25_documents",
+                            "stock_bm25_documents",
+                            "judgments",
+                            "judgment",
+                            "original_judgment",
+                            "corrected_response",
+                            "hallucination_retry_used",
+                            "bm25_latency_ms",
+                            "stock_bm25_latency_ms",
+                            "retriever_latency_ms",
+                            "reranker_latency_ms",
+                        ):
+                            if key in event and event[key] is not None:
+                                pipeline_state[key] = event[key]
+                        if "citations" in event and isinstance(event["citations"], list):
+                            citations = event["citations"]
 
-                await asyncio.wait_for(stream_graph(), timeout=150.0)
+            try:
+                await asyncio.wait_for(stream_graph_with_timeout(), timeout=150.0)
             except asyncio.TimeoutError:
                 logger.warning("Graph execution timed out after 150s; proceeding with response")
                 final_response = (
