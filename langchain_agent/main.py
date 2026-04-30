@@ -24,6 +24,7 @@ Powered by:
 import json
 import logging
 import os
+import re
 import sys
 import time
 import uuid
@@ -895,6 +896,58 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             )
         return "\n".join(blocks) + f"\n{sep}"
 
+    # Markdown links: [text](url). DOTALL so multi-line link text still matches.
+    _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(\s*<?https?://[^)\s]+>?\s*\)", re.DOTALL)
+    # Bare http(s) URLs (with optional surrounding ** or angle brackets).
+    _BARE_URL_RE = re.compile(r"<?\*{0,2}https?://\S+?\*{0,2}>?(?=[\s.,;:!?)\]]|$)")
+
+    @staticmethod
+    def _citation_url_for_doc(doc: Document) -> Optional[str]:
+        """Resolve a stable, user-facing URL for a retrieved document.
+
+        Preference order:
+          1. explicit `metadata['url']` (non-ESCI sources)
+          2. Amazon search-by-title (`/s?k=<title>`) — robust to delisted ASINs,
+             which is the failure mode behind issue #4
+          3. Amazon search-by-product_id as a last resort if no title exists
+
+        Returns None when no usable URL can be constructed.
+        """
+        url = doc.metadata.get("url")
+        if url:
+            return url
+
+        from urllib.parse import quote_plus
+
+        title = doc.metadata.get("title", "")
+        if title:
+            return f"https://www.amazon.com/s?k={quote_plus(title)}"
+
+        product_id = doc.metadata.get("product_id", "")
+        if product_id:
+            return f"https://www.amazon.com/s?k={quote_plus(product_id)}"
+
+        return None
+
+    @staticmethod
+    def _strip_inline_links(text: str) -> str:
+        """Remove markdown hyperlinks and bare URLs from LLM-generated text.
+
+        The agent prompt forbids the LLM from emitting URLs (it has no canonical
+        product URLs and reliably hallucinates ASINs — see issue #4). This is a
+        belt-and-suspenders guard: if a slipped link survives, collapse
+        `[text](url)` to `text` and drop bare URLs entirely so the user is not
+        shown dead/incorrect Amazon links.
+        """
+        if not text or "http" not in text:
+            return text
+        # Collapse markdown links to their visible text. Strip surrounding `**`
+        # the LLM sometimes adds around the URL portion (issue #4 example).
+        cleaned = EcommerceSearchAgent._MARKDOWN_LINK_RE.sub(r"\1", text)
+        # Drop any remaining bare URLs.
+        cleaned = EcommerceSearchAgent._BARE_URL_RE.sub("", cleaned)
+        return cleaned
+
     @staticmethod
     def _format_search_results(documents: List[Document], user_query: Optional[str]) -> str:
         """
@@ -1067,14 +1120,9 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 if not reranker_skipped_for_citations and doc_score < MIN_CITATION_RELEVANCE:
                     continue
 
-                url = doc.metadata.get("url")
+                url = self._citation_url_for_doc(doc)
                 if not url:
-                    # Generate Amazon product URL from ASIN
-                    product_id = doc.metadata.get("product_id", "")
-                    if product_id:
-                        url = f"https://www.amazon.com/dp/{product_id}"
-                    else:
-                        continue
+                    continue
                 # If URL already tracked, just append the doc index
                 if url in citations_dict:
                     citations_dict[url][1].append(i)
@@ -1200,6 +1248,8 @@ GROUNDING RULES (override creativity preferences — non-negotiable):
 
 CITATION & STYLE:
 - Cite products descriptively by name (e.g., "the Nylabone 3 Pack Puppy Chew listing"), never as "Document N".
+- DO NOT include URLs, hyperlinks, or markdown links (e.g., `[name](url)`) in your response. The system appends a verified "Sources" list separately — any link you write yourself will be wrong because you do not have access to canonical product URLs.
+- Refer to products by name only. Do not write `https://...`, `amazon.com/...`, `[text](http...)`, or any link-shaped text.
 - If you cannot find relevant products, explain what you searched for and suggest alternative searches.
 - Keep tone professional, concise, and helpful.
 """
@@ -1216,6 +1266,16 @@ CITATION & STYLE:
         else:
             logger.debug("LLM does not support streaming, using invoke()")
             response = self.llm.invoke(llm_messages)
+
+        # Strip any inline URLs the LLM emitted in spite of the prompt — ESCI
+        # ASINs are frequently delisted on Amazon and the model also hallucinates
+        # the same ID across distinct products (issue #4). The system-generated
+        # `citations` list below is the authoritative link surface.
+        if hasattr(response, "content") and isinstance(response.content, str):
+            stripped = self._strip_inline_links(response.content)
+            if stripped != response.content:
+                logger.info("Agent: stripped inline URLs from LLM response")
+                response = AIMessage(content=stripped)
 
         # Calculate response statistics
         response_length = len(response.content) if hasattr(response, "content") else 0

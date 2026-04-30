@@ -501,13 +501,13 @@ class Citation(BaseModel):
         ```json
         {
             "label": "Sony WH-1000XM5 Headphones",
-            "url": "https://www.amazon.com/dp/B09YLDRQ7L"
+            "url": "https://www.amazon.com/s?k=Sony+WH-1000XM5+Headphones"
         }
         ```
     """
 
     label: str = Field(description="Product name or title")
-    url: str = Field(description="Product URL (ASIN-based for ESCI products)")
+    url: str = Field(description="Product URL (Amazon search by title for ESCI products)")
 
 
 class ChatResponse(BaseModel):
@@ -525,7 +525,7 @@ class ChatResponse(BaseModel):
             "citations": [
                 {
                     "label": "Sony WH-1000XM5",
-                    "url": "https://www.amazon.com/dp/B09YLDRQ7L"
+                    "url": "https://www.amazon.com/s?k=Sony+WH-1000XM5"
                 }
             ]
         }
