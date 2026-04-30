@@ -1022,7 +1022,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
 
         if intent == "summary" and summary_text:
             logger.info("Agent: summary intent detected, returning cached summary")
-            return {"messages": [AIMessage(content=summary_text)]}
+            return {"messages": [AIMessage(content=summary_text)], "citations": []}
 
         # Handle clarify intent - ask user for more context
         if intent == "clarify":
@@ -1039,7 +1039,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             logger.info(
                 f"Agent: clarify intent detected, asking {len(clarifying_questions)} questions"
             )
-            return {"messages": [AIMessage(content=clarify_response)]}
+            return {"messages": [AIMessage(content=clarify_response)], "citations": []}
 
         logger.info(f"Agent: processing with {len(retrieved_documents)} retrieved documents")
 
@@ -1088,7 +1088,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 f"The knowledge base contains Amazon product listings. "
                 f"Try searching for products by brand, color, type, or specific features!"
             )
-            return {"messages": [AIMessage(content=no_info_response)]}
+            return {"messages": [AIMessage(content=no_info_response)], "citations": []}
 
         # Build context from retrieved documents
         if retrieved_documents:
