@@ -443,12 +443,7 @@ class EcommerceSearchAgent:
                 print(f"Loading Gemini reranker: {RERANKER_MODEL}")
                 self.reranker = GeminiReranker(model_name=RERANKER_MODEL)
             print("✓ Reranker initialized")
-
-            # Warmup the reranker to prime API connection
-            if RERANKER_WARMUP_ENABLED:
-                print("Warming up reranker...")
-                warmup_time = self.reranker.warmup()
-                print(f"✓ Reranker warmup complete ({warmup_time:.3f}s)")
+            # Warmup is deferred to observable_agent lifespan to avoid blocking startup
         else:
             self.reranker = None
 

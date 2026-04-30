@@ -97,6 +97,8 @@ class ObservableAgentService:
                 await self._initialize_agent()
                 await self._open_async_pool()
                 self._initialized = True
+                # Warmup reranker in background (non-blocking)
+                asyncio.create_task(self._warmup_reranker())
 
     async def _initialize_agent(self):
         """Initialize the underlying EcommerceSearchAgent."""
@@ -116,6 +118,23 @@ class ObservableAgentService:
         """Open the async pool for astream_events support."""
         if self._agent:
             await self._agent.ensure_async_pool_open()
+
+    async def _warmup_reranker(self) -> None:
+        """Warm up reranker in background (non-blocking)."""
+        from config import ENABLE_RERANKING, RERANKER_WARMUP_ENABLED
+
+        if not (ENABLE_RERANKING and RERANKER_WARMUP_ENABLED):
+            return
+
+        if not self._agent or not self._agent.reranker:
+            return
+
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._agent.reranker.warmup)
+            logger.info("Reranker warmup completed in background")
+        except Exception as e:
+            logger.warning(f"Reranker warmup failed (will lazy-init on first request): {e}")
 
     async def _load_conversation_context(self, thread_id: str) -> int:
         """
