@@ -349,12 +349,10 @@ class ObservableAgentService:
             # Calculate total duration
             total_duration_ms = (time.time() - start_time) * 1000
 
-            # Generate conversation title
-            logger.debug(f"Generating title for thread {thread_id}")
-            title = await self._generate_title(thread_id, message, final_response)
-            logger.debug(f"Title generated: {title}")
+            # Extract title from user message (don't wait for async title generation)
+            title = message[:50].strip() if message else None
 
-            # Emit completion event
+            # Emit completion event (don't block on title generation)
             logger.info(
                 f"Emitting AgentCompleteEvent: {len(final_response or '')} chars, {total_duration_ms:.0f}ms"
             )
@@ -371,6 +369,9 @@ class ObservableAgentService:
                 )
             )
             logger.info("AgentCompleteEvent emitted successfully")
+
+            # Generate and persist conversation title in background (non-blocking)
+            asyncio.create_task(self._generate_title_async(thread_id, message, final_response))
 
             # Emit metrics
             await emit(
@@ -1115,13 +1116,16 @@ class ObservableAgentService:
             return f"Summary skipped ({message_count} msgs)"
         return ""
 
-    async def _generate_title(
+    async def _generate_title_async(
         self,
         _thread_id: str,
         user_message: str,
         _response: Optional[str],
-    ) -> Optional[str]:
-        """Generate and save a conversation title.
+    ) -> None:
+        """Generate and persist conversation title in background (non-blocking).
+
+        This runs asynchronously after AgentCompleteEvent is emitted, so any
+        delays in LLM title generation don't block the WebSocket response.
 
         `_thread_id` and `_response` are accepted for API symmetry with the
         upstream call site but the agent already has the thread_id internally
@@ -1132,12 +1136,9 @@ class ObservableAgentService:
             # update_conversation_title() uses the internally set thread_id
             # and handles both generation and database update
             await loop.run_in_executor(None, self._agent.update_conversation_title)
-            # Return a generated title from the user message for the WebSocket event
-            # (the actual title is saved to DB by update_conversation_title)
-            return user_message[:50].strip() if user_message else None
+            logger.debug(f"Background title generation completed for thread {_thread_id}")
         except Exception as e:  # pylint: disable=broad-exception-caught
-            print(f"Error generating title: {e}")
-            return None
+            logger.warning(f"Background title generation failed: {e}")
 
     async def cleanup(self):
         """
