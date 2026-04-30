@@ -85,8 +85,8 @@ export function GuidePage() {
 
             <div className="border-l-4 border-purple-500 pl-4">
               <h4 className="font-semibold text-gray-900">Intent Classification</h4>
-              <p className="text-sm text-gray-600">Automatically understands user intent: search, comparison, filtering, refinement, follow-up</p>
-              <p className="text-xs text-gray-500 mt-1">Uses keyword matching + LLM fallback for high confidence (0.7+)</p>
+              <p className="text-sm text-gray-600">Six classes: search, comparison, attribute_filter, refinement, follow_up, summary</p>
+              <p className="text-xs text-gray-500 mt-1">Keyword fast-path + LLM fallback. Confidence below 0.7 routes to a clarification request instead of a guess.</p>
             </div>
 
             <div className="border-l-4 border-orange-500 pl-4">
@@ -237,6 +237,94 @@ export function GuidePage() {
       ),
     },
     {
+      id: 'authentication',
+      title: '🔐 Authentication',
+      content: (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            All protected routes are gated by two layers, both enforced on every REST call and on the WebSocket handshake.
+          </p>
+
+          <div className="space-y-3">
+            <div className="border-l-4 border-blue-500 pl-3">
+              <h4 className="font-semibold text-gray-900">1. Same-origin check</h4>
+              <p className="text-sm text-gray-600">Origin header must match an allow-listed dev port (localhost:5173, :3000, :8000) or this service's Cloud Run <code>*.run.app</code> URL. Disallowed origins are rejected with HTTP 403.</p>
+            </div>
+
+            <div className="border-l-4 border-emerald-500 pl-3">
+              <h4 className="font-semibold text-gray-900">2. Shared-password session cookie</h4>
+              <p className="text-sm text-gray-600">A typed login screen takes the password configured in <code>LOGIN_PASSWORD</code>; on submit, <code>POST /api/auth/login</code> validates it (constant-time, <code>hmac.compare_digest</code>) and sets a signed HttpOnly <code>ahs_session</code> cookie (SameSite=Lax). Subsequent REST calls and the WebSocket carry it automatically.</p>
+              <p className="text-xs text-gray-500 mt-1">WebSocket rejection closes the socket with code <strong>4401</strong>, which the frontend translates into a return to the login screen.</p>
+            </div>
+          </div>
+
+          <h4 className="font-semibold text-gray-900 mt-2">Endpoints</h4>
+          <div className="space-y-2 text-sm">
+            <div className="bg-gray-50 p-2 rounded font-mono text-xs">
+              POST /api/auth/login &nbsp;<span className="text-gray-500">— validate password, set cookie</span>
+            </div>
+            <div className="bg-gray-50 p-2 rounded font-mono text-xs">
+              POST /api/auth/logout &nbsp;<span className="text-gray-500">— clear cookie (idempotent)</span>
+            </div>
+            <div className="bg-gray-50 p-2 rounded font-mono text-xs">
+              GET /api/auth/status &nbsp;<span className="text-gray-500">— is this session authenticated?</span>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-sm">
+            <p className="font-semibold text-amber-900">Required env vars (server)</p>
+            <ul className="text-amber-900 mt-1 space-y-1 list-disc list-inside">
+              <li><code>LOGIN_PASSWORD</code> — shared password (auto-generated on first <code>setup.sh</code>)</li>
+              <li><code>SESSION_SECRET</code> — ≥32-char cookie-signing secret (<code>openssl rand -hex 32</code>)</li>
+              <li><code>SESSION_COOKIE_SECURE</code> — <code>true</code> for Cloud Run TLS, <code>false</code> for local HTTP</li>
+            </ul>
+            <p className="text-amber-900 mt-2 text-xs">The frontend never receives these — the user types the password into the login screen and the cookie does the rest.</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'llm-judge',
+      title: '⚖️ LLM-as-Judge & Hallucination Gate',
+      content: (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            When the <code>llm_judge</code> toggle is on (and the agent generated a synthesized response), a second Gemini Flash Lite call evaluates the answer against the deterministic raw-list baseline. The card adds a <strong>Generation</strong> row to the Pipeline Quality Summary with a pairwise verdict, four absolute scores (faithfulness, answer_relevance, citation_accuracy, context_utilization), and a list of flagged claims.
+          </p>
+
+          <h4 className="font-semibold text-gray-900 mt-2">Hallucination categories</h4>
+          <p className="text-sm text-gray-600">Each flagged claim is tiered into one of four categories. The two on the left are dangerous and worth retrying; the two on the right are surfaced for review but do not pay the ~20-30s retry tax.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+            <div className="bg-rose-50 border-l-4 border-rose-500 p-2">
+              <p className="font-semibold text-rose-900">Fabrication 🔴</p>
+              <p className="text-rose-800 mt-1">An outright wrong fact (e.g. "Made in USA" when no FACTS block supports it). Triggers retry.</p>
+            </div>
+            <div className="bg-rose-50 border-l-4 border-rose-500 p-2">
+              <p className="font-semibold text-rose-900">Cross-product bleed 🔴</p>
+              <p className="text-rose-800 mt-1">A fact transferred between products (e.g. battery life from product B attached to product A). Triggers retry.</p>
+            </div>
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-2">
+              <p className="font-semibold text-amber-900">Inference 🟡</p>
+              <p className="text-amber-800 mt-1">A paraphrase that goes slightly beyond the source. Surfaced for review only.</p>
+            </div>
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-2">
+              <p className="font-semibold text-amber-900">Overreach 🟡</p>
+              <p className="text-amber-800 mt-1">A general claim beyond what's grounded ("best in class"). Surfaced for review only.</p>
+            </div>
+          </div>
+
+          <h4 className="font-semibold text-gray-900 mt-2">Auto-correction retry (Layer 3a)</h4>
+          <p className="text-sm text-gray-600">
+            The judge fires a regenerate-and-re-judge pass when faithfulness drops below 0.85 <em>and</em> at least one flag is fabrication/cross-product bleed. The agent re-prompts the LLM with explicit "do NOT include claim X" instructions, then re-judges; the UI shows both the original and corrected verdicts with a <em>Auto-corrected</em> badge.
+          </p>
+
+          <p className="text-xs text-gray-500">
+            See <code>langchain_agent/judge.py</code> for the schema and <code>llm_judge_node</code> in <code>main.py</code> for the retry gate. PR #11 / issue #6.
+          </p>
+        </div>
+      ),
+    },
+    {
       id: 'using-api',
       title: '🔌 Using the API',
       content: (
@@ -260,7 +348,7 @@ Response:
   "citations": [
     {
       "label": "ASUS ROG Zephyrus G14",
-      "url": "https://www.amazon.com/dp/B0B45M1KKP"
+      "url": "https://www.amazon.com/s?k=ASUS+ROG+Zephyrus+G14"
     }
   ]
 }`}</code>
@@ -402,20 +490,21 @@ Server streams back:
       content: (
         <div className="space-y-4">
           <div className="space-y-2 text-sm">
-            <p className="font-semibold text-gray-900">Core Pipeline</p>
+            <p className="font-semibold text-gray-900">Core Pipeline (7 nodes)</p>
             <pre className="bg-gray-900 text-gray-100 p-2 rounded text-xs overflow-x-auto">
-              <code>Intent Classifier → Query Evaluator → Retriever → Reranker → Quality Gate → LLM Agent</code>
+              <code>Intent Classifier → Query Rewriter → Query Evaluator → Retriever → Reranker → Quality Gate → Agent → LLM Judge</code>
             </pre>
+            <p className="text-xs text-gray-600">Quality Gate may loop once back to the retriever with α adjusted ±0.3. LLM Judge runs only when both <code>llm</code> and <code>llm_judge</code> toggles are on; it can trigger a second auto-correction generation when fabrications are flagged (see "LLM-as-Judge" section).</p>
 
             <p className="font-semibold text-gray-900 mt-3">Tech Stack</p>
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-gray-50 p-2 rounded text-xs">
                 <p className="font-mono text-gray-900">LLM</p>
-                <p className="text-gray-600">Google Gemini 3 Flash</p>
+                <p className="text-gray-600">Gemini 3 Flash (gen) · Gemini 3.1 Flash Lite (rerank/judge)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-xs">
                 <p className="font-mono text-gray-900">Embeddings</p>
-                <p className="text-gray-600">Gemini Embedding 001 (768-dim)</p>
+                <p className="text-gray-600">text-embedding-005 (768-dim)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-xs">
                 <p className="font-mono text-gray-900">Vector DB</p>

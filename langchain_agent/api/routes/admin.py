@@ -303,7 +303,24 @@ async def diagnose(q: str = "sony") -> dict:
 
 @router.get("/health")
 async def admin_health() -> dict:
-    """Admin health check - verify system components."""
+    """Index-level health probe for the OpenSearch product index.
+
+    Distinct from ``/api/health`` (which probes Postgres + OpenSearch
+    cluster + Google AI reachability) — this endpoint reports the state
+    of the application's primary index: whether it exists, whether
+    OpenSearch is reachable, and the current document count.
+
+    Used by the GitHub Actions reindex workflow to confirm the index has
+    documents after a re-ingestion run.
+
+    **Status values:**
+        - ``healthy`` — index exists and is queryable; ``documents`` reflects
+          the current count.
+        - ``degraded`` — OpenSearch reachable but the index is missing
+          (typical after a fresh deploy before ingestion runs).
+        - ``unhealthy`` — OpenSearch is unreachable; ``error`` carries the
+          exception message for debugging.
+    """
     try:
         from config import OPENSEARCH_INDEX_NAME
         from vector_store import create_opensearch_client

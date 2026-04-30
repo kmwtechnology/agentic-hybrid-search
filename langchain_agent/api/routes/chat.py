@@ -186,9 +186,11 @@ class ChatMessage(BaseModel):
     optimizations: Optional[Dict[str, bool]] = Field(
         None,
         description=(
-            "Per-feature search optimization toggles. Recognized keys: "
-            "hybrid, fuzzy, synonyms, phonetic, phrase_boost, field_boost, typeahead. "
-            "Missing keys default to true (enabled)."
+            "Per-feature search optimization toggles. Nine recognized keys: "
+            "hybrid, fuzzy, synonyms, phonetic, phrase_boost, field_boost, typeahead, "
+            "reranking, llm. Missing keys default to true (enabled). Skipped stages "
+            "are collapsed out of the observability panel and the Pipeline Quality "
+            "Summary's per-stage metrics."
         ),
     )
 
@@ -262,19 +264,28 @@ async def websocket_chat(websocket: WebSocket):
     **Server Event Types** (see api/schemas/events.py):
         - `ConnectionEstablished` — Initial connection confirmation with thread_id
         - `SearchProgressEvent` — Search initiated
-        - `OpenSearchQueryEvent` — Detailed query (DSL, alpha, intent)
+        - `OpenSearchQueryEvent` — Detailed query (DSL, alpha, intent, optimization toggles)
         - `RerankerProgressEvent` — Documents being reranked
         - `QualityGateEvent` — Quality validation results
         - `QueryExpansionEvent` — Vague query expansion with context
         - `LLMResponseChunkEvent` — Token-by-token output streaming
         - `AgentCompleteEvent` — Execution finished with response and citations
+        - `PipelineSummaryEvent` — End-of-pipeline quality scorecard
+          (BM25 / Hybrid / Reranked NDCG@10, MRR, Recall@20, Precision@10
+          when ESCI judgments exist; confidence proxy otherwise; LLM-as-judge
+          generation row with categorical hallucination flags when enabled)
         - `AgentErrorEvent` — Error occurred (recoverable or fatal)
         - `ClarificationRequestedEvent` — Intent classification too uncertain
         - `ClarificationResolvedEvent` — User provided clarification
 
     **Authentication:**
-        Verified via Origin header (must match request origin).
-        Same-origin policy enforced from UI.
+        Two layers, both enforced before the WebSocket is accepted:
+        1. **Same-origin** — Origin header must match the deployed app
+           (allow-list of localhost dev ports + Cloud Run `*.run.app`).
+        2. **Shared-password session cookie** (`ahs_session`) — set by
+           ``POST /api/auth/login``; verified by ``verify_websocket_session``.
+           Rejection closes the socket with code **4401** so the SPA can
+           route back to the login screen.
 
     **Error Handling:**
         - Invalid thread_id format → disconnects with error
@@ -563,7 +574,8 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
 
     **Authentication:**
         - Same-origin required (enforced via Origin header)
-        - API_KEY auth via Authorization header (optional for browser requests)
+        - Shared-password session cookie (`ahs_session`, set by
+          ``POST /api/auth/login``); 401 on missing/expired session
 
     **Request:** `POST /api/chat`
         ```json
