@@ -226,8 +226,15 @@ class TestReindexEndpoint:
 
         return TestClient(app)
 
-    def test_status_endpoint_returns_initial_idle_state(self, client):
-        resp = client.get("/api/admin/reindex/status")
+    def test_status_endpoint_returns_initial_idle_state(self, client, monkeypatch):
+        monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token-12345")
+        resp = client.get(
+            "/api/admin/reindex/status",
+            headers={
+                "Host": "localhost:8000",
+                "X-Admin-Token": "test-admin-token-12345",
+            },
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "idle"
@@ -235,16 +242,24 @@ class TestReindexEndpoint:
         assert body["error"] is None
 
     @patch("ingest_esci_products.ingest_esci_products")
-    def test_trigger_then_status_reflects_success(self, mock_ingest, client):
+    def test_trigger_then_status_reflects_success(self, mock_ingest, client, monkeypatch):
         """End-to-end: trigger runs the background task (TestClient drains it
         before returning), then the status endpoint reports success."""
+        monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token-12345")
         mock_ingest.return_value = (42, 101)
 
-        trigger_resp = client.get("/api/admin/reindex?reset_index=true&limit=42")
+        auth_headers = {
+            "Host": "localhost:8000",
+            "X-Admin-Token": "test-admin-token-12345",
+        }
+        trigger_resp = client.get(
+            "/api/admin/reindex?reset_index=true&limit=42",
+            headers=auth_headers,
+        )
         assert trigger_resp.status_code == 200
         assert trigger_resp.json()["status"] == "started"
 
-        status_resp = client.get("/api/admin/reindex/status")
+        status_resp = client.get("/api/admin/reindex/status", headers=auth_headers)
         assert status_resp.status_code == 200
         state = status_resp.json()
         assert state["status"] == "success"
@@ -254,10 +269,11 @@ class TestReindexEndpoint:
         assert state["reset_index"] is True
 
     @patch("ingest_esci_products.ingest_esci_products")
-    def test_trigger_resets_previous_terminal_state(self, mock_ingest, client):
+    def test_trigger_resets_previous_terminal_state(self, mock_ingest, client, monkeypatch):
         """After a successful run, triggering again must clear the prior
         success/error fields so polling can't mistake stale state for its
         own run."""
+        monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token-12345")
         # Seed a prior success directly in module state.
         admin_module._update_reindex_state(
             status="success",
@@ -273,7 +289,14 @@ class TestReindexEndpoint:
         # so we inspect the final state after the error.
         mock_ingest.side_effect = RuntimeError("fresh failure")
 
-        client.get("/api/admin/reindex?reset_index=false&limit=5")
+        auth_headers = {
+            "Host": "localhost:8000",
+            "X-Admin-Token": "test-admin-token-12345",
+        }
+        client.get(
+            "/api/admin/reindex?reset_index=false&limit=5",
+            headers=auth_headers,
+        )
         state = admin_module._read_reindex_state()
 
         # Prior success fields must be cleared; error from the new run surfaces.

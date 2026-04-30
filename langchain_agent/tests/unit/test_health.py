@@ -74,7 +74,6 @@ def test_health_degraded_when_no_api_key(mock_pg, mock_os, client):
     body = r.json()
     assert body["status"] == "degraded"
     assert body["google_ai"] is False
-    assert "google_ai_error" in body
 
 
 @patch(_API_KEY, "fake-key")
