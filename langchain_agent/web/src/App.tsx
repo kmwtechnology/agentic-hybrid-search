@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { LoginScreen } from './components/LoginScreen'
-import { DocsPage } from './pages/DocsPage'
+import { SwaggerPage } from './pages/SwaggerPage'
 import { GuidePage } from './pages/GuidePage'
 import { useAuthStore } from './stores/authStore'
 import { useChatStore } from './stores/chatStore'
@@ -72,7 +72,7 @@ function App() {
       <AuthGate>
         <Routes>
           <Route path="/" element={<ChatApp />} />
-          <Route path="/docs" element={<DocsPage />} />
+          <Route path="/swagger" element={<SwaggerPage />} />
           <Route path="/guide" element={<GuidePage />} />
         </Routes>
       </AuthGate>

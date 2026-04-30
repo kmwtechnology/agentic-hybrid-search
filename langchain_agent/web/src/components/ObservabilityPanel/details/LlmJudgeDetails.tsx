@@ -8,7 +8,30 @@
 
 import { useObservabilityStore } from '../../../stores/observabilityStore'
 import { useOptimizationsStore } from '../../../stores/optimizationsStore'
-import type { GenerationJudgment, ObservabilityStep } from '../../../types/events'
+import type {
+  FlaggedClaim,
+  GenerationJudgment,
+  HallucinationCategory,
+  ObservabilityStep,
+} from '../../../types/events'
+
+const RETRY_WORTHY_CATEGORIES: ReadonlySet<HallucinationCategory> = new Set([
+  'fabrication',
+  'cross_product_bleed',
+])
+
+function countByTier(flags: readonly FlaggedClaim[]): {
+  hallucinated: number
+  overreached: number
+} {
+  let hallucinated = 0
+  let overreached = 0
+  for (const f of flags) {
+    if (RETRY_WORTHY_CATEGORIES.has(f.category)) hallucinated += 1
+    else overreached += 1
+  }
+  return { hallucinated, overreached }
+}
 
 function fmt(n: number, digits = 2): string {
   return n.toFixed(digits)
@@ -111,14 +134,45 @@ export function LlmJudgeDetails({ step }: { step?: ObservabilityStep }) {
             )}
           </span>
         )}
-        {judgment.hallucinations.length > 0 && (
-          <span
-            className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-rose-900/40 text-rose-200 border-rose-700/50"
-            title="Specific claims that aren't supported by the retrieved products."
-          >
-            {judgment.hallucinations.length} flagged
-          </span>
-        )}
+        {judgment.hallucinations.length > 0 && (() => {
+          const { hallucinated, overreached } = countByTier(judgment.hallucinations)
+          if (hallucinated > 0 && overreached > 0) {
+            return (
+              <>
+                <span
+                  className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-rose-900/40 text-rose-200 border-rose-700/50"
+                  title="Fabrication / cross-product bleed — retry-worthy."
+                >
+                  {hallucinated} hallucinated
+                </span>
+                <span
+                  className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-200 border-amber-700/50"
+                  title="Inference / overreach — surfaced only, no retry."
+                >
+                  {overreached} overreached
+                </span>
+              </>
+            )
+          }
+          if (hallucinated > 0) {
+            return (
+              <span
+                className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-rose-900/40 text-rose-200 border-rose-700/50"
+                title="Fabrication / cross-product bleed — retry-worthy."
+              >
+                {hallucinated} flagged
+              </span>
+            )
+          }
+          return (
+            <span
+              className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border bg-amber-900/40 text-amber-200 border-amber-700/50"
+              title="Inference / overreach — surfaced only, no retry."
+            >
+              {overreached} overreached
+            </span>
+          )
+        })()}
       </div>
       <p className="text-xs text-gray-500">
         Full breakdown in the Pipeline Quality Summary card below.

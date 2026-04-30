@@ -154,7 +154,13 @@ class TestPipelineSummary:
                 "answer_relevance": 0.90,
                 "citation_accuracy": 1.0,
                 "context_utilization": 0.7,
-                "hallucinations": [],
+                "hallucinations": [
+                    {
+                        "claim": "designed to aid plaque removal",
+                        "category": "inference",
+                        "reasoning": "Source says 'chewy texture cleans teeth'.",
+                    }
+                ],
             },
             bm25_latency_ms=20.0,
             stock_bm25_latency_ms=18.0,
@@ -166,7 +172,10 @@ class TestPipelineSummary:
         assert event.generation is not None
         assert event.generation.verdict == "llm_better"
         assert event.generation.faithfulness == 0.95
-        assert event.generation.hallucinations == []
+        assert len(event.generation.hallucinations) == 1
+        flagged = event.generation.hallucinations[0]
+        assert flagged.category == "inference"
+        assert flagged.claim == "designed to aid plaque removal"
 
     def test_no_judgment_means_no_generation_row(self):
         bm25 = [_doc("A")]

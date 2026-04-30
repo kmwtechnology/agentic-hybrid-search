@@ -296,7 +296,7 @@ Useful signals:
 
 - **Service URL:** <https://agentic-hybrid-search-375500751528.us-central1.run.app>
 - **Health:** `/api/health`
-- **API docs:** `/docs`
+- **API docs:** `/swagger` (FastAPI Swagger UI)
 - **OpenSearch:** hosted externally on GCP VM, ESCI products indexed
 - **PostgreSQL:** Cloud SQL (checkpoints only)
 

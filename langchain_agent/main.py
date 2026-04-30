@@ -45,7 +45,7 @@ from pydantic import BaseModel
 # Import extracted modules
 from agent_state import CustomAgentState
 from doc_replacer import DocumentReplacer
-from judge import LLMJudge
+from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from link_verifier import LinkVerifier
 from reranker import GeminiReranker
 from vector_store import OpenSearchVectorStore
@@ -2155,29 +2155,41 @@ Respond with JSON only. No other text."""
         )
 
         # Auto-retry path (Layer 3a). Triggered when:
-        #   - faithfulness < 0.85 AND at least one hallucination was flagged
+        #   - faithfulness < 0.85 AND at least one flagged claim is in a
+        #     retry-worthy category (fabrication / cross_product_bleed)
         #   - we haven't already retried this turn
-        # Regenerates with explicit "do not state X" instructions, re-judges,
-        # and stores BOTH judgments so the UI can show the before/after.
+        # Inference- or overreach-only flags surface to the UI but skip the
+        # ~20–30s retry — regenerating those usually makes the answer worse.
+        retry_worthy_claims = [
+            h for h in result.hallucinations if h.category in RETRY_ELIGIBLE_CATEGORIES
+        ]
         retry_eligible = (
             result.faithfulness < 0.85
-            and len(result.hallucinations) > 0
+            and len(retry_worthy_claims) > 0
             and not state.get("hallucination_retry_used", False)
         )
         if not retry_eligible:
+            if result.faithfulness < 0.85 and result.hallucinations:
+                logger.info(
+                    "llm_judge_node: skipping retry — %d flag(s) but none are "
+                    "fabrication/cross_product_bleed (inference/overreach only).",
+                    len(result.hallucinations),
+                )
             return {
                 "judgment": result.model_dump(),
                 "judge_latency_ms": elapsed_ms,
             }
 
         logger.info(
-            "llm_judge_node: auto-retrying — faithfulness=%.2f, %d hallucination(s)",
+            "llm_judge_node: auto-retrying — faithfulness=%.2f, %d retry-worthy "
+            "flag(s) of %d total",
             result.faithfulness,
+            len(retry_worthy_claims),
             len(result.hallucinations),
         )
         try:
             corrected = self._regenerate_without_hallucinations(
-                query, documents, llm_response, list(result.hallucinations)
+                query, documents, llm_response, [h.claim for h in retry_worthy_claims]
             )
         except Exception as exc:
             logger.warning("Auto-retry regeneration failed: %s", exc, exc_info=True)
@@ -2198,7 +2210,7 @@ Respond with JSON only. No other text."""
 
         total_ms = (time.time() - t0) * 1000.0
         logger.info(
-            "llm_judge_node: retry result faithfulness=%.2f → %.2f, hallucinations %d → %d",
+            "llm_judge_node: retry result faithfulness=%.2f → %.2f, flags %d → %d",
             result.faithfulness,
             new_result.faithfulness,
             len(result.hallucinations),

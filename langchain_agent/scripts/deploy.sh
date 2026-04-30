@@ -480,7 +480,7 @@ fi
 
 echo "  Service URL:     $SERVICE_URL"
 echo "  Health Check:    ${SERVICE_URL}/api/health"
-echo "  API Docs:        ${SERVICE_URL}/docs"
+echo "  API Docs:        ${SERVICE_URL}/swagger"
 echo ""
 echo "  Cloud SQL:       $CLOUD_SQL_INSTANCE ($REGION)"
 echo "  Database:        $DB_NAME"

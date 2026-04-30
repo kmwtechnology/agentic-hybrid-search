@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
         "api_started",
         rest_api="http://localhost:8000/api",
         websocket="ws://localhost:8000/ws/chat",
-        docs="http://localhost:8000/docs",
+        docs="http://localhost:8000/swagger",
         auth_required=True,
         login_gate=True,
     )
@@ -172,7 +172,7 @@ app = FastAPI(
         "langchain_agent/openapi.yaml) for the full hand-authored spec."
     ),
     version="1.0.0",
-    docs_url="/docs",
+    docs_url="/swagger",
     redoc_url="/redoc",
     openapi_tags=tags_metadata,
     contact={
@@ -255,7 +255,7 @@ if static_dir.exists():
         if (
             full_path.startswith("api/")
             or full_path.startswith("ws/")
-            or full_path in ("docs", "redoc", "openapi.json")
+            or full_path in ("swagger", "redoc", "openapi.json")
         ):
             return JSONResponse({"error": "Not Found"}, status_code=404)
 
