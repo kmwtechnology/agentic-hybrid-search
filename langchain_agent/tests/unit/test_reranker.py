@@ -1,16 +1,18 @@
 """
-Unit tests for GeminiReranker — LLM-as-reranker document scoring.
+Unit tests for GeminiReranker and CrossEncoderReranker — document scoring.
 
-The LLM (structured_llm) is fully mocked; no real API calls are made.
+GeminiReranker: LLM (structured_llm) is fully mocked; no real API calls are made.
+CrossEncoderReranker: CrossEncoder.predict() is fully mocked; no real model calls are made.
 """
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 from langchain_core.documents import Document
 from pydantic import ValidationError
 
-from reranker import GeminiReranker, RerankerScore, RerankerScores
+from reranker import CrossEncoderReranker, GeminiReranker, RerankerScore, RerankerScores
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -200,3 +202,98 @@ class TestRerank:
         reranker.structured_llm.invoke.return_value = _mock_scores((0, 0.8), (1, 0.4))
         result = reranker.rerank("query", docs, top_k=10)
         assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# CrossEncoderReranker tests
+# ---------------------------------------------------------------------------
+
+
+def _make_cross_reranker() -> CrossEncoderReranker:
+    """Return a CrossEncoderReranker with a mocked CrossEncoder model."""
+    with patch("sentence_transformers.CrossEncoder"):
+        reranker = CrossEncoderReranker(model_name="cross-encoder/ms-marco-MiniLM-L-12-v2")
+    return reranker
+
+
+@pytest.mark.unit
+class TestCrossEncoderReranker:
+    def test_empty_documents_returns_empty_list(self):
+        reranker = _make_cross_reranker()
+        assert reranker.score_documents("query", []) == []
+
+    def test_returns_docs_sorted_descending_by_score(self):
+        reranker = _make_cross_reranker()
+        docs = [_doc("low"), _doc("high"), _doc("mid")]
+        reranker.model = MagicMock()
+        # Return raw logits from cross-encoder
+        reranker.model.predict.return_value = np.array([-1.0, 2.0, 0.5])
+        result = reranker.score_documents("query", docs)
+        scores = [s for _, s in result]
+        assert scores == sorted(scores, reverse=True)
+        # Sigmoid of 2.0 ≈ 0.88 should be first
+        assert scores[0] > scores[1] > scores[2]
+
+    def test_sigmoid_normalization_maps_to_0_1(self):
+        reranker = _make_cross_reranker()
+        docs = [_doc("A"), _doc("B")]
+        reranker.model = MagicMock()
+        # Extreme logits: -10 and +10
+        reranker.model.predict.return_value = np.array([-10.0, 10.0])
+        result = reranker.score_documents("query", docs)
+        # After sigmoid: sigmoid(-10) ≈ 0.0, sigmoid(10) ≈ 1.0
+        _, score_low = result[1]  # Lower logit score
+        _, score_high = result[0]  # Higher logit score
+        assert 0.0 <= score_low <= 1.0
+        assert 0.0 <= score_high <= 1.0
+        assert score_high > score_low
+
+    def test_truncates_document_content_to_500_chars(self):
+        reranker = _make_cross_reranker()
+        long_content = "x" * 1000
+        doc = Document(page_content=long_content, metadata={})
+        reranker.model = MagicMock()
+        reranker.model.predict.return_value = np.array([0.5])
+        reranker.score_documents("query", [doc])
+        # Check that the model was called with truncated content (<=500 chars)
+        call_args = reranker.model.predict.call_args
+        pairs = call_args[0][0]
+        assert len(pairs[0][1]) == 500
+
+    def test_rerank_returns_top_k(self):
+        reranker = _make_cross_reranker()
+        docs = [_doc(f"Doc {i}") for i in range(5)]
+        reranker.model = MagicMock()
+        reranker.model.predict.return_value = np.array([2.0, 1.5, 0.0, -0.5, -1.0])
+        result = reranker.rerank("query", docs, top_k=3)
+        assert len(result) == 3
+        scores = [s for _, s in result]
+        assert scores[0] >= scores[1] >= scores[2]
+
+    def test_rerank_top_k_larger_than_docs_returns_all(self):
+        reranker = _make_cross_reranker()
+        docs = [_doc("A"), _doc("B")]
+        reranker.model = MagicMock()
+        reranker.model.predict.return_value = np.array([0.8, -0.5])
+        result = reranker.rerank("query", docs, top_k=10)
+        assert len(result) == 2
+
+    def test_warmup_calls_score_documents(self):
+        reranker = _make_cross_reranker()
+        reranker.model = MagicMock()
+        reranker.model.predict.return_value = np.array([0.0])
+        warmup_time = reranker.warmup()
+        assert isinstance(warmup_time, float)
+        assert warmup_time >= 0.0
+        # Should have called predict() at least once (for warmup)
+        assert reranker.model.predict.called
+
+    def test_attributes_required_by_main_py(self):
+        reranker = _make_cross_reranker()
+        # reranker_node in main.py uses these attributes for logging
+        assert hasattr(reranker, "batch_size")
+        assert hasattr(reranker, "device")
+        assert hasattr(reranker, "model_name")
+        assert reranker.batch_size == 32
+        assert reranker.device == "cpu"
+        assert reranker.model_name == "cross-encoder/ms-marco-MiniLM-L-12-v2"

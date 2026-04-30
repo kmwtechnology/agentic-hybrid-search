@@ -47,7 +47,7 @@ from agent_state import CustomAgentState
 from doc_replacer import DocumentReplacer
 from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from link_verifier import LinkVerifier
-from reranker import GeminiReranker
+from reranker import CrossEncoderReranker, GeminiReranker
 from vector_store import OpenSearchVectorStore
 
 # Setup logging
@@ -140,6 +140,7 @@ class IntentClassification(BaseModel):
 
 from config import (
     COMPACTION_THRESHOLD_PCT,
+    CROSS_ENCODER_MODEL,
     DATABASE_URL,
     DB_CONNECTION_KWARGS,
     DB_POOL_MAX_SIZE,
@@ -160,6 +161,7 @@ from config import (
     RERANKER_FETCH_K,
     RERANKER_MODEL,
     RERANKER_TOP_K,
+    RERANKER_TYPE,
     RERANKER_WARMUP_ENABLED,
     RETRIEVER_ALPHA,
     RETRIEVER_FETCH_K,
@@ -432,15 +434,19 @@ class EcommerceSearchAgent:
             },
         )
 
-        # Initialize Gemini LLM Reranker
+        # Initialize Reranker (cross-encoder or LLM-based)
         if ENABLE_RERANKING:
-            print(f"Loading Gemini reranker: {RERANKER_MODEL}")
-            self.reranker = GeminiReranker(model_name=RERANKER_MODEL)
+            if RERANKER_TYPE == "cross-encoder":
+                print(f"Loading cross-encoder reranker: {CROSS_ENCODER_MODEL}")
+                self.reranker = CrossEncoderReranker(model_name=CROSS_ENCODER_MODEL)
+            else:
+                print(f"Loading Gemini reranker: {RERANKER_MODEL}")
+                self.reranker = GeminiReranker(model_name=RERANKER_MODEL)
             print("✓ Reranker initialized")
 
             # Warmup the reranker to prime API connection
             if RERANKER_WARMUP_ENABLED:
-                print("Warming up reranker (priming API connection)...")
+                print("Warming up reranker...")
                 warmup_time = self.reranker.warmup()
                 print(f"✓ Reranker warmup complete ({warmup_time:.3f}s)")
         else:

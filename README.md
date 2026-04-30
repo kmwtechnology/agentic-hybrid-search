@@ -150,7 +150,8 @@ retries with an opposite-direction α adjustment.
 | Category | Technology | Purpose |
 |----------|-----------|---------|
 | **LLM (generation)** | Gemini 3 Flash (preview) | Response generation |
-| **LLM (classify/rerank)** | Gemini 3.1 Flash Lite (preview) | Intent, query eval, reranker, content-type classifier |
+| **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, content-type classifier |
+| **Document Reranking** | Cross-encoder (local) or Gemini LLM | Relevance scoring; default: `cross-encoder/ms-marco-MiniLM-L-12-v2` (~10ms), fallback: Gemini (~500ms) |
 | **Embeddings** | `text-embedding-005` | 768-dim vectors |
 | **Vector Database** | OpenSearch 2.19.1 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
@@ -279,7 +280,7 @@ agentic-hybrid-search/
 │   ├── agent_state.py            # CustomAgentState TypedDict
 │   ├── config.py                 # All configuration constants
 │   ├── vector_store.py           # OpenSearchVectorStore + retriever (RRF fusion)
-│   ├── reranker.py               # GeminiReranker (Pydantic-validated scoring)
+│   ├── reranker.py               # CrossEncoderReranker (default, ~10ms) + GeminiReranker (fallback, ~500ms)
 │   ├── link_verifier.py          # URL validation w/ TTL cache
 │   ├── embedding_cache.py        # Query embedding cache
 │   ├── ingest_esci_products.py   # ESCI product ingestion (deterministic sampling)

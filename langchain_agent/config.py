@@ -116,7 +116,9 @@ __all__ = [
     "RETRIEVER_SEARCH_TYPE",
     # Reranker configuration
     "ENABLE_RERANKING",
+    "RERANKER_TYPE",
     "RERANKER_MODEL",
+    "CROSS_ENCODER_MODEL",
     "RERANKER_FETCH_K",
     "RERANKER_TOP_K",
     "RERANKER_BATCH_SIZE",
@@ -311,6 +313,13 @@ RERANKER_BATCH_SIZE = int(os.getenv("RERANKER_BATCH_SIZE", 20))
 
 # Enable API connection priming on startup to reduce first-query latency
 RERANKER_WARMUP_ENABLED = os.getenv("RERANKER_WARMUP_ENABLED", "true").lower() == "true"
+
+# Reranker backend: "cross-encoder" (local, ~10ms/batch) or "gemini" (LLM, ~500ms/batch)
+# Default to cross-encoder for speed; set to "gemini" to revert to LLM-based reranking
+RERANKER_TYPE = os.getenv("RERANKER_TYPE", "cross-encoder")
+
+# Cross-encoder model for local reranking (ignored if RERANKER_TYPE == "gemini")
+CROSS_ENCODER_MODEL = os.getenv("CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-12-v2")
 
 # ============================================================================
 # QUERY EVALUATOR CONFIGURATION
