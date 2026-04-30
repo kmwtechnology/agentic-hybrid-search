@@ -175,9 +175,9 @@ export function ConversationsSidebar({ onConversationSelect }: ConversationsSide
             Guide
           </Link>
           <Link
-            to="/docs"
+            to="/swagger"
             className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm bg-gray-800 text-gray-300 hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
-            title="API reference documentation"
+            title="Swagger UI — FastAPI auto-generated reference"
           >
             <BookOpen className="w-4 h-4" />
             API

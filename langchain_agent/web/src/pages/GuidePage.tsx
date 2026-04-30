@@ -592,7 +592,7 @@ Server streams back:
           <div className="space-y-2">
             <p className="font-semibold text-gray-900">Documentation</p>
             <ul className="space-y-1 text-gray-700">
-              <li><a href="/docs" className="text-blue-600 hover:underline">📖 Interactive API Docs (Swagger UI)</a></li>
+              <li><a href="/swagger" className="text-blue-600 hover:underline">📖 Interactive API Docs (Swagger UI)</a></li>
             </ul>
 
             <p className="font-semibold text-gray-900 mt-3">Configuration</p>
@@ -667,7 +667,7 @@ Server streams back:
 
         {/* Footer */}
         <div className="mt-8 text-center text-sm text-gray-600">
-          <p>Need more help? Check the <a href="/docs" className="text-blue-600 hover:underline">API documentation</a></p>
+          <p>Need more help? Check the <a href="/swagger" className="text-blue-600 hover:underline">Swagger UI</a></p>
         </div>
       </div>
     </div>
