@@ -34,5 +34,8 @@ beautifulsoup4>=4.12.3
 pandas>=2.0.0
 pyarrow>=10.0.0
 
+# Cross-encoder reranker (fast local relevance scoring)
+sentence-transformers>=3.0.0
+
 # LangSmith observability (optional)
 langsmith>=0.1.0
