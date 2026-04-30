@@ -212,25 +212,22 @@ class ObservableAgentService:
         metrics: Dict[str, float] = {}
 
         try:
-            # Wait for warmup to complete (non-blocking wait with timeout)
-            async with self._warmup_lock:
-                if not self._warmup_complete:
-                    logger.info("Waiting for reranker warmup to complete...")
-                    # Give warmup up to 60s to complete; if it times out, proceed anyway
-                    try:
-                        await asyncio.wait_for(self._wait_for_warmup(), timeout=60.0)
-                    except asyncio.TimeoutError:
-                        logger.warning(
-                            "Reranker warmup did not complete in time; proceeding with lazy init"
-                        )
+            # Wait for warmup to complete (poll without holding lock to avoid
+            # deadlock with _warmup_reranker which needs the lock to set the flag)
+            if not self._warmup_complete:
+                logger.info("Waiting for reranker warmup to complete...")
+                try:
+                    await asyncio.wait_for(self._wait_for_warmup(), timeout=60.0)
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "Reranker warmup did not complete in time; proceeding with lazy init"
+                    )
 
             # Set thread for conversation persistence
             self._agent.set_thread_id(thread_id)
 
             # Set emit callback for intermediate events from retriever_node
             # Also store the current event loop so retriever_node can use it
-            import asyncio
-
             self._agent.emit_callback = emit
             try:
                 self._agent.event_loop = asyncio.get_running_loop()

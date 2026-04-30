@@ -142,6 +142,18 @@ ci: ci-format ci-lint ci-test ci-frontend
 	@echo ""
 	@echo "✅ Local CI gate passed — safe to push."
 
+# Run a focused smoke test against the local backend. Catches the search-intent
+# WebSocket regression class (deadlocks, agent_complete never emitted) without
+# needing a full Cloud Run deployment.
+# Usage:
+#   make smoke-local         — full smoke suite (~90s)
+#   make smoke-local-quick   — search intent only (~20s; pre-commit gate)
+smoke-local:
+	@bash scripts/smoke_local.sh
+
+smoke-local-quick:
+	@bash scripts/smoke_local.sh -k test_search_intent_returns_results -q --tb=short
+
 format-fix:
 	@echo "Auto-fixing formatting (black + isort) across the whole package..."
 	@$(VENV)/black .
