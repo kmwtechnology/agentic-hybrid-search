@@ -486,6 +486,8 @@ jobs:
           OPENSEARCH_VERIFY_CERTS=false,\
           LLM_MODEL=gemini-3-flash-preview,\
           RERANKER_MODEL=gemini-3.1-flash-lite-preview,\
+          RERANKER_TYPE=cross-encoder,\
+          CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2,\
           QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
           EMBEDDINGS_MODEL=models/gemini-embedding-001,\
           LOG_LEVEL=INFO,\
