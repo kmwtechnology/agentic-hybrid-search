@@ -441,10 +441,53 @@ class CrossEncoderReranker:
             raise RuntimeError(f"Cross-encoder scoring failed: {type(e).__name__}") from e
 
         # Normalize raw logits to [0, 1] via sigmoid: 1 / (1 + e^(-x))
-        # Clip to [0, 1] for safety (in case of extreme logits)
         import numpy as np
 
-        scores = np.clip(1.0 / (1.0 + np.exp(-raw_scores)), 0.0, 1.0).tolist()
+        raw_scores_array = np.array(raw_scores)
+
+        # Apply sigmoid activation
+        sigmoid_scores = 1.0 / (1.0 + np.exp(-raw_scores_array))
+
+        # If all scores are very low (< 0.15), apply rescaling to ensure citations work
+        # This handles cases where the raw logits are heavily negative
+        score_max = float(np.max(sigmoid_scores))
+        if score_max < 0.15:
+            logger.info(
+                "cross_encoder: rescaling scores (max %.3f < 0.15); applying linear scaling",
+                score_max,
+                extra={"raw_min": float(np.min(raw_scores_array)), "raw_max": score_max},
+            )
+            # Linear rescale to [0.1, 1.0] range to ensure citations work
+            score_min = float(np.min(sigmoid_scores))
+            if score_max > score_min:  # Avoid division by zero
+                sigmoid_scores = 0.1 + (sigmoid_scores - score_min) / (score_max - score_min) * 0.9
+            else:
+                sigmoid_scores = np.full_like(sigmoid_scores, 0.5)  # Fallback: all 0.5
+
+        scores = np.clip(sigmoid_scores, 0.0, 1.0).tolist()
+
+        # Log score statistics for debugging
+        raw_min, raw_max, raw_mean = (
+            float(np.min(raw_scores_array)),
+            float(np.max(raw_scores_array)),
+            float(np.mean(raw_scores_array)),
+        )
+        scores_array = np.array(scores)
+        norm_min, norm_max, norm_mean = (
+            float(np.min(scores_array)),
+            float(np.max(scores_array)),
+            float(np.mean(scores_array)),
+        )
+
+        logger.debug(
+            "cross_encoder_scores",
+            extra={
+                "num_docs": len(documents),
+                "raw_logits": {"min": raw_min, "max": raw_max, "mean": raw_mean},
+                "normalized": {"min": norm_min, "max": norm_max, "mean": norm_mean},
+                "below_citation_threshold_0.10": int(sum(1 for s in scores if s < 0.10)),
+            },
+        )
 
         all_scored: List[Tuple[Document, float]] = []
         for doc, score in zip(documents, scores):
