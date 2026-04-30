@@ -42,9 +42,8 @@ def _fail_if_origin_blocked(exc: BaseException) -> None:
 DEPLOYMENT_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 API_KEY = os.environ.get("API_KEY", "test-api-key")
 TIMEOUT = 30  # seconds
-WEBSOCKET_TIMEOUT = (
-    180  # seconds (cross-encoder model loads ~60s on first request, plus processing)
-)
+# Cross-encoder model loads ~60s on first request; full pipeline round-trip needs ~90-120s
+WEBSOCKET_TIMEOUT = 180  # seconds
 # Origin header must match allowed UI origin (production is same-origin as API)
 ORIGIN_HEADER = DEPLOYMENT_URL
 
