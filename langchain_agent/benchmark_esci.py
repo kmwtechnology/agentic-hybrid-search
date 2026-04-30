@@ -119,9 +119,7 @@ class ESCIBenchmark:
         self.reranker = CrossEncoderReranker()
         self.os_client = OpenSearch(
             hosts=[{"host": OPENSEARCH_HOST, "port": OPENSEARCH_PORT}],
-            http_auth=(
-                ("admin", OPENSEARCH_PASSWORD) if OPENSEARCH_PASSWORD else None
-            ),
+            http_auth=(("admin", OPENSEARCH_PASSWORD) if OPENSEARCH_PASSWORD else None),
             use_ssl=OPENSEARCH_USE_SSL,
             verify_certs=OPENSEARCH_VERIFY_CERTS,
             timeout=30,
@@ -187,9 +185,7 @@ class ESCIBenchmark:
             StageMetrics or None if no judgments found.
         """
         try:
-            docs = self.vector_store.hybrid_search(
-                query, k=20, fetch_k=self.fetch_k, alpha=alpha
-            )
+            docs = self.vector_store.hybrid_search(query, k=20, fetch_k=self.fetch_k, alpha=alpha)
         except Exception as e:
             logger.warning(f"Retrieval failed for query '{query}': {e}")
             return None
@@ -205,11 +201,7 @@ class ESCIBenchmark:
                 scores = [score for _, score in reranked]
 
                 # Quality gate retry
-                if (
-                    retry_on_qg
-                    and scores
-                    and max(scores) < self.qg_threshold
-                ):
+                if retry_on_qg and scores and max(scores) < self.qg_threshold:
                     new_alpha = max(0.0, min(1.0, alpha - 0.3 if alpha > 0.5 else alpha + 0.3))
                     logger.debug(
                         f"QG: max_score={max(scores):.3f} < {self.qg_threshold}, "
@@ -331,13 +323,14 @@ class ESCIBenchmark:
         ndcg_scores = sorted([m.ndcg10 for m in hybrid_results.values()])
         if len(ndcg_scores) < 4:
             logger.warning(
-                f"Too few queries ({len(ndcg_scores)}) for quartile analysis, "
-                "using all"
+                f"Too few queries ({len(ndcg_scores)}) for quartile analysis, " "using all"
             )
             return list(hybrid_results.keys())
 
         cutoff = ndcg_scores[len(ndcg_scores) // 4]
-        hard = [q for q in all_queries if q in hybrid_results and hybrid_results[q].ndcg10 <= cutoff]
+        hard = [
+            q for q in all_queries if q in hybrid_results and hybrid_results[q].ndcg10 <= cutoff
+        ]
         logger.info(
             f"Hard-query subset (NDCG@10 <= {cutoff:.4f}): "
             f"{len(hard)} / {len(hybrid_results)} queries"
@@ -390,52 +383,104 @@ class ESCIBenchmark:
             f"Config: fetch_k={self.fetch_k}  alpha_hybrid={self.alpha_hybrid}  "
             f"qg_threshold={self.qg_threshold}  rerank_top_k={self.rerank_top_k}"
         )
-        print(f"Hard queries: {len(hard_queries)} / {len(all_queries)} "
-              f"(bottom-quartile NDCG@10 <= {sorted([m.ndcg10 for m in hybrid_results.values()])[len(hybrid_results) // 4]:.4f})")
+        print(
+            f"Hard queries: {len(hard_queries)} / {len(all_queries)} "
+            f"(bottom-quartile NDCG@10 <= {sorted([m.ndcg10 for m in hybrid_results.values()])[len(hybrid_results) // 4]:.4f})"
+        )
         print("=" * 70)
 
         print("\nHARD-QUERY RESULTS (primary focus):")
         print(f"{'System':<25} {'NDCG@10':<15} {'MRR':<15} {'Recall@20':<15}")
         print("-" * 70)
 
-        lex_ndcg_str = f"{hard_lex['ndcg10_mean']:.4f} ±{hard_lex['ndcg10_stdev']:.4f}" if hard_lex['ndcg10_stdev'] > 0 else f"{hard_lex['ndcg10_mean']:.4f}"
-        lex_mrr_str = f"{hard_lex['mrr_mean']:.4f} ±{hard_lex['mrr_stdev']:.4f}" if hard_lex['mrr_stdev'] > 0 else f"{hard_lex['mrr_mean']:.4f}"
-        lex_recall_str = f"{hard_lex['recall20_mean']:.4f} ±{hard_lex['recall20_stdev']:.4f}" if hard_lex['recall20_stdev'] > 0 else f"{hard_lex['recall20_mean']:.4f}"
+        lex_ndcg_str = (
+            f"{hard_lex['ndcg10_mean']:.4f} ±{hard_lex['ndcg10_stdev']:.4f}"
+            if hard_lex["ndcg10_stdev"] > 0
+            else f"{hard_lex['ndcg10_mean']:.4f}"
+        )
+        lex_mrr_str = (
+            f"{hard_lex['mrr_mean']:.4f} ±{hard_lex['mrr_stdev']:.4f}"
+            if hard_lex["mrr_stdev"] > 0
+            else f"{hard_lex['mrr_mean']:.4f}"
+        )
+        lex_recall_str = (
+            f"{hard_lex['recall20_mean']:.4f} ±{hard_lex['recall20_stdev']:.4f}"
+            if hard_lex["recall20_stdev"] > 0
+            else f"{hard_lex['recall20_mean']:.4f}"
+        )
 
-        hyb_ndcg_str = f"{hard_hyb['ndcg10_mean']:.4f} ±{hard_hyb['ndcg10_stdev']:.4f}" if hard_hyb['ndcg10_stdev'] > 0 else f"{hard_hyb['ndcg10_mean']:.4f}"
-        hyb_mrr_str = f"{hard_hyb['mrr_mean']:.4f} ±{hard_hyb['mrr_stdev']:.4f}" if hard_hyb['mrr_stdev'] > 0 else f"{hard_hyb['mrr_mean']:.4f}"
-        hyb_recall_str = f"{hard_hyb['recall20_mean']:.4f} ±{hard_hyb['recall20_stdev']:.4f}" if hard_hyb['recall20_stdev'] > 0 else f"{hard_hyb['recall20_mean']:.4f}"
+        hyb_ndcg_str = (
+            f"{hard_hyb['ndcg10_mean']:.4f} ±{hard_hyb['ndcg10_stdev']:.4f}"
+            if hard_hyb["ndcg10_stdev"] > 0
+            else f"{hard_hyb['ndcg10_mean']:.4f}"
+        )
+        hyb_mrr_str = (
+            f"{hard_hyb['mrr_mean']:.4f} ±{hard_hyb['mrr_stdev']:.4f}"
+            if hard_hyb["mrr_stdev"] > 0
+            else f"{hard_hyb['mrr_mean']:.4f}"
+        )
+        hyb_recall_str = (
+            f"{hard_hyb['recall20_mean']:.4f} ±{hard_hyb['recall20_stdev']:.4f}"
+            if hard_hyb["recall20_stdev"] > 0
+            else f"{hard_hyb['recall20_mean']:.4f}"
+        )
 
-        adp_ndcg_str = f"{hard_adp['ndcg10_mean']:.4f} ±{hard_adp['ndcg10_stdev']:.4f}" if hard_adp['ndcg10_stdev'] > 0 else f"{hard_adp['ndcg10_mean']:.4f}"
-        adp_mrr_str = f"{hard_adp['mrr_mean']:.4f} ±{hard_adp['mrr_stdev']:.4f}" if hard_adp['mrr_stdev'] > 0 else f"{hard_adp['mrr_mean']:.4f}"
-        adp_recall_str = f"{hard_adp['recall20_mean']:.4f} ±{hard_adp['recall20_stdev']:.4f}" if hard_adp['recall20_stdev'] > 0 else f"{hard_adp['recall20_mean']:.4f}"
+        adp_ndcg_str = (
+            f"{hard_adp['ndcg10_mean']:.4f} ±{hard_adp['ndcg10_stdev']:.4f}"
+            if hard_adp["ndcg10_stdev"] > 0
+            else f"{hard_adp['ndcg10_mean']:.4f}"
+        )
+        adp_mrr_str = (
+            f"{hard_adp['mrr_mean']:.4f} ±{hard_adp['mrr_stdev']:.4f}"
+            if hard_adp["mrr_stdev"] > 0
+            else f"{hard_adp['mrr_mean']:.4f}"
+        )
+        adp_recall_str = (
+            f"{hard_adp['recall20_mean']:.4f} ±{hard_adp['recall20_stdev']:.4f}"
+            if hard_adp["recall20_stdev"] > 0
+            else f"{hard_adp['recall20_mean']:.4f}"
+        )
 
         print(f"{'Lexical (BM25)':<25} {lex_ndcg_str:<15} {lex_mrr_str:<15} {lex_recall_str:<15}")
-        print(f"{'Standard Hybrid':<25} {hyb_ndcg_str:<15} {hyb_mrr_str:<15} {hyb_recall_str:<15} ← reference")
+        print(
+            f"{'Standard Hybrid':<25} {hyb_ndcg_str:<15} {hyb_mrr_str:<15} {hyb_recall_str:<15} ← reference"
+        )
         print(f"{'Adaptive':<25} {adp_ndcg_str:<15} {adp_mrr_str:<15} {adp_recall_str:<15}")
 
         # Deltas
         print("\nΔ vs Standard Hybrid (hard queries):")
         print("-" * 70)
         if hard_hyb["ndcg10_mean"] > 0:
-            lex_ndcg_delta = (hard_lex["ndcg10_mean"] - hard_hyb["ndcg10_mean"]) / hard_hyb[
-                "ndcg10_mean"
-            ] * 100
-            lex_mrr_delta = (hard_lex["mrr_mean"] - hard_hyb["mrr_mean"]) / hard_hyb[
-                "mrr_mean"
-            ] * 100 if hard_hyb["mrr_mean"] > 0 else 0
-            lex_recall_delta = (hard_lex["recall20_mean"] - hard_hyb["recall20_mean"]) / hard_hyb[
-                "recall20_mean"
-            ] * 100 if hard_hyb["recall20_mean"] > 0 else 0
-            adp_ndcg_delta = (hard_adp["ndcg10_mean"] - hard_hyb["ndcg10_mean"]) / hard_hyb[
-                "ndcg10_mean"
-            ] * 100
-            adp_mrr_delta = (hard_adp["mrr_mean"] - hard_hyb["mrr_mean"]) / hard_hyb[
-                "mrr_mean"
-            ] * 100 if hard_hyb["mrr_mean"] > 0 else 0
-            adp_recall_delta = (hard_adp["recall20_mean"] - hard_hyb["recall20_mean"]) / hard_hyb[
-                "recall20_mean"
-            ] * 100 if hard_hyb["recall20_mean"] > 0 else 0
+            lex_ndcg_delta = (
+                (hard_lex["ndcg10_mean"] - hard_hyb["ndcg10_mean"]) / hard_hyb["ndcg10_mean"] * 100
+            )
+            lex_mrr_delta = (
+                (hard_lex["mrr_mean"] - hard_hyb["mrr_mean"]) / hard_hyb["mrr_mean"] * 100
+                if hard_hyb["mrr_mean"] > 0
+                else 0
+            )
+            lex_recall_delta = (
+                (hard_lex["recall20_mean"] - hard_hyb["recall20_mean"])
+                / hard_hyb["recall20_mean"]
+                * 100
+                if hard_hyb["recall20_mean"] > 0
+                else 0
+            )
+            adp_ndcg_delta = (
+                (hard_adp["ndcg10_mean"] - hard_hyb["ndcg10_mean"]) / hard_hyb["ndcg10_mean"] * 100
+            )
+            adp_mrr_delta = (
+                (hard_adp["mrr_mean"] - hard_hyb["mrr_mean"]) / hard_hyb["mrr_mean"] * 100
+                if hard_hyb["mrr_mean"] > 0
+                else 0
+            )
+            adp_recall_delta = (
+                (hard_adp["recall20_mean"] - hard_hyb["recall20_mean"])
+                / hard_hyb["recall20_mean"]
+                * 100
+                if hard_hyb["recall20_mean"] > 0
+                else 0
+            )
 
             print(
                 f"{'Lexical:':<25} "
@@ -453,9 +498,7 @@ class ESCIBenchmark:
         print("\n" + "=" * 70)
         print("FULL-SET RESULTS (appendix):")
         print("=" * 70)
-        print(
-            f"{'System':<25} {'NDCG@10':<15} {'MRR':<15} {'Recall@20':<15} {'n'}"
-        )
+        print(f"{'System':<25} {'NDCG@10':<15} {'MRR':<15} {'Recall@20':<15} {'n'}")
         print("-" * 70)
         print(
             f"{'Lexical (BM25)':<25} "
@@ -480,24 +523,12 @@ def main():
         description="ESCI hard-query relevancy benchmark for agentic hybrid search"
     )
     parser.add_argument("--limit", type=int, default=None, help="Max queries to sample")
-    parser.add_argument(
-        "--alpha", type=float, default=0.25, help="Hybrid reference alpha"
-    )
-    parser.add_argument(
-        "--fetch-k", type=int, default=40, help="Retrieval candidate count"
-    )
-    parser.add_argument(
-        "--rerank-top-k", type=int, default=20, help="Post-rerank list size"
-    )
-    parser.add_argument(
-        "--qg-threshold", type=float, default=0.45, help="Quality gate threshold"
-    )
-    parser.add_argument(
-        "--fast", action="store_true", help="Skip LLM intent classification"
-    )
-    parser.add_argument(
-        "--output", type=str, default=None, help="Write results to JSON file"
-    )
+    parser.add_argument("--alpha", type=float, default=0.25, help="Hybrid reference alpha")
+    parser.add_argument("--fetch-k", type=int, default=40, help="Retrieval candidate count")
+    parser.add_argument("--rerank-top-k", type=int, default=20, help="Post-rerank list size")
+    parser.add_argument("--qg-threshold", type=float, default=0.45, help="Quality gate threshold")
+    parser.add_argument("--fast", action="store_true", help="Skip LLM intent classification")
+    parser.add_argument("--output", type=str, default=None, help="Write results to JSON file")
     args = parser.parse_args()
 
     benchmark = ESCIBenchmark(
