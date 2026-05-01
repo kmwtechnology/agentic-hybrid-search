@@ -502,7 +502,7 @@ jobs:
           LOGIN_PASSWORD=agentic-hybrid-search-login-password:latest,\
           SESSION_SECRET=agentic-hybrid-search-session-secret:latest" \
             --memory=2Gi \
-            --cpu=2 \
+            --cpu=4 \
             --timeout=3600 \
             --min-instances=0 \
             --max-instances=2 \
