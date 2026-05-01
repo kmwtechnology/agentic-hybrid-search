@@ -7,34 +7,40 @@
 import { useEffect, useState } from 'react'
 
 export function SwaggerPage() {
-  const [swaggerUrl, setSwaggerUrl] = useState<string>('http://localhost:8000/swagger')
+  const [swaggerUrl, setSwaggerUrl] = useState<string>('')
 
   useEffect(() => {
-    // Determine the correct swagger URL based on environment
-    const fetchApiUrl = async () => {
+    const determineSwaggerUrl = async () => {
+      let apiUrl = ''
+
       try {
         const response = await fetch('/api/config')
         const config = await response.json()
-
         if (config.apiUrl) {
-          setSwaggerUrl(`${config.apiUrl}/swagger`)
-        } else {
-          // Dev environment: use localhost:8000
-          const hostname = window.location.hostname
-          const port = hostname === 'localhost' || hostname === '127.0.0.1' ? 8000 : undefined
-          const url = port
-            ? `http://localhost:${port}/swagger`
-            : `${window.location.origin}/swagger`
-          setSwaggerUrl(url)
+          apiUrl = config.apiUrl
         }
       } catch (err) {
-        console.error('Failed to fetch API config, using default:', err)
-        // Keep default localhost:8000
+        console.warn('Failed to fetch API config:', err)
       }
+
+      if (!apiUrl) {
+        const hostname = window.location.hostname
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          apiUrl = `http://localhost:8000`
+        } else {
+          apiUrl = window.location.origin
+        }
+      }
+
+      setSwaggerUrl(`${apiUrl}/swagger`)
     }
 
-    fetchApiUrl()
+    determineSwaggerUrl()
   }, [])
+
+  if (!swaggerUrl) {
+    return <div className="h-screen w-screen bg-white flex items-center justify-center">Loading...</div>
+  }
 
   return (
     <div className="h-screen w-screen bg-white overflow-hidden">
