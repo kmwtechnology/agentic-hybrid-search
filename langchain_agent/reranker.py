@@ -383,7 +383,7 @@ class CrossEncoderReranker:
         self.device = "cpu"
         self.batch_size = 32
 
-        self.model = CrossEncoder(model_name)
+        self.model = CrossEncoder(model_name, device=self.device)
         logger.info(f"CrossEncoderReranker loaded: model={model_name}, device={self.device}")
 
     def warmup(self) -> float:

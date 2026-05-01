@@ -26,7 +26,7 @@ CLOUD_SQL_INSTANCE="agentic-hybrid-search-db"
 DB_NAME="langchain_agent"
 DB_USER="postgres"
 ARTIFACT_REPO="agentic-hybrid-search"
-MEMORY="1024Mi"
+MEMORY="2048Mi"
 CPU="1"
 MIN_INSTANCES="0"
 MAX_INSTANCES="2"
@@ -379,6 +379,7 @@ run gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 log "Building Docker image..."
 run docker build \
     --platform=linux/amd64 \
+    --no-cache \
     -t "$IMAGE_URI" \
     -f "$LANGCHAIN_AGENT_DIR/Dockerfile" \
     "$REPO_ROOT"
@@ -469,8 +470,10 @@ else
         log "Rebuilding Docker image with discovered SERVICE_URL..."
         if run docker build \
             --platform=linux/amd64 \
+            --no-cache \
             -t "$IMAGE_URI" \
-            "$PROJECT_DIR" > /dev/null 2>&1; then
+            -f "$LANGCHAIN_AGENT_DIR/Dockerfile" \
+            "$REPO_ROOT" > /dev/null 2>&1; then
             log "Pushing updated Docker image..."
             if run docker push "$IMAGE_URI" > /dev/null 2>&1; then
                 log "Redeploying with updated image..."
