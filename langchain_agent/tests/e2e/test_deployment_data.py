@@ -107,7 +107,7 @@ class TestESCIProductIndexing:
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
                 # Should have gotten results mentioning products
                 assert len(response_text) > 0, "No products found in search"
@@ -157,7 +157,7 @@ class TestESCIProductIndexing:
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
                 # Should understand semantic meaning and return products
                 assert len(response_text) > 0, "Vector search failed"
@@ -203,7 +203,7 @@ class TestESCIProductIndexing:
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
                 # Should mention Sony specifically
                 assert len(response_text) > 0, "Lexical search failed"
@@ -253,7 +253,7 @@ class TestProductMetadata:
                             citations = event.get("citations", [])
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
                 assert len(citations) > 0, "No product citations returned"
                 # Each citation should carry the canonical Amazon URL plus a
@@ -307,7 +307,7 @@ class TestProductMetadata:
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
                 assert len(response_text) > 0, "Brand search failed"
         except Exception as e:
@@ -355,7 +355,7 @@ class TestDataConsistency:
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
             # Second search (same query)
             response_2 = ""
@@ -379,7 +379,7 @@ class TestDataConsistency:
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
             # Both should have generated responses (not necessarily identical, but similar structure)
             assert len(response_1) > 0, "First search returned no results"
@@ -431,7 +431,7 @@ class TestDataConsistency:
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
                 # Response should be valid text, no NUL or non-whitespace control
                 # corruption. LLM output routinely contains Unicode (smart quotes,
@@ -485,7 +485,7 @@ class TestCheckpointPersistence:
                         if event.get("type") == "agent_complete":
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
             # Send follow-up message (should maintain context)
             async with ws_connect(
@@ -534,7 +534,7 @@ class TestCheckpointPersistence:
                             error_msg = event.get("error", "") or event.get("message", "")
                             break
                     except asyncio.TimeoutError:
-                        break
+                        continue
 
                 # Any of these = the second WS attached to the prior thread:
                 #  - streamed chunks
