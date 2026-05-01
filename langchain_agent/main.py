@@ -1031,11 +1031,22 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
             # Always return clarification response, even if questions list is empty
             if clarifying_questions:
                 questions_text = "\n".join(f"- {q}" for q in clarifying_questions)
-                clarify_response = f"I'm not quite sure what you're asking. Could you help me understand better?\n\n{questions_text}"
+                clarify_response = (
+                    "I'd love to help you find the right product! A few details would let me "
+                    "give you better recommendations:\n\n"
+                    f"{questions_text}\n\n"
+                    'You could also try a more specific search like "wireless headphones under '
+                    '$100" or "running shoes for flat feet" — I can take it from there.'
+                )
             else:
                 # Fallback response if no questions were generated
                 clarify_response = (
-                    "I'm not quite sure what you're asking. Could you please provide more details?"
+                    "I'd love to help! To point you at the right products, could you share a "
+                    "little more about what you're looking for? For example:\n\n"
+                    '- A category or use case ("headphones for the gym", "a gift for a coffee lover")\n'
+                    "- A brand, color, or feature you care about\n"
+                    "- A budget range\n\n"
+                    "Even a rough idea helps me narrow things down."
                 )
             logger.info(
                 f"Agent: clarify intent detected, asking {len(clarifying_questions)} questions"
@@ -1084,10 +1095,14 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 f"(max_relevance={max_relevance:.3f} < {MIN_RELEVANCE_THRESHOLD})"
             )
             no_info_response = (
-                f"I searched the knowledge base but couldn't find any relevant information "
-                f"about '{user_query or 'your question'}'. I couldn't find matching products in the knowledge base.\n\n"
-                f"The knowledge base contains Amazon product listings. "
-                f"Try searching for products by brand, color, type, or specific features!"
+                f"I searched for \"{user_query or 'your question'}\" but didn't find a strong "
+                "match in the catalog. A few things that usually help:\n\n"
+                '- Try a more specific phrase — a brand ("Sony"), a use case '
+                '("wireless earbuds for running"), or a feature ("noise cancelling")\n'
+                '- Add a price range ("under $50") or a color\n'
+                "- Or describe who it's for and what they'd use it for, and I'll suggest "
+                "categories worth exploring\n\n"
+                "Want to try one of those?"
             )
             return {"messages": [AIMessage(content=no_info_response)], "citations": []}
 
@@ -1251,8 +1266,8 @@ CITATION & STYLE:
 - Cite products descriptively by name (e.g., "the Nylabone 3 Pack Puppy Chew listing"), never as "Document N".
 - DO NOT include URLs, hyperlinks, or markdown links (e.g., `[name](url)`) in your response. The system appends a verified "Sources" list separately — any link you write yourself will be wrong because you do not have access to canonical product URLs.
 - Refer to products by name only. Do not write `https://...`, `amazon.com/...`, `[text](http...)`, or any link-shaped text.
-- If you cannot find relevant products, explain what you searched for and suggest alternative searches.
-- Keep tone professional, concise, and helpful.
+- If you cannot find relevant products, explain what you searched for, suggest two or three alternative searches the user could try (different brand, broader category, related use case), and end with an open question that invites them to share more about what they need.
+- Tone: warm, conversational, and encouraging — like a knowledgeable friend helping them shop. Avoid dismissive phrasing ("you need to narrow down", "I can't help with that"). Prefer guiding language ("a few details would help me find the right fit", "here are some directions worth trying").
 """
 
         # Build messages for LLM

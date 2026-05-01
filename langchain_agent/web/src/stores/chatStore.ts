@@ -5,6 +5,8 @@
 
 import { create } from 'zustand'
 import { apiGet } from '../utils/api'
+import { useObservabilityStore } from './observabilityStore'
+import type { ObservabilitySnapshot } from './observabilityStore'
 
 // Message and citation types for chat display
 export interface Citation {
@@ -254,6 +256,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
 
       set({ messages })
+
+      // Hydrate the observability panel from the latest checkpoint so the
+      // user can review past pipeline state without re-running the query (#22).
+      try {
+        const obsResponse = await apiGet(`/api/conversations/${threadId}/observability`)
+        if (obsResponse.ok) {
+          const snapshot: ObservabilitySnapshot = await obsResponse.json()
+          useObservabilityStore.getState().hydrateSnapshot(
+            snapshot.has_data ? snapshot : null
+          )
+        } else {
+          useObservabilityStore.getState().hydrateSnapshot(null)
+        }
+      } catch (obsError) {
+        console.warn('Failed to hydrate observability snapshot:', obsError)
+        useObservabilityStore.getState().hydrateSnapshot(null)
+      }
     } catch (error) {
       console.error('Error loading conversation:', error)
       // If exception occurs, clear messages
@@ -272,6 +291,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isProcessing: false,
       queuedMessages: [],
     })
+    // Wipe any hydrated snapshot from a prior historical conversation.
+    useObservabilityStore.getState().hydrateSnapshot(null)
   },
 
   setConnectionState: (connected, connecting, error) => set({

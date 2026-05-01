@@ -4,6 +4,7 @@
  */
 
 import { useObservabilityStore } from '../../stores/observabilityStore'
+import { HistoricalSnapshotCard } from './HistoricalSnapshotCard'
 import { PipelineSummaryCard } from './PipelineSummaryCard'
 import { StepsList } from './StepsList'
 import { SearchOptimizationDetails } from './SearchOptimizationDetails'
@@ -37,6 +38,11 @@ export function ObservabilityPanel() {
           {/* Execution Steps */}
           <div className="mt-4">
             <StepsList />
+          </div>
+
+          {/* Hydrated snapshot when revisiting a historical conversation (#22) */}
+          <div className="mt-4">
+            <HistoricalSnapshotCard />
           </div>
 
           {/* End-of-pipeline retrieval-quality summary */}
