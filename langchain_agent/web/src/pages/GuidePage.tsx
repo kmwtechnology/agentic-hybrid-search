@@ -413,6 +413,10 @@ Server streams back:
               <p className="font-mono text-red-900">DELETE /api/conversations</p>
               <p className="text-gray-600">Delete ALL conversations (destructive!)</p>
             </div>
+            <div className="border-l-4 border-purple-400 pl-3">
+              <p className="font-mono text-purple-900">GET /api/conversations/{'{thread_id}'}/observability</p>
+              <p className="text-gray-600">Return the last observability snapshot for a conversation — intent, alpha, reranker score, quality gate verdict, per-stage latency. Hydrated from the latest LangGraph checkpoint. Returns <code className="bg-gray-100 px-1">has_data: false</code> when no checkpoint exists.</p>
+            </div>
           </div>
 
           <h4 className="font-semibold text-gray-900 mt-4">Thread ID Format</h4>

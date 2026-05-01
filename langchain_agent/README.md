@@ -8,7 +8,7 @@ A production-grade LangGraph RAG agent for e-commerce product discovery. Uses Go
 
 - **6-intent classification** — `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`. Keyword fast-path + LLM fallback.
 - **Hybrid retrieval** — vector (768-dim Gemini embeddings) + BM25, fused via RRF (k=60), with dynamic α per intent.
-- **LLM reranking** — Gemini Flash Lite scores query-product relevance 0.0–1.0.
+- **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms).
 - **Quality gate** — retries once with α ±0.3 if max reranker score < 0.5.
 - **Real-time streaming** — token-by-token WebSocket output with full observability events.
 - **Pipeline Quality Summary** — per-turn scorecard (NDCG@10 / MRR / Recall@20 / Precision@10 against ESCI judgments, or a self-referential confidence proxy when ground truth is unavailable) with a latency cost-benefit table.
@@ -89,11 +89,16 @@ PYTHONPATH=. python main.py
 
 ### API
 
-All endpoints require `X-API-Key` (or `?api_key=` query param):
+All endpoints require a valid session cookie (issued on `POST /api/auth/login`). Automated callers can use the `X-Admin-Token` header instead for admin/health routes.
 
 ```bash
-curl -H "X-API-Key: $(grep ^API_KEY .env | cut -d= -f2)" \
-  http://localhost:8000/api/health
+# Login and save the session cookie
+curl -c /tmp/cookies.txt -s -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"password":"<LOGIN_PASSWORD>"}' | jq .
+
+# Use the cookie on subsequent requests
+curl -b /tmp/cookies.txt http://localhost:8000/api/health
 ```
 
 The primary surface is the WebSocket endpoint under `/api/chat` — see
@@ -175,6 +180,10 @@ immediately. The status endpoint is the source of truth for progress
 (`running` → `success` / `error`). A separate GitHub Actions workflow
 (`.github/workflows/reindex.yml`) exposes this as a manual-dispatch job for
 rebuilding production indexes without redeploying.
+
+#### Conversations observability — `GET /api/conversations/{thread_id}/observability`
+
+- Return the last observability snapshot for a conversation (intent, alpha, reranker score, quality gate verdict, per-stage latency). Hydrated from the latest LangGraph checkpoint. Returns `has_data: false` when no checkpoint exists.
 
 ### Example Queries
 
@@ -585,11 +594,11 @@ npm run lint         # eslint
 | Operation | Typical |
 |-----------|---------|
 | Hybrid search (BM25 + kNN) | ~300–800 ms |
-| LLM reranking (40 → 10) | ~1–3 s |
+| Cross-encoder reranking (40 → 10) | ~200 ms–1 s (CPU-bound; ~10 ms/doc × FETCH_K) |
 | Query evaluation (α + expansion) | ~300–500 ms |
 | Quality Gate retry | +1–2 s |
 | LLM response (streaming) | ~3–8 s |
-| **Total per query** | **~6–15 s** local; ~10–30 s Cloud Run cold start |
+| **Total per query** | **~6–15 s** local; ~10–35 s Cloud Run (cross-encoder on cold container adds latency) |
 | Link verification (cached) | ~50 ms / URL |
 
 Optimizations: HNSW vector index · embedding cache (60-min TTL) ·
@@ -732,8 +741,10 @@ curl http://localhost:8000/api/health          # Backend
 
 ## Security
 
-- **API key** required on all endpoints (`X-API-Key` header)
-- **Timing-attack resistant** comparison via `hmac.compare_digest`
+- **Session-cookie auth** — `POST /api/auth/login` validates `LOGIN_PASSWORD` via `hmac.compare_digest` (timing-safe), sets a signed HttpOnly `ahs_session` cookie (SameSite=Lax). All protected routes call `verify_session`; WebSocket handshake uses `verify_websocket_session` (rejects with code 4401).
+- **Admin token** — `X-Admin-Token` header accepted on `/api/admin/*` and `/api/health` for automation (GitHub Actions). Constant-time comparison via `hmac.compare_digest`. Requires `ADMIN_TOKEN` env var (32+ chars).
+- **Same-origin enforcement** — `Origin` header allow-list (localhost dev ports + `*.run.app`). Disallowed origins always 403; host-fallback only when both Origin and Referer are absent.
+- **Timing-attack resistant** — `hmac.compare_digest` used throughout.
 - **Input validation** — thread IDs validated by regex
 - **Thread safety** — all caches use `threading.Lock`
 - **Rate limiting** — configurable via `slowapi`

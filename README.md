@@ -34,7 +34,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
 
 - **6-intent classifier** — `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary` — keyword fast-path + LLM fallback
 - **Hybrid search** — vector (768-dim Gemini embeddings) + BM25 lexical, fused via Reciprocal Rank Fusion (k=60)
-- **LLM reranking** — Gemini Flash Lite scores query-product relevance (0.0–1.0)
+- **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms)
 - **Dynamic alpha** — query-aware lexical/semantic balance; fast-path alpha for comparison/attribute_filter/refinement, LLM path for search/follow_up
 - **Quality gate** — if max reranker score < 0.5, adjusts alpha ±0.3 and retries once
 - **Conversational query rewriting** — resolves pronouns, comparatives, and short attribute questions using conversation history
@@ -43,6 +43,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
 - **Admin reindex API** — `GET /api/admin/reindex` triggers a background ESCI re-ingestion; `GET /api/admin/reindex/status` polls progress; `GET /api/admin/health` reports index health and doc count. Requires session auth (UI login) or `X-Admin-Token` header (GitHub Actions automation)
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase boosting, field boosting, and phonetic matching (double_metaphone via the `analysis-phonetic` plugin), displayed in the observability panel's "Search Optimizations" card
 - **Pipeline Quality Summary** — every turn ends with a per-stage scorecard. With ESCI ground truth: NDCG@10 / MRR / Recall@20 / Precision@10 across BM25 → Hybrid → Reranked, plus a latency cost-benefit table. Without ground truth: a self-referential confidence proxy (top-1 score, score gap, variance, rank churn) labeled high/medium/low
+- **Observability persistence** — clicking a past conversation hydrates the observability panel with that turn's last recorded state (intent, alpha, reranker score, quality gate verdict, latency breakdown) from the LangGraph checkpoint
 - **Real-time streaming** — token-by-token WebSocket output with cancellation
 - **Observability panel** — live visualization of every pipeline stage
 
@@ -121,7 +122,7 @@ Key decision points:
 - **Query Evaluator** — classifies query type and sets optimal α (0.0–1.0) with an e-commerce-tuned guide. Also expands vague queries (pronouns, comparatives, short attribute questions) using conversation context.
 - **Quality Gate** — if `reranker_max_score < 0.5` and not yet retried, adjusts α ±0.3 and loops back to the retriever; otherwise continues to the agent.
 - **Reranker** — LLM-based scoring of top-K documents on a 0.0–1.0 scale with Pydantic-validated output.
-- **Citations** — Amazon canonical URLs derived from product ASIN (`https://www.amazon.com/dp/{product_id}`), deduplicated and filtered by a minimum reranker score (0.10).
+- **Citations** — Amazon search URLs derived from product title (`https://www.amazon.com/s?k={title}`), deduplicated and filtered by a minimum reranker score (0.10). Search-by-title is robust against delisted ASINs (the legacy `/dp/{ASIN}` form 404'd frequently).
 
 ### Search Balance (Alpha Parameter)
 
@@ -150,8 +151,8 @@ retries with an opposite-direction α adjustment.
 | Category | Technology | Purpose |
 |----------|-----------|---------|
 | **LLM (generation)** | Gemini 3 Flash (preview) | Response generation |
-| **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, content-type classifier |
-| **Document Reranking** | Cross-encoder (local) or Gemini LLM | Relevance scoring; default: `cross-encoder/ms-marco-MiniLM-L-12-v2` (~10ms), fallback: Gemini (~500ms) |
+| **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, reranking fallback |
+| **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~10ms/query); Gemini Flash Lite fallback (~500ms) |
 | **Embeddings** | `text-embedding-005` | 768-dim vectors |
 | **Vector Database** | OpenSearch 2.19.1 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
