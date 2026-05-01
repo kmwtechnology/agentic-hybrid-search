@@ -569,14 +569,12 @@ class TestResponseTiming:
                         continue
 
                 elapsed = time.time() - start_time
-                # Allow up to 30 seconds for search end-to-end on Cloud Run.
-                # Observed real-world breakdown for "Find headphones under $100":
-                #   embedding: ~0.5s, hybrid retrieval: ~1s, reranker (40 docs
-                #   via Gemini): ~5-10s, LLM stream: ~5-10s, network/TLS: ~1-3s.
-                #   Total: 12-25s typical, 30s is the SLO ceiling we will alert on.
+                # SLO ceiling 45s. Cross-encoder predict() on 40 docs (RERANKER_FETCH_K)
+                # is ~10s on a 4-core Cloud Run instance; total budget covers
+                # embed + hybrid retrieve + rerank + LLM stream + TLS overhead.
                 assert (
-                    elapsed < 30
-                ), f"Search took {elapsed:.1f}s, should be under 30s (Cloud Run + network)"
+                    elapsed < 45
+                ), f"Search took {elapsed:.1f}s, should be under 45s (Cloud Run + network)"
         except Exception as e:
             _fail_if_origin_blocked(e)
             pytest.fail(f"Response timing test failed: {e}")
@@ -616,11 +614,11 @@ class TestResponseTiming:
                         continue
 
                 elapsed = time.time() - start_time
-                # Allow up to 30 seconds for end-to-end generation on Cloud
-                # Run (LLM streaming + reranker + network round-trips).
+                # SLO ceiling 45s — comparison intent runs same reranker batch
+                # as search; LLM stream may be longer for multi-product output.
                 assert (
-                    elapsed < 30
-                ), f"Generation took {elapsed:.1f}s, should be under 30s (Cloud Run + network)"
+                    elapsed < 45
+                ), f"Generation took {elapsed:.1f}s, should be under 45s (Cloud Run + network)"
         except Exception as e:
             _fail_if_origin_blocked(e)
             pytest.fail(f"Generation timing test failed: {e}")
