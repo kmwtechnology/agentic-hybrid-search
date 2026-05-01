@@ -423,10 +423,21 @@ class CrossEncoderReranker:
         if not documents:
             return []
 
+        import time as time_module
+
+        start_time = time_module.time()
+
         pairs = [(query, doc.page_content[:500]) for doc in documents]
+        prep_time = time_module.time() - start_time
+        logger.info(f"CrossEncoder: prep took {prep_time*1000:.1f}ms")
 
         try:
+            predict_start = time_module.time()
             raw_scores = self.model.predict(pairs)
+            predict_time = time_module.time() - predict_start
+            logger.info(
+                f"CrossEncoder: predict() took {predict_time*1000:.1f}ms for {len(documents)} docs"
+            )
         except Exception as e:
             logger.error(
                 "cross_encoder_error: %s",
