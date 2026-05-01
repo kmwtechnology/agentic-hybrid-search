@@ -407,8 +407,7 @@ run gcloud run deploy "$SERVICE_NAME" \
     --concurrency="$CONCURRENCY" \
     --cpu-throttling \
     --timeout=3600 \
-    --startup-probe-initial-delay=60 \
-    --startup-probe-timeout=600 \
+    --startup-probe='{"timeoutSeconds": 600}' \
     --add-cloudsql-instances="$CLOUD_SQL_CONNECTION" \
     --set-env-vars="\
 POSTGRES_HOST=/cloudsql/${CLOUD_SQL_CONNECTION},\
