@@ -367,9 +367,10 @@ log "Secret access granted."
 
 log "Building and pushing Docker image..."
 
-# Get the langchain_agent directory (where Dockerfile lives)
+# Get the repo root directory (Dockerfile expects context to be repo root)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+LANGCHAIN_AGENT_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(dirname "$LANGCHAIN_AGENT_DIR")"
 
 # Configure Docker for Artifact Registry
 run gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
@@ -379,7 +380,8 @@ log "Building Docker image..."
 run docker build \
     --platform=linux/amd64 \
     -t "$IMAGE_URI" \
-    "$PROJECT_DIR"
+    -f "$LANGCHAIN_AGENT_DIR/Dockerfile" \
+    "$REPO_ROOT"
 
 log "Pushing Docker image to Artifact Registry..."
 run docker push "$IMAGE_URI"
@@ -412,6 +414,8 @@ POSTGRES_USER=${DB_USER},\
 POSTGRES_DB=${DB_NAME},\
 LLM_MODEL=gemini-3-flash-preview,\
 EMBEDDINGS_MODEL=models/gemini-embedding-001,\
+RERANKER_TYPE=cross-encoder,\
+CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2,\
 RERANKER_MODEL=gemini-3.1-flash-lite-preview,\
 QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
 VECTOR_DIMENSION=768,\
@@ -420,6 +424,10 @@ LOG_LEVEL=INFO,\
 ENABLE_RERANKING=true,\
 ENABLE_QUERY_EVALUATION=true,\
 ENABLE_CONTENT_TYPE_CLASSIFICATION=true,\
+SESSION_COOKIE_SECURE=true,\
+SESSION_MAX_AGE_SECONDS=86400,\
+ENABLE_COMPACTION=true,\
+MAX_CONTEXT_TOKENS=3000,\
 OPENSEARCH_HOST=34.138.97.13,\
 OPENSEARCH_PORT=9200,\
 OPENSEARCH_USE_SSL=true,\

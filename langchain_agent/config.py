@@ -10,7 +10,7 @@ Copy `.env.example` to `.env` and customize as needed.
 Google Gemini models for generation, classification, and embeddings.
 - `LLM_MODEL`: Main generation model (e.g., gemini-3-flash-preview)
 - `LLM_TEMPERATURE`: Controls output creativity (0.0=deterministic, 1.0=creative)
-- `EMBEDDINGS_MODEL`: Embedding model (e.g., text-embedding-005, 768-dim)
+- `EMBEDDINGS_MODEL`: Embedding model (e.g., models/gemini-embedding-001, 768-dim)
 - `RERANKER_MODEL`: Reranking model (e.g., gemini-3.1-flash-lite-preview)
 - `QUERY_EVAL_MODEL`: Query evaluation model (lightweight, fast)
 
@@ -204,7 +204,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gemini-3-flash-preview")
 LLM_TEMPERATURE = int(os.getenv("LLM_TEMPERATURE", 0))
 
 # Embeddings Model (Gemini)
-EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "models/text-embedding-005")
+EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "models/gemini-embedding-001")
 
 # ============================================================================
 # POSTGRES CONFIGURATION
