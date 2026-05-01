@@ -488,7 +488,7 @@ jobs:
           RERANKER_MODEL=gemini-3.1-flash-lite-preview,\
           RERANKER_TYPE=cross-encoder,\
           CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2,\
-          RERANKER_WARMUP_ENABLED=false,\
+          RERANKER_WARMUP_ENABLED=true,\
           QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
           EMBEDDINGS_MODEL=models/gemini-embedding-001,\
           LOG_LEVEL=INFO,\
