@@ -37,7 +37,7 @@ DATA_TEST_FILE = REPO_ROOT / "langchain_agent" / "tests" / "e2e" / "test_deploym
 # Setup includes: POST /api/auth/login round-trip (cookie acquisition for the
 # login gate) + ws_connect + connection_established.
 SETUP_OVERHEAD_S = 7  # login round-trip + ws_connect + connection_established
-PER_CHAT_MESSAGE_BUDGET_S = 25  # 16-22 s observed worst case
+PER_CHAT_MESSAGE_BUDGET_S = 40  # cross-encoder on 40 docs: 30-37s observed
 PER_RECV_BUDGET_CAP_S = 15  # cap on inner asyncio.wait_for timeouts
 
 
