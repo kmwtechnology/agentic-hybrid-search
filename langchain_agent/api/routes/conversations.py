@@ -86,6 +86,27 @@ class ConversationSummary(BaseModel):
     updated_at: Optional[datetime] = Field(None, description="Last message timestamp (ISO 8601)")
 
 
+class ObservabilitySnapshot(BaseModel):
+    """Last observability state for a historical conversation, hydrated from
+    the most recent LangGraph checkpoint's `channel_values`. Used by the
+    frontend to repopulate the observability panel when a user clicks back
+    into a past conversation without re-running the query (issue #22).
+    """
+
+    thread_id: str
+    has_data: bool = Field(description="True when a checkpoint with observability fields was found")
+    user_query: Optional[str] = None
+    intent: Optional[str] = None
+    intent_confidence: Optional[float] = None
+    reasoning: Optional[str] = None
+    alpha: Optional[float] = None
+    query_analysis: Optional[str] = None
+    reranker_max_score: Optional[float] = None
+    quality_gate_retried: Optional[bool] = None
+    quality_gate_reason: Optional[str] = None
+    latency: dict = Field(default_factory=dict)
+
+
 class ConversationDetail(BaseModel):
     """Full conversation details including messages.
 
@@ -335,6 +356,72 @@ async def get_conversation(request: Request, thread_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@router.get("/conversations/{thread_id}/observability", response_model=ObservabilitySnapshot)
+@limiter.limit(RATE_LIMIT_CONVERSATIONS)
+async def get_conversation_observability(request: Request, thread_id: str):
+    """Return the last observability snapshot for a conversation, hydrated from
+    the most recent LangGraph checkpoint. See issue #22.
+
+    The fields come from the checkpoint's `channel_values` JSONB which carries
+    the scalar end-state of every pipeline node (intent, alpha, latencies,
+    reranker score, quality-gate decision). Returns `has_data=False` when no
+    checkpoint exists (e.g., conversation that was clarified but never ran a
+    full retrieval).
+    """
+    await verify_same_origin(request)
+    await verify_session(request)
+    thread_id = validate_thread_id(thread_id)
+
+    try:
+        with psycopg.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT checkpoint -> 'channel_values'
+                    FROM checkpoints
+                    WHERE thread_id = %s
+                    ORDER BY checkpoint_id DESC
+                    LIMIT 1
+                    """,
+                    (thread_id,),
+                )
+                row = cur.fetchone()
+                if not row or not row[0]:
+                    return ObservabilitySnapshot(thread_id=thread_id, has_data=False)
+
+                values = row[0]
+                latency = {
+                    k: values.get(k)
+                    for k in (
+                        "bm25_latency_ms",
+                        "retriever_latency_ms",
+                        "reranker_latency_ms",
+                        "stock_bm25_latency_ms",
+                        "judge_latency_ms",
+                    )
+                    if values.get(k) is not None
+                }
+                return ObservabilitySnapshot(
+                    thread_id=thread_id,
+                    has_data=True,
+                    user_query=values.get("user_query"),
+                    intent=values.get("intent"),
+                    intent_confidence=values.get("intent_confidence"),
+                    reasoning=values.get("reasoning"),
+                    alpha=values.get("alpha"),
+                    query_analysis=values.get("query_analysis"),
+                    reranker_max_score=values.get("reranker_max_score"),
+                    quality_gate_retried=values.get("quality_gate_retried"),
+                    quality_gate_reason=values.get("quality_gate_reason"),
+                    latency=latency,
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch observability for {thread_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 

@@ -8,7 +8,7 @@ import { useObservabilityStore } from '../../stores/observabilityStore'
 import { StepCard } from './StepCard'
 
 export function StepsList() {
-  const { steps, conversationContext } = useObservabilityStore()
+  const { steps, conversationContext, historicalSnapshot } = useObservabilityStore()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const [isAutoScrollEnabled] = useState(true)
   const [isNearBottom, setIsNearBottom] = useState(true)
@@ -31,6 +31,12 @@ export function StepsList() {
   }
 
   if (steps.length === 0) {
+    // When we have a hydrated snapshot from a historical conversation, the
+    // HistoricalSnapshotCard renders the past state — keep this empty state
+    // out of the way so it doesn't compete for attention.
+    if (historicalSnapshot && historicalSnapshot.has_data) {
+      return null
+    }
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-400 px-4">
         <div className="text-center max-w-sm">

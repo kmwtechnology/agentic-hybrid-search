@@ -21,6 +21,24 @@ import type {
   QualityGateEvent,
 } from '../types/events'
 
+// Snapshot of a historical conversation's last observability state, hydrated
+// from the backend's GET /api/conversations/{thread_id}/observability endpoint.
+// Mirrors api/routes/conversations.py::ObservabilitySnapshot.
+export interface ObservabilitySnapshot {
+  thread_id: string
+  has_data: boolean
+  user_query: string | null
+  intent: string | null
+  intent_confidence: number | null
+  reasoning: string | null
+  alpha: number | null
+  query_analysis: string | null
+  reranker_max_score: number | null
+  quality_gate_retried: boolean | null
+  quality_gate_reason: string | null
+  latency: Record<string, number>
+}
+
 interface ObservabilityState {
   // Current execution state
   isExecuting: boolean
@@ -40,6 +58,10 @@ interface ObservabilityState {
   documentGradingSummary: DocumentGradingSummaryEvent | null
   responseGrading: ResponseGradingEvent | null
   pipelineSummary: PipelineSummaryEvent | null
+
+  // Historical snapshot — populated when user clicks a past conversation
+  // and we hydrate from a checkpoint instead of a live stream.
+  historicalSnapshot: ObservabilitySnapshot | null
 
   // Search status for interim messages ('idle' | 'running' | 'done')
   searchStatus: 'idle' | 'running' | 'done'
@@ -63,6 +85,7 @@ interface ObservabilityState {
   toggleStepExpanded: (stepId: string) => void
   toggleEventExpanded: (eventId: string) => void
   clearState: () => void
+  hydrateSnapshot: (snapshot: ObservabilitySnapshot | null) => void
 }
 
 export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
@@ -80,6 +103,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
   documentGradingSummary: null,
   responseGrading: null,
   pipelineSummary: null,
+  historicalSnapshot: null,
   searchStatus: 'idle',
   rerankerStatus: 'idle',
   searchProgressMessage: null,
@@ -102,6 +126,7 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     rerankedDocuments: [],
     documentGradingSummary: null,
     responseGrading: null,
+    historicalSnapshot: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
     searchProgressMessage: null,
@@ -299,9 +324,12 @@ export const useObservabilityStore = create<ObservabilityState>((set, get) => ({
     documentGradingSummary: null,
     responseGrading: null,
     pipelineSummary: null,
+    historicalSnapshot: null,
     searchStatus: 'idle',
     rerankerStatus: 'idle',
     expandedSteps: new Set(),
     expandedEvents: new Set(),
   }),
+
+  hydrateSnapshot: (snapshot) => set({ historicalSnapshot: snapshot }),
 }))
