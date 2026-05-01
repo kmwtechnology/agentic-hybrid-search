@@ -282,8 +282,8 @@ EMBEDDING_CACHE_MAX_SIZE = int(os.getenv("EMBEDDING_CACHE_MAX_SIZE", 100))
 RETRIEVER_K = 10
 
 # Number of documents to fetch before filtering (for hybrid search)
-# Increased to 40 to provide more diverse candidates for reranking
-RETRIEVER_FETCH_K = 40
+# Reduced to 20 to minimize reranking batch size and improve latency
+RETRIEVER_FETCH_K = 20
 
 # Lambda multiplier for hybrid search (standard convention: 0.0 = pure lexical/BM25, 1.0 = pure semantic/vector)
 # Optimized from benchmarks: 0.25 provides best quality (0.611) with acceptable latency (22ms)
@@ -303,7 +303,7 @@ ENABLE_RERANKING = True
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "gemini-3.1-flash-lite-preview")
 
 # Number of candidates to fetch before reranking
-RERANKER_FETCH_K = 40
+RERANKER_FETCH_K = 10
 
 # Final number of documents to return after reranking
 RERANKER_TOP_K = 10
