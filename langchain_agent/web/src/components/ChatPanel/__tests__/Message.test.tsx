@@ -3,8 +3,8 @@
  * and the preprocessMarkdown helper (exercised via the component).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Message } from '../Message'
 import type { ChatMessage } from '../../../stores/chatStore'
