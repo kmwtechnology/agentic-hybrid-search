@@ -182,7 +182,7 @@ export function MessageInput() {
             }}
             placeholder={
               isConnected
-                ? 'Search for products, compare brands, or ask questions...'
+                ? 'Search products, compare, or ask...'
                 : 'Connecting...'
             }
             disabled={!isConnected}
