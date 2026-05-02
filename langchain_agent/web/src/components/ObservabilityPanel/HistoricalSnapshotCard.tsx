@@ -37,7 +37,7 @@ export function HistoricalSnapshotCard() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
           {s.intent && (
             <div>
               <div className="text-xs uppercase tracking-wide text-gray-400">Intent</div>
@@ -83,7 +83,7 @@ export function HistoricalSnapshotCard() {
         {Object.keys(lat).length > 0 && (
           <div>
             <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Latency</div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-200">
               {lat.bm25_latency_ms !== undefined && (
                 <div>BM25: <span className="text-gray-100">{formatLatency(lat.bm25_latency_ms)}</span></div>
               )}

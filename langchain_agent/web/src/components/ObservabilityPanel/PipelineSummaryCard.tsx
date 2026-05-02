@@ -369,7 +369,7 @@ function ConfidenceCard({ summary }: { summary: PipelineSummaryEvent }) {
           {c.confidence_label[0].toUpperCase() + c.confidence_label.slice(1)} confidence
         </span>
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCell
           label="Top-1 score"
           value={fmt(c.top1_score, 3)}
