@@ -1368,9 +1368,7 @@ Return ONLY the query text, nothing else."""
 
         try:
             response = self.alpha_estimator_llm.invoke(prompt)
-            expanded = (
-                response.content.strip() if hasattr(response, "content") else str(response).strip()
-            )
+            expanded = _flatten_llm_content(response).strip()
 
             # Remove any quotes the LLM might have added
             expanded = expanded.strip("\"'")
@@ -1433,7 +1431,7 @@ Titles:
 {chr(10).join(titles)}"""
 
             response = self.query_eval_llm.invoke(prompt)
-            category = response.content.strip().lower()
+            category = _flatten_llm_content(response).strip().lower()
 
             # Validate response is a single word/category
             if category and len(category) < 50 and " " not in category:
@@ -1492,7 +1490,7 @@ Do not include any explanation.
 Query: "{query}" """
 
             response = self.query_eval_llm.invoke(prompt)
-            category = response.content.strip().lower()
+            category = _flatten_llm_content(response).strip().lower()
 
             if category and len(category) < 50 and " " not in category:
                 logger.debug(f"Detected product category from query via LLM: '{category}'")
@@ -1629,9 +1627,7 @@ Return ONLY a JSON object (use null for missing attributes):
 
         try:
             response = self.alpha_estimator_llm.invoke(prompt)
-            text = (
-                response.content.strip() if hasattr(response, "content") else str(response).strip()
-            )
+            text = _flatten_llm_content(response).strip()
 
             # Extract JSON from response
             import json
@@ -3125,7 +3121,7 @@ Conversation:
 Title:"""
 
             response = self.llm.invoke(prompt)
-            title = response.content.strip().strip("\"'")[:50]
+            title = _flatten_llm_content(response).strip().strip("\"'")[:50]
             return title if title else "Untitled Conversation"
         except Exception as e:
             logger.debug(f"Title generation failed, using fallback: {e}")
