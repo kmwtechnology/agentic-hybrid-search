@@ -1,6 +1,8 @@
 # Agentic Hybrid Search — Test Suite
 
-> Related docs: [repo root README](../../README.md) · [langchain_agent/README.md](../README.md) · [tests/e2e/README.md](e2e/README.md)
+> Related docs: [repo root README](../../README.md) ·
+> [langchain_agent/README.md](../README.md) ·
+> [tests/e2e/README.md](e2e/README.md)
 
 Pytest-based tests organized by scope. All commands assume you're in
 `langchain_agent/` with `PYTHONPATH=.` (bare imports across the project
@@ -106,7 +108,7 @@ open htmlcov/index.html
 services — everything is mocked through `conftest.py`.
 
 | File | Focus |
-|------|-------|
+| --- | --- |
 | `intent/test_intent_classifier.py` | 6-intent classification, keyword fast-path vs LLM fallback, confidence thresholds |
 | `evaluator/test_query_evaluator.py` | Dynamic α selection, query expansion, fast-path vs LLM-path |
 | `quality_gate/test_quality_gate.py` | Retry decision logic, α adjustment bounds, intent-specific thresholds |
@@ -145,7 +147,7 @@ pre-commit, CI fast lane.
 **Purpose:** multi-component flows with real or near-real services.
 
 | File | Focus |
-|------|-------|
+| --- | --- |
 | `test_pipeline_flow.py` | Full RAG pipeline: classifier → evaluator → retriever → reranker → quality gate → agent |
 | `test_retriever_reranker.py` | Hybrid search + RRF fusion + reranker scoring |
 | `test_quality_gate_retry.py` | Retry triggered when max reranker score < 0.5, α ±0.3 adjustment |
@@ -169,7 +171,7 @@ instance. See [`tests/e2e/README.md`](e2e/README.md) for scenarios and
 testing workflow.
 
 | File | Focus |
-|------|-------|
+| --- | --- |
 | `test_deployment_smoke.py` | Health check, auth, basic round-trip (18 tests) |
 | `test_cloud_run_deployment.py` | Cold start, scaling, service metadata, rate-limit ordering (17 tests) |
 | `test_deployment_data.py` | Product index population, sample queries, checkpoint persistence (10 tests) |
@@ -281,7 +283,7 @@ service, and that `CLOUD_RUN_URL` has the correct scheme + host.
 The performance suite lives in `tests/e2e/` and is split across four files:
 
 | File | Markers | Focus |
-|------|---------|-------|
+| --- | --- | --- |
 | `test_performance_load.py` | `load`, `performance` | Concurrent users (1/5/10/20), p50/p95/p99 latency, throughput, regression detection |
 | `test_real_world_scenarios.py` | `performance` | 9 user-journey scenarios (shopper, expert, content creator, support, mobile, power, accessibility, cold start, network jitter) |
 | `test_stress.py` | `stress`, `slow` | Sustained 50-user/60s load, 100-req burst, connection pool, error recovery, leak detection |

@@ -1,6 +1,7 @@
 # End-to-End Tests
 
-> Related docs: [repo root README](../../../README.md) · [langchain_agent/README.md](../../README.md) · [tests/README.md](../README.md)
+> Related docs: [repo root README](../../../README.md) ·
+> [langchain_agent/README.md](../../README.md) · [tests/README.md](../README.md)
 
 E2E tests exercise a **deployed Cloud Run instance** end to end — health,
 auth, WebSocket streaming, pipeline correctness across all 6 intents,
@@ -28,16 +29,22 @@ the suite to run.
 ### `test_deployment_smoke.py` — basic contract
 
 - `TestDeploymentHealth` — `/api/health` returns 200 + expected fields
-- `TestAuthentication` — missing/invalid key → 401, valid key → 200, constant-time compare
-- `TestWebSocketConnectivity` — `/api/chat` upgrade, origin checks, auth via header/query
-- `TestSearchPipeline` — each of the 6 intents (`search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`) produces a valid response with expected event ordering
-- `TestCitations` — citation URLs present when reranker score ≥ 0.10, Amazon `dp/{ASIN}` shape
+- `TestAuthentication` — missing/invalid key → 401, valid key → 200,
+  constant-time compare
+- `TestWebSocketConnectivity` — `/api/chat` upgrade, origin checks,
+  auth via header/query
+- `TestSearchPipeline` — each of the 6 intents (`search`, `comparison`,
+  `attribute_filter`, `refinement`, `follow_up`, `summary`) produces a
+  valid response with expected event ordering
+- `TestCitations` — citation URLs present when reranker score ≥ 0.10,
+  Amazon `dp/{ASIN}` shape
 - `TestResponseTiming` — end-to-end latency budget assertions
 
 ### `test_cloud_run_deployment.py` — infrastructure behavior
 
 - `TestCloudRunConnectivity` — DNS, TLS, HTTP/2
-- `TestRequestTimeout` — long-running requests don't exceed Cloud Run's request timeout
+- `TestRequestTimeout` — long-running requests don't exceed Cloud Run's
+  request timeout
 - `TestGracefulShutdown` — in-flight requests finish on revision cutover
 - `TestHorizontalScaling` — traffic burst spawns replicas without error spikes
 - `TestLoggingFormat` — structured logs parse as JSON
@@ -47,7 +54,8 @@ the suite to run.
 
 ### `test_deployment_data.py` — data layer
 
-- `TestESCIProductIndexing` — product docs present with the expected dual-mapped fields
+- `TestESCIProductIndexing` — product docs present with the expected
+  dual-mapped fields
 - `TestProductMetadata` — `product_brand.keyword`, `product_color.keyword`, `product_locale`
 - `TestDataConsistency` — facet counts, sample product round-trip
 - `TestCheckpointPersistence` — conversation state survives across requests
@@ -58,7 +66,8 @@ Seven scenario classes covering realistic personas end-to-end:
 
 - `TestEcommerceShopperScenario` — search → compare → refine → follow-up
 - `TestProductExpertScenario` — deep attribute-filter queries, technical language
-- `TestContentCreatorScenario` — Product Comparison Writer across all 5 content types
+- `TestContentCreatorScenario` — Product Comparison Writer across all
+  5 content types
 - `TestSupportAgentScenario` — summary intent, conversation history
 - `TestMobileShopperScenario` — short queries, high follow-up rate
 - `TestAccessibilityScenario` — screen-reader-friendly output, alt text in citations
@@ -69,7 +78,8 @@ first-request latency and flaky-network behavior.
 
 ### `test_latency_profiling.py` — per-stage latency
 
-- `TestStageLatencies` — budgets per node (classifier, evaluator, retriever, reranker, quality gate, agent)
+- `TestStageLatencies` — budgets per node (classifier, evaluator,
+  retriever, reranker, quality gate, agent)
 - `TestAlphaComparison` — fast-path α vs LLM-path α latency delta
 - `TestFullPipelineProfile` — end-to-end breakdown summed from observability events
 - `TestMemoryProfileing` — RSS growth under repeated requests
@@ -90,7 +100,8 @@ Exports JSON (`performance_report.json`) for trend tracking.
 - `TestSustainedLoad` — long-duration sustained traffic
 - `TestBurstLoad` — spike traffic handling
 - `TestConnectionPooling` — WebSocket pool behavior
-- `TestErrorRecovery` — recovery from transient upstream errors (OpenSearch, Gemini 429s)
+- `TestErrorRecovery` — recovery from transient upstream errors
+  (OpenSearch, Gemini 429s)
 - `TestResourceLeakDetection` — file descriptors, memory, connections over time
 
 Exports `stress_report.json`.
@@ -100,7 +111,7 @@ Exports `stress_report.json`.
 Each intent is exercised by at least one smoke test and one scenario test:
 
 | Intent | Smoke | Scenario |
-|--------|-------|----------|
+| --- | --- | --- |
 | `search` | `TestSearchPipeline::test_search_intent` | `TestEcommerceShopperScenario` |
 | `comparison` | `TestSearchPipeline::test_comparison_intent` | `TestProductExpertScenario` |
 | `attribute_filter` | `TestSearchPipeline::test_attribute_filter_intent` | `TestEcommerceShopperScenario` |
@@ -124,7 +135,8 @@ The suite guards against regressions in:
 - **Latency** — per-node budgets hold against the checked-in baselines
 - **Reliability** — ≥ 99% success rate at sustained target RPS
 - **Data integrity** — ESCI index population, checkpoint durability
-- **Streaming contract** — token events arrive in order, `AgentCompleteEvent` terminates the stream
+- **Streaming contract** — token events arrive in order,
+  `AgentCompleteEvent` terminates the stream
 
 ## Running Selectively
 
@@ -186,7 +198,7 @@ gh run list --workflow=build-deploy.yml --limit 5
 ## Environment Variables
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
+| --- | --- | --- |
 | `CLOUD_RUN_URL` | `http://localhost:8000` | Deployment under test |
 | `API_KEY` | `test-api-key` | API auth for protected routes |
 | `TIMEOUT` | 30 (pytest), 10 (curl) | Request timeout in seconds |
@@ -219,6 +231,7 @@ test origin.
 
 ## See Also
 
-- [`../README.md`](../README.md) — overall test suite layout, performance + frontend testing
+- [`../README.md`](../README.md) — overall test suite layout,
+  performance + frontend testing
 - [`../../README.md`](../../README.md) — application overview
 - [`../../../README.md`](../../../README.md) — repo root

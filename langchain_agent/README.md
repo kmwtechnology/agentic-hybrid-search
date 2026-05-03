@@ -1,25 +1,38 @@
 # Agentic Hybrid Search — E-Commerce Product Search Agent
 
-> See also: [repo root README](../README.md) · [tests/README.md](tests/README.md) · [tests/e2e/README.md](tests/e2e/README.md)
+> See also: [repo root README](../README.md) ·
+> [tests/README.md](tests/README.md) ·
+> [tests/e2e/README.md](tests/e2e/README.md)
 
-A production-grade LangGraph RAG agent for e-commerce product discovery. Uses Google Gemini for LLM inference and embeddings, OpenSearch for hybrid vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
+A production-grade LangGraph RAG agent for e-commerce product discovery.
+Uses Google Gemini for LLM inference and embeddings, OpenSearch for hybrid
+vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 
 **Capabilities:**
 
-- **6-intent classification** — `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary`. Keyword fast-path + LLM fallback.
-- **Hybrid retrieval** — vector (768-dim Gemini embeddings) + BM25, fused via RRF (k=60), with dynamic α per intent.
-- **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms).
+- **6-intent classification** — `search`, `comparison`, `attribute_filter`,
+  `refinement`, `follow_up`, `summary`. Keyword fast-path + LLM fallback.
+- **Hybrid retrieval** — vector (768-dim Gemini embeddings) + BM25, fused via
+  RRF (k=60), with dynamic α per intent.
+- **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores
+  query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms).
 - **Quality gate** — retries once with α ±0.3 if max reranker score < 0.5.
-- **Real-time streaming** — token-by-token WebSocket output with full observability events.
-- **Pipeline Quality Summary** — per-turn scorecard (NDCG@10 / MRR / Recall@20 / Precision@10 against ESCI judgments, or a self-referential confidence proxy when ground truth is unavailable) with a latency cost-benefit table.
+- **Real-time streaming** — token-by-token WebSocket output with full
+  observability events.
+- **Pipeline Quality Summary** — per-turn scorecard (NDCG@10 / MRR /
+  Recall@20 / Precision@10 against ESCI judgments, or a self-referential
+  confidence proxy when ground truth is unavailable) with a latency
+  cost-benefit table.
 - Data is the Amazon ESCI / Shopping Queries Dataset (products + relevance judgments).
 
 **Stack:**
 
 - **Backend:** Python 3.13+, FastAPI, LangGraph, LangChain
 - **Frontend:** React 18, TypeScript, Tailwind, Zustand
-- **Data layer:** OpenSearch 2.19.1 (HNSW + BM25) · PostgreSQL 16 (LangGraph checkpoints only)
-- **LLM:** Google Gemini 3 Flash (generation) + Gemini 3.1 Flash Lite (classify/rerank) · `text-embedding-005` (embeddings)
+- **Data layer:** OpenSearch 2.19.1 (HNSW + BM25) · PostgreSQL 16
+  (LangGraph checkpoints only)
+- **LLM:** Google Gemini 3 Flash (generation) + Gemini 3.1 Flash Lite
+  (classify/rerank) · `text-embedding-005` (embeddings)
 
 ---
 
@@ -89,7 +102,9 @@ PYTHONPATH=. python main.py
 
 ### API
 
-All endpoints require a valid session cookie (issued on `POST /api/auth/login`). Automated callers can use the `X-Admin-Token` header instead for admin/health routes.
+All endpoints require a valid session cookie (issued on
+`POST /api/auth/login`). Automated callers can use the `X-Admin-Token`
+header instead for admin/health routes.
 
 ```bash
 # Login and save the session cookie
@@ -183,7 +198,10 @@ rebuilding production indexes without redeploying.
 
 #### Conversations observability — `GET /api/conversations/{thread_id}/observability`
 
-- Return the last observability snapshot for a conversation (intent, alpha, reranker score, quality gate verdict, per-stage latency). Hydrated from the latest LangGraph checkpoint. Returns `has_data: false` when no checkpoint exists.
+- Return the last observability snapshot for a conversation (intent, alpha,
+  reranker score, quality gate verdict, per-stage latency). Hydrated from
+  the latest LangGraph checkpoint. Returns `has_data: false` when no
+  checkpoint exists.
 
 ### Example Queries
 
@@ -252,7 +270,7 @@ QUERY_EVAL_TIMEOUT_MS=3000
 The 6-intent classifier routes every turn:
 
 | Intent | Pipeline | Examples |
-|--------|----------|----------|
+| --- | --- | --- |
 | `search` | RAG Q&A | "Find wireless headphones" |
 | `comparison` | RAG Q&A (fast-path α=0.60) | "Compare Sony vs Bose" |
 | `attribute_filter` | RAG Q&A (fast-path α=0.25) | "Blue running shoes size 10" |
@@ -408,8 +426,10 @@ Implementation:
   (last-write-wins) and emits the summary in `_build_pipeline_summary()`.
   5 unit tests in
   [`tests/unit/test_pipeline_summary_event.py`](tests/unit/test_pipeline_summary_event.py).
-- [`web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx`](web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx) —
+- [`web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx`][psc] —
   the rendered card.
+
+[psc]: web/src/components/ObservabilityPanel/PipelineSummaryCard.tsx
 
 ### Admin reindex API
 
@@ -426,7 +446,7 @@ Full pipeline is instrumented with Pydantic-typed events streamed over
 WebSocket:
 
 | Event | Purpose |
-|-------|---------|
+| --- | --- |
 | `intent_classification` | 6 intents + confidence + keyword/LLM path |
 | `query_evaluation` | Assigned α, reasoning |
 | `query_expansion` | Original vs rewritten query |
@@ -470,7 +490,7 @@ rrf_score = Σ 1 / (rank + k)      where k = 60
 The **α parameter** controls weighting:
 
 | α | Strategy | Best for |
-|---|----------|----------|
+| --- | --- | --- |
 | 0.0–0.15 | Pure lexical | ASINs, model numbers, UPCs |
 | 0.15–0.40 | Lexical-heavy | Brand + category, attributes |
 | 0.40–0.60 | Balanced | Feature combinations |
@@ -486,7 +506,7 @@ below 0.5, the quality gate retries with α adjusted by ±0.3.
 TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 
 | Added by | Fields |
-|----------|--------|
+| --- | --- |
 | Classifier | `intent`, `confidence`, `user_query` |
 | Query Evaluator | `alpha`, `intent_description` |
 | Retriever | `retrieved_documents` |
@@ -560,7 +580,9 @@ PYTHONPATH=. pytest tests/e2e/            # requires deployed Cloud Run
 PYTHONPATH=. pytest --cov=. --cov-report=html
 ```
 
-See [tests/README.md](tests/README.md) for the full layout and fixtures, and [tests/e2e/README.md](tests/e2e/README.md) for Cloud Run smoke/regression scenarios.
+See [tests/README.md](tests/README.md) for the full layout and fixtures, and
+[tests/e2e/README.md](tests/e2e/README.md) for Cloud Run smoke/regression
+scenarios.
 
 ### Lint / format / types
 
@@ -572,7 +594,10 @@ make type-check      # mypy
 make ci              # full local gate: black + isort + flake8 + mypy + unit tests + frontend
 ```
 
-A git pre-commit hook (`.git/hooks/pre-commit`) automatically runs black, isort, and flake8 on every staged `.py` file. If a commit is blocked, run `make format-fix` then re-stage. The hook is local-only and not tracked by git — reinstall it by running:
+A git pre-commit hook (`.git/hooks/pre-commit`) automatically runs black,
+isort, and flake8 on every staged `.py` file. If a commit is blocked, run
+`make format-fix` then re-stage. The hook is local-only and not tracked by
+git — reinstall it by running:
 
 ```bash
 cp scripts/pre-commit.sh ../.git/hooks/pre-commit && chmod +x ../.git/hooks/pre-commit
@@ -592,7 +617,7 @@ npm run lint         # eslint
 ## Performance
 
 | Operation | Typical |
-|-----------|---------|
+| --- | --- |
 | Hybrid search (BM25 + kNN) | ~300–800 ms |
 | Cross-encoder reranking (40 → 10) | ~200 ms–1 s (CPU-bound; ~10 ms/doc × FETCH_K) |
 | Query evaluation (α + expansion) | ~300–500 ms |
@@ -741,9 +766,17 @@ curl http://localhost:8000/api/health          # Backend
 
 ## Security
 
-- **Session-cookie auth** — `POST /api/auth/login` validates `LOGIN_PASSWORD` via `hmac.compare_digest` (timing-safe), sets a signed HttpOnly `ahs_session` cookie (SameSite=Lax). All protected routes call `verify_session`; WebSocket handshake uses `verify_websocket_session` (rejects with code 4401).
-- **Admin token** — `X-Admin-Token` header accepted on `/api/admin/*` and `/api/health` for automation (GitHub Actions). Constant-time comparison via `hmac.compare_digest`. Requires `ADMIN_TOKEN` env var (32+ chars).
-- **Same-origin enforcement** — `Origin` header allow-list (localhost dev ports + `*.run.app`). Disallowed origins always 403; host-fallback only when both Origin and Referer are absent.
+- **Session-cookie auth** — `POST /api/auth/login` validates `LOGIN_PASSWORD`
+  via `hmac.compare_digest` (timing-safe), sets a signed HttpOnly
+  `ahs_session` cookie (SameSite=Lax). All protected routes call
+  `verify_session`; WebSocket handshake uses `verify_websocket_session`
+  (rejects with code 4401).
+- **Admin token** — `X-Admin-Token` header accepted on `/api/admin/*` and
+  `/api/health` for automation (GitHub Actions). Constant-time comparison
+  via `hmac.compare_digest`. Requires `ADMIN_TOKEN` env var (32+ chars).
+- **Same-origin enforcement** — `Origin` header allow-list (localhost dev
+  ports + `*.run.app`). Disallowed origins always 403; host-fallback only
+  when both Origin and Referer are absent.
 - **Timing-attack resistant** — `hmac.compare_digest` used throughout.
 - **Input validation** — thread IDs validated by regex
 - **Thread safety** — all caches use `threading.Lock`
