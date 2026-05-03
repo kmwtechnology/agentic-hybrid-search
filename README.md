@@ -60,12 +60,13 @@ flowchart TB
 
     subgraph Pipeline["LangGraph Pipeline"]
         IC["Intent Classifier<br/>(6 intents)"]
-        QE["Query Evaluator<br/>(set α, rewrite vague queries)"]
+        QE["Query Evaluator<br/>(set α + query expansion)"]
         RET["Retriever<br/>(Hybrid Search)"]
-        RERANK["Reranker<br/>(LLM scoring)"]
+        RERANK["Reranker<br/>(cross-encoder; LLM fallback)"]
         QG["Quality Gate<br/>(retry on low score)"]
         SUM["Summary Node"]
         AGENT["Agent<br/>(response generation)"]
+        JUDGE["LLM Judge<br/>(faithfulness + hallucination)"]
     end
 
     subgraph Search["Hybrid Search"]
@@ -81,8 +82,13 @@ flowchart TB
 
     subgraph GoogleAI["Google Gemini"]
         LLM["gemini-3-flash-preview<br/>(generation)"]
-        CLASSIFIER["gemini-3.1-flash-lite-preview<br/>(intent, eval, rerank)"]
+        CLASSIFIER["gemini-3.1-flash-lite-preview<br/>(intent, eval, rerank fallback)"]
         EMB["text-embedding-005<br/>(768-dim)"]
+    end
+
+    subgraph Reranking["Reranking"]
+        CE["ms-marco-MiniLM-L-12-v2<br/>(cross-encoder, ~10ms)"]
+        LLMR["Gemini Flash Lite<br/>(fallback, ~500ms)"]
     end
 
     UI --> IC
@@ -93,16 +99,19 @@ flowchart TB
     VS --> RRF
     BM25 --> RRF
     RRF --> RERANK
+    RERANK --> CE
+    RERANK --> LLMR
     RERANK --> QG
     QG -->|retry| RET
     QG -->|pass| AGENT
     SUM --> AGENT
-    AGENT --> LLM
+    AGENT --> JUDGE
+    JUDGE --> LLM
     AGENT --> UI
     AGENT --> CHK
     IDX --> RET
     CLASSIFIER --> IC
-    CLASSIFIER --> RERANK
+    CLASSIFIER --> LLMR
 ```
 
 ### Pipeline Flow (RAG Q&A Mode)
@@ -110,11 +119,11 @@ flowchart TB
 ```text
 intent_classifier
   ├── search / comparison / attribute_filter /
-  │   refinement / follow_up  → query_evaluator → retriever → reranker → quality_gate → agent
+  │   refinement / follow_up  → query_evaluator → retriever → reranker → quality_gate → agent → llm_judge
   │                                                                          │
   │                                                                          └── (retry) → retriever
-  ├── summary                  → summary → agent
-  └── clarify (low confidence) → agent (asks user to disambiguate)
+  ├── summary                  → summary → agent → llm_judge
+  └── clarify (low confidence) → agent → llm_judge (asks user to disambiguate)
 ```
 
 Key decision points:
