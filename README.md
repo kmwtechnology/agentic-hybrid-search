@@ -1,6 +1,8 @@
 # Agentic Hybrid Search
 
-> Other docs: [langchain_agent/README.md](langchain_agent/README.md) · [tests/README.md](langchain_agent/tests/README.md) · [tests/e2e/README.md](langchain_agent/tests/e2e/README.md)
+> Other docs: [langchain_agent/README.md](langchain_agent/README.md) ·
+> [tests/README.md](langchain_agent/tests/README.md) ·
+> [tests/e2e/README.md](langchain_agent/tests/e2e/README.md)
 
 A production-grade **LangGraph RAG agent** for Amazon ESCI e-commerce product search.
 Combines hybrid retrieval (vector + BM25 via RRF), LLM-based reranking, intent
@@ -32,18 +34,43 @@ zero when idle.
 
 A conversational RAG agent powered by Google Gemini for e-commerce product discovery:
 
-- **6-intent classifier** — `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary` — keyword fast-path + LLM fallback
-- **Hybrid search** — vector (768-dim Gemini embeddings) + BM25 lexical, fused via Reciprocal Rank Fusion (k=60)
-- **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms)
-- **Dynamic alpha** — query-aware lexical/semantic balance; fast-path alpha for comparison/attribute_filter/refinement, LLM path for search/follow_up
-- **Quality gate** — if max reranker score < 0.5, adjusts alpha ±0.3 and retries once
-- **Conversational query rewriting** — resolves pronouns, comparatives, and short attribute questions using conversation history
-- **Refinement with context validation** — "make them waterproof" narrows the prior result set; category/document-overlap scoring resets context when the user pivots
-- **Typeahead autocomplete** — `GET /api/suggest` edge-ngram prefix matching on product titles + brands with spell correction (Levenshtein + SequenceMatcher), fuzzy fallback for single-character typos, and a three-section UI (Did you mean? / Suggestions / Recent Searches)
-- **Admin reindex API** — `GET /api/admin/reindex` triggers a background ESCI re-ingestion; `GET /api/admin/reindex/status` polls progress; `GET /api/admin/health` reports index health and doc count. Requires session auth (UI login) or `X-Admin-Token` header (GitHub Actions automation)
-- **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase boosting, field boosting, and phonetic matching (double_metaphone via the `analysis-phonetic` plugin), displayed in the observability panel's "Search Optimizations" card
-- **Pipeline Quality Summary** — every turn ends with a per-stage scorecard. With ESCI ground truth: NDCG@10 / MRR / Recall@20 / Precision@10 across BM25 → Hybrid → Reranked, plus a latency cost-benefit table. Without ground truth: a self-referential confidence proxy (top-1 score, score gap, variance, rank churn) labeled high/medium/low
-- **Observability persistence** — clicking a past conversation hydrates the observability panel with that turn's last recorded state (intent, alpha, reranker score, quality gate verdict, latency breakdown) from the LangGraph checkpoint
+- **6-intent classifier** — `search`, `comparison`, `attribute_filter`,
+  `refinement`, `follow_up`, `summary` — keyword fast-path + LLM fallback
+- **Hybrid search** — vector (768-dim Gemini embeddings) + BM25 lexical,
+  fused via Reciprocal Rank Fusion (k=60)
+- **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores
+  query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms)
+- **Dynamic alpha** — query-aware lexical/semantic balance; fast-path alpha
+  for comparison/attribute_filter/refinement, LLM path for search/follow_up
+- **Quality gate** — if max reranker score < 0.5, adjusts alpha ±0.3 and
+  retries once
+- **Conversational query rewriting** — resolves pronouns, comparatives, and
+  short attribute questions using conversation history
+- **Refinement with context validation** — "make them waterproof" narrows
+  the prior result set; category/document-overlap scoring resets context
+  when the user pivots
+- **Typeahead autocomplete** — `GET /api/suggest` edge-ngram prefix matching
+  on product titles + brands with spell correction (Levenshtein +
+  SequenceMatcher), fuzzy fallback for single-character typos, and a
+  three-section UI (Did you mean? / Suggestions / Recent Searches)
+- **Admin reindex API** — `GET /api/admin/reindex` triggers a background
+  ESCI re-ingestion; `GET /api/admin/reindex/status` polls progress;
+  `GET /api/admin/health` reports index health and doc count. Requires
+  session auth (UI login) or `X-Admin-Token` header (GitHub Actions
+  automation)
+- **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
+  boosting, field boosting, and phonetic matching (double_metaphone via the
+  `analysis-phonetic` plugin), displayed in the observability panel's
+  "Search Optimizations" card
+- **Pipeline Quality Summary** — every turn ends with a per-stage scorecard.
+  With ESCI ground truth: NDCG@10 / MRR / Recall@20 / Precision@10 across
+  BM25 → Hybrid → Reranked, plus a latency cost-benefit table. Without
+  ground truth: a self-referential confidence proxy (top-1 score, score gap,
+  variance, rank churn) labeled high/medium/low
+- **Observability persistence** — clicking a past conversation hydrates the
+  observability panel with that turn's last recorded state (intent, alpha,
+  reranker score, quality gate verdict, latency breakdown) from the
+  LangGraph checkpoint
 - **Real-time streaming** — token-by-token WebSocket output with cancellation
 - **Observability panel** — live visualization of every pipeline stage
 
@@ -128,15 +155,23 @@ intent_classifier
 
 Key decision points:
 
-- **Query Evaluator** — classifies query type and sets optimal α (0.0–1.0) with an e-commerce-tuned guide. Also expands vague queries (pronouns, comparatives, short attribute questions) using conversation context.
-- **Quality Gate** — if `reranker_max_score < 0.5` and not yet retried, adjusts α ±0.3 and loops back to the retriever; otherwise continues to the agent.
-- **Reranker** — LLM-based scoring of top-K documents on a 0.0–1.0 scale with Pydantic-validated output.
-- **Citations** — Amazon search URLs derived from product title (`https://www.amazon.com/s?k={title}`), deduplicated and filtered by a minimum reranker score (0.10). Search-by-title is robust against delisted ASINs (the legacy `/dp/{ASIN}` form 404'd frequently).
+- **Query Evaluator** — classifies query type and sets optimal α (0.0–1.0)
+  with an e-commerce-tuned guide. Also expands vague queries (pronouns,
+  comparatives, short attribute questions) using conversation context.
+- **Quality Gate** — if `reranker_max_score < 0.5` and not yet retried,
+  adjusts α ±0.3 and loops back to the retriever; otherwise continues to
+  the agent.
+- **Reranker** — cross-encoder scoring of top-K documents on a 0.0–1.0
+  scale; Gemini Flash Lite fallback with Pydantic-validated output.
+- **Citations** — Amazon search URLs derived from product title
+  (`https://www.amazon.com/s?k={title}`), deduplicated and filtered by a
+  minimum reranker score (0.10). Search-by-title is robust against delisted
+  ASINs (the legacy `/dp/{ASIN}` form 404'd frequently).
 
 ### Search Balance (Alpha Parameter)
 
 | α Range | Strategy | Best For |
-|---------|----------|----------|
+| --- | --- | --- |
 | 0.0–0.15 | Pure lexical | Exact model numbers, ASINs, UPCs |
 | 0.15–0.40 | Lexical-heavy | Brand + category, specific attributes (color/size) |
 | 0.40–0.60 | Balanced | Feature combinations, activity-based queries |
@@ -146,7 +181,7 @@ Key decision points:
 Fast-path defaults:
 
 | Intent | α | Path |
-|--------|---|------|
+| --- | --- | --- |
 | `comparison` | 0.60 | Fast (keyword) |
 | `attribute_filter` | 0.25 | Fast (keyword) |
 | `refinement` | 0.35 | Fast (keyword) |
@@ -158,7 +193,7 @@ retries with an opposite-direction α adjustment.
 ## Tech Stack
 
 | Category | Technology | Purpose |
-|----------|-----------|---------|
+| --- | --- | --- |
 | **LLM (generation)** | Gemini 3 Flash (preview) | Response generation |
 | **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, reranking fallback |
 | **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~10ms/query); Gemini Flash Lite fallback (~500ms) |
@@ -224,13 +259,15 @@ Summarize what we've discussed so far
 The web UI streams typed Pydantic events over WebSocket for every stage:
 
 - **Intent Classification** — detected intent, confidence, keyword vs LLM path
-- **Query Evaluation** — assigned α, reasoning, query expansion (pronouns/comparatives resolved)
+- **Query Evaluation** — assigned α, reasoning, query expansion
+  (pronouns/comparatives resolved)
 - **OpenSearch Query** — full DSL, α, intent, applied filters
 - **Hybrid Search** — vector + BM25 candidates with scores
 - **Reranker** — per-document 0.0–1.0 relevance and top-K selection
 - **Quality Gate** — pass / retry / α adjusted
 - **LLM Streaming** — token-by-token output with timing
-- **Pipeline Quality Summary** — emitted after `AgentCompleteEvent`; renders the per-stage scorecard described below
+- **Pipeline Quality Summary** — emitted after `AgentCompleteEvent`; renders
+  the per-stage scorecard described below
 
 Event schemas live in `langchain_agent/api/schemas/events.py` and must stay
 in sync with `langchain_agent/web/src/types/events.ts`.
@@ -263,7 +300,7 @@ Pure-Python metric implementations live in
 ## Key Techniques
 
 | Technique | Description |
-|-----------|-------------|
+| --- | --- |
 | **6-intent classification** | Keyword fast-path + LLM fallback for `search`, `comparison`, `attribute_filter`, `refinement`, `follow_up`, `summary` |
 | **Conversational query rewriting** | Resolves pronouns, comparatives, short attribute questions using conversation context; skips expansion when a specific brand/product is named |
 | **Context-validated refinement** | Continuity scoring (category match + doc-ID overlap) distinguishes "make them waterproof" (refine prior boots) from "find me dresses" (reset) |
@@ -366,7 +403,10 @@ gcloud logging read resource.type=cloud_run_revision --project=<PROJECT_ID>
 ./scripts/gcp-teardown.sh --project <PROJECT_ID>
 ```
 
-**OpenSearch** is hosted externally on a GCP VM (not provisioned by these scripts). To do a fresh GCP deployment you must have a running OpenSearch instance reachable from Cloud Run, then store its credentials in Secret Manager:
+**OpenSearch** is hosted externally on a GCP VM (not provisioned by these
+scripts). To do a fresh GCP deployment you must have a running OpenSearch
+instance reachable from Cloud Run, then store its credentials in Secret
+Manager:
 
 ```bash
 gcloud secrets create agentic-hybrid-search-opensearch-user --data-file=- <<< "your-user"
@@ -377,8 +417,14 @@ Set `OPENSEARCH_HOST` and `OPENSEARCH_PORT` in your environment before running `
 
 ### CI/CD (GitHub Actions)
 
-- `.github/workflows/build-deploy.yml` — unified pipeline on PRs and merges to `main`. Runs unit + integration tests (with ephemeral Postgres + OpenSearch), lint (black/isort/flake8/mypy), Docker build, push to Artifact Registry (main only), Cloud Run deploy, and smoke tests. Strict linting is enforced — lint failures block the pipeline.
-- `.github/workflows/reindex.yml` — separate manual-dispatch workflow that runs the ESCI reindex against a deployed Cloud Run instance (calls `POST /api/admin/reindex` and polls `GET /api/admin/reindex/status`).
+- `.github/workflows/build-deploy.yml` — unified pipeline on PRs and merges
+  to `main`. Runs unit + integration tests (with ephemeral Postgres +
+  OpenSearch), lint (black/isort/flake8/mypy), Docker build, push to
+  Artifact Registry (main only), Cloud Run deploy, and smoke tests. Strict
+  linting is enforced — lint failures block the pipeline.
+- `.github/workflows/reindex.yml` — separate manual-dispatch workflow that
+  runs the ESCI reindex against a deployed Cloud Run instance (calls
+  `POST /api/admin/reindex` and polls `GET /api/admin/reindex/status`).
 
 Runners use Node.js 24. Authentication uses Workload Identity Federation
 (no long-lived keys). See [CLAUDE.md](CLAUDE.md) for one-time WIF setup.
@@ -403,12 +449,13 @@ cp .env.example .env        # Fill in GOOGLE_API_KEY
 ```
 
 **Prerequisites:** Docker Desktop, Python 3.13+, Node.js 24+,
-Google API key ([get one](https://aistudio.google.com/apikey)), ~1 GB disk for ESCI dataset.
+Google API key ([get one](https://aistudio.google.com/apikey)), ~1 GB disk
+for ESCI dataset.
 
 ## Performance
 
 | Operation | Time |
-|-----------|------|
+| --- | --- |
 | Vector search (HNSW, 768-dim) | ~200–500 ms |
 | BM25 lexical search | ~100–300 ms |
 | RRF fusion + reranking | ~1–2 s |
