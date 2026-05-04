@@ -183,8 +183,14 @@ class OpenSearchQueryEvent(BaseEvent):
     # `quality_gate_retry` if the gate triggers a re-run.
     query_type: Literal["hybrid", "bm25_baseline", "quality_gate_retry"] = "hybrid"
     # Full DSL body sent to OpenSearch (with embedding vectors scrubbed to a
-    # placeholder). Optional only for back-compat with older event payloads.
+    # placeholder). Pure DSL — paste-able into Dashboards Dev Tools.
     body: Optional[Dict[str, Any]] = None
+    # Index the search ran against (e.g. ``agentic_hybrid_search_docs``).
+    index: Optional[str] = None
+    # Query-string params (e.g. ``{"search_pipeline": "hybrid_search_pipeline"}``).
+    # Rendered above the body in the DSL viewer so users can reproduce the
+    # exact request line.
+    params: Optional[Dict[str, str]] = None
 
 
 class QualityGateEvent(BaseEvent):

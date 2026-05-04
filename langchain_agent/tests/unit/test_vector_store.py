@@ -609,9 +609,10 @@ class TestCaptureBody:
         store._text_search("shoes", k=4, capture_body=capture)
 
         assert capture, "capture dict should be filled"
-        assert capture.get("size") == 4
-        assert "query" in capture
-        assert capture.get("__index") == "test_index"
+        body = capture["body"]
+        assert body["size"] == 4
+        assert "query" in body
+        assert capture["index"] == "test_index"
 
     def test_bm25_only_search_captures_body(self):
         store, mock_client = _make_store()
@@ -620,11 +621,9 @@ class TestCaptureBody:
         capture: dict = {}
         store.bm25_only_search("blue widgets", k=10, capture_body=capture)
 
-        assert "query" in capture
-        # Embedding scrub leaves a sentinel only when there's a vector.
-        # Pure BM25 has no embedding, so no scrub sentinel — but the body
-        # should still echo the multi_match clause.
-        must = capture["query"]["bool"]["must"]
+        body = capture["body"]
+        # Pure BM25 has no embedding — body should echo the multi_match clause.
+        must = body["query"]["bool"]["must"]
         assert any("multi_match" in clause for clause in must)
 
     def test_hybrid_native_captures_body_with_scrubbed_vector(self):
@@ -643,10 +642,25 @@ class TestCaptureBody:
             capture_body=capture,
         )
 
+        body = capture["body"]
         # The full body is captured but the 768-dim vector is replaced.
-        knn_clause = capture["query"]["hybrid"]["queries"][0]["knn"]
+        knn_clause = body["query"]["hybrid"]["queries"][0]["knn"]
         assert knn_clause["embedding"]["vector"] == "<EMBEDDING_OMITTED_768_DIMS>"
-        assert capture.get("__params", {}).get("search_pipeline") == "hybrid_search_pipeline"
+        assert capture["params"]["search_pipeline"] == "hybrid_search_pipeline"
+        assert capture["index"] == "test_index"
+
+    def test_capture_body_is_pure_dsl(self):
+        """The body field must contain ONLY valid OpenSearch DSL — no internal
+        sentinels — so users can paste it into Dashboards Dev Tools."""
+        store, mock_client = _make_store()
+        mock_client.search.return_value = {"hits": {"hits": []}}
+
+        capture: dict = {}
+        store._text_search("query", k=4, capture_body=capture)
+
+        body = capture["body"]
+        # No keys starting with `__` (those would be internal capture metadata).
+        assert not any(k.startswith("__") for k in body.keys())
 
     def test_capture_body_optional_no_op_when_none(self):
         store, mock_client = _make_store()

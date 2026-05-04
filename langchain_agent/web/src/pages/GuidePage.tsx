@@ -118,6 +118,12 @@ export function GuidePage() {
               <p className="text-sm text-gray-600">End-of-pipeline scorecard rendered as the last card in the Observability panel.</p>
               <p className="text-xs text-gray-500 mt-1">When the query is in ESCI: BM25 → Hybrid → Reranked NDCG@10 / MRR / Recall@20 / Precision@10 with latency lift-per-100ms. Otherwise: a self-referential confidence proxy.</p>
             </div>
+
+            <div className="border-l-4 border-amber-500 pl-4">
+              <h4 className="font-semibold text-gray-900">OpenSearch DSL Viewer</h4>
+              <p className="text-sm text-gray-600">Click the small "DSL" eye icon to see the exact query body the retriever sent to OpenSearch.</p>
+              <p className="text-xs text-gray-500 mt-1">Three viewers: hybrid query (knn + BM25 fused via the normalization pipeline), BM25 baseline (parallel, optimization toggles applied), and quality-gate retry (only when the gate fires). Embedding vectors are scrubbed; the rest is paste-able into Dashboards Dev Tools.</p>
+            </div>
           </div>
         </div>
       ),
@@ -363,7 +369,11 @@ Client sends:
 
 Server streams back:
 {"type": "SearchProgressEvent", "node": "retriever", ...}
-{"type": "OpenSearchQueryEvent", "query": {...}, ...}
+{"type": "opensearch_query", "query_type": "hybrid",
+ "index": "agentic_hybrid_search_docs",
+ "params": {"search_pipeline": "hybrid_search_pipeline"},
+ "body": { /* full DSL body, embedding scrubbed */ }, ...}
+{"type": "opensearch_query", "query_type": "bm25_baseline", ...}
 {"type": "RerankerProgressEvent", ...}
 {"type": "LLMResponseChunkEvent", "chunk": "Here are..."}
 {"type": "AgentCompleteEvent", "response": "...", "citations": [...]}`}</code>

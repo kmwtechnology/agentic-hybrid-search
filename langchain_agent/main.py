@@ -2506,7 +2506,9 @@ Original query: {query}
                     intent=intent,
                     optimizations=state.get("optimizations") or None,
                     query_type="quality_gate_retry" if is_retry else "hybrid",
-                    body=hybrid_capture or None,
+                    body=hybrid_capture.get("body"),
+                    index=hybrid_capture.get("index"),
+                    params=hybrid_capture.get("params"),
                 )
                 self._emit_event_from_sync(hybrid_event)
             except Exception as e:
@@ -2522,7 +2524,9 @@ Original query: {query}
                         intent=intent,
                         optimizations=state.get("optimizations") or None,
                         query_type="bm25_baseline",
-                        body=bm25_capture or None,
+                        body=bm25_capture.get("body"),
+                        index=bm25_capture.get("index"),
+                        params=bm25_capture.get("params"),
                     )
                     self._emit_event_from_sync(bm25_event)
                 except Exception as e:

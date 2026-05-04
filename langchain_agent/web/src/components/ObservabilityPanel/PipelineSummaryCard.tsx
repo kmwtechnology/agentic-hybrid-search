@@ -352,6 +352,8 @@ export function PipelineSummaryCard() {
         title="BM25 baseline DSL"
         subtitle="Pure lexical, optimization toggles applied"
         body={bm25Event?.body ?? null}
+        index={bm25Event?.index}
+        params={bm25Event?.params}
         onClose={() => setBm25DslOpen(false)}
       />
     </div>

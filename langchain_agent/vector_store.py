@@ -583,9 +583,9 @@ class OpenSearchVectorStore:
         # Use search_pipeline parameter to apply normalization
         params = {"search_pipeline": self.search_pipeline}
         if capture_body is not None:
-            capture_body.update(_scrub_body_for_display(body))
-            capture_body["__params"] = dict(params)
-            capture_body["__index"] = self.index_name
+            capture_body["body"] = _scrub_body_for_display(body)
+            capture_body["params"] = dict(params)
+            capture_body["index"] = self.index_name
         response = self.client.search(index=self.index_name, body=body, params=params)
         return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
 
@@ -633,12 +633,10 @@ class OpenSearchVectorStore:
             },
         }
         if capture_body is not None:
-            capture_body.update(
-                _scrub_body_for_display(
-                    {"__rrf_fallback": True, "vector_body": vector_body, "text_body": text_body}
-                )
+            capture_body["body"] = _scrub_body_for_display(
+                {"_rrf_fallback": True, "vector_body": vector_body, "text_body": text_body}
             )
-            capture_body["__index"] = self.index_name
+            capture_body["index"] = self.index_name
         text_response = self.client.search(index=self.index_name, body=text_body)
 
         # Build rank maps
@@ -694,8 +692,8 @@ class OpenSearchVectorStore:
             }
 
             if capture_body is not None:
-                capture_body.update(_scrub_body_for_display(body))
-                capture_body["__index"] = self.index_name
+                capture_body["body"] = _scrub_body_for_display(body)
+                capture_body["index"] = self.index_name
 
             response = self.client.search(index=self.index_name, body=body)
             return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]

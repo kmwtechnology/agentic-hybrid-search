@@ -297,6 +297,8 @@ function EventDetails({ event }: { event: AgentEvent }) {
                 title={`${typeLabel} query DSL`}
                 subtitle={`Intent: ${ev.intent ?? '—'} · alpha ${((ev.alpha ?? 0) * 100).toFixed(0)}%`}
                 body={ev.body}
+                index={ev.index}
+                params={ev.params}
               />
             )}
           </div>
@@ -401,9 +403,11 @@ interface DslViewerEyeButtonProps {
   title: string
   subtitle?: string
   body: Record<string, unknown> | null | undefined
+  index?: string
+  params?: Record<string, string>
 }
 
-function DslViewerEyeButton({ title, subtitle, body }: DslViewerEyeButtonProps) {
+function DslViewerEyeButton({ title, subtitle, body, index, params }: DslViewerEyeButtonProps) {
   const [open, setOpen] = useState(false)
   return (
     <>
@@ -424,6 +428,8 @@ function DslViewerEyeButton({ title, subtitle, body }: DslViewerEyeButtonProps) 
         title={title}
         subtitle={subtitle}
         body={body}
+        index={index}
+        params={params}
         onClose={() => setOpen(false)}
       />
     </>

@@ -15,10 +15,20 @@ interface DslViewerModalProps {
   title: string
   subtitle?: string
   body: Record<string, unknown> | null | undefined
+  index?: string
+  params?: Record<string, string>
   onClose: () => void
 }
 
-export function DslViewerModal({ isOpen, title, subtitle, body, onClose }: DslViewerModalProps) {
+function buildRequestLine(index?: string, params?: Record<string, string>): string | null {
+  if (!index) return null
+  const qs = params && Object.keys(params).length > 0
+    ? '?' + Object.entries(params).map(([k, v]) => `${k}=${v}`).join('&')
+    : ''
+  return `POST /${index}/_search${qs}`
+}
+
+export function DslViewerModal({ isOpen, title, subtitle, body, index, params, onClose }: DslViewerModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
 
@@ -43,10 +53,12 @@ export function DslViewerModal({ isOpen, title, subtitle, body, onClose }: DslVi
   if (!isOpen) return null
 
   const json = body ? JSON.stringify(body, null, 2) : '// no DSL body available'
+  const requestLine = buildRequestLine(index, params)
+  const copyText = requestLine ? `${requestLine}\n${json}` : json
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(json)
+      await navigator.clipboard.writeText(copyText)
       setCopied(true)
     } catch {
       // Clipboard may be unavailable (insecure context, denied permission).
@@ -104,12 +116,21 @@ export function DslViewerModal({ isOpen, title, subtitle, body, onClose }: DslVi
         </div>
 
         <div className="flex-1 overflow-auto p-4">
-          <pre className="text-xs text-gray-200 font-mono whitespace-pre bg-gray-950/60 rounded p-3 border border-gray-800">
+          {requestLine && (
+            <pre className="text-xs text-yellow-300 font-mono whitespace-pre bg-gray-950/80 rounded-t p-3 border border-b-0 border-gray-800">
+              {requestLine}
+            </pre>
+          )}
+          <pre
+            className={`text-xs text-gray-200 font-mono whitespace-pre bg-gray-950/60 p-3 border border-gray-800 ${
+              requestLine ? 'rounded-b' : 'rounded'
+            }`}
+          >
             {json}
           </pre>
           <p className="text-[11px] text-gray-500 mt-3">
-            Embedding vectors are replaced with a placeholder for readability. Paste the rest into
-            OpenSearch Dashboards Dev Tools to inspect or replay.
+            Embedding vectors are replaced with a placeholder for readability. Paste the request
+            line + body into OpenSearch Dashboards Dev Tools to inspect or replay.
           </p>
         </div>
       </div>

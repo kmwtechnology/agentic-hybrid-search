@@ -33,11 +33,11 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
   const opensearchEvents = (retrieverStep?.events ?? []).filter(
     (e): e is OpenSearchQueryEvent => e.type === 'opensearch_query'
   )
-  // Default to the legacy event (no query_type) so older replays still render.
-  const opensearchQueryEvent =
-    opensearchEvents.find(e => (e.query_type ?? 'hybrid') === 'hybrid') ??
-    opensearchEvents.find(e => !e.query_type) ??
-    opensearchEvents[0]
+  // Treat events without an explicit query_type as legacy hybrid for
+  // back-compat with replays from before the multi-emit change.
+  const opensearchQueryEvent = opensearchEvents.find(
+    e => (e.query_type ?? 'hybrid') === 'hybrid'
+  )
   const retryQueryEvent = opensearchEvents.find(e => e.query_type === 'quality_gate_retry')
 
   // Toggle document expansion
@@ -147,6 +147,8 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
         title="Hybrid query DSL"
         subtitle={`Intent: ${opensearchQueryEvent?.intent ?? '—'} · alpha ${((opensearchQueryEvent?.alpha ?? 0) * 100).toFixed(0)}%`}
         body={opensearchQueryEvent?.body ?? null}
+        index={opensearchQueryEvent?.index}
+        params={opensearchQueryEvent?.params}
         onClose={() => setHybridDslOpen(false)}
       />
       <DslViewerModal
@@ -154,6 +156,8 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
         title="Quality-gate retry DSL"
         subtitle={`alpha ${((retryQueryEvent?.alpha ?? 0) * 100).toFixed(0)}%`}
         body={retryQueryEvent?.body ?? null}
+        index={retryQueryEvent?.index}
+        params={retryQueryEvent?.params}
         onClose={() => setRetryDslOpen(false)}
       />
 

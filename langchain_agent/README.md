@@ -450,7 +450,7 @@ WebSocket:
 | `intent_classification` | 6 intents + confidence + keyword/LLM path |
 | `query_evaluation` | Assigned α, reasoning |
 | `query_expansion` | Original vs rewritten query |
-| `opensearch_query` | Full DSL, α, intent, applied filters |
+| `opensearch_query` | α, intent, applied filters, full DSL `body` + `index` + `params`. Tagged with `query_type` (`hybrid`, `bm25_baseline`, `quality_gate_retry`) so the UI can render an eye-icon viewer per query type. |
 | `hybrid_search_start` / `hybrid_search_result` | Candidates + scores |
 | `reranker_start` / `reranker_progress` / `reranker_result` | Per-doc 0.0–1.0 |
 | `quality_gate` | pass / retry / α adjusted |
