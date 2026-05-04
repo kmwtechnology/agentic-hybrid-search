@@ -3,11 +3,18 @@
  */
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye } from 'lucide-react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import type { AgentEvent } from '../../types/events'
 import clsx from 'clsx'
 import { RawEventInspector } from './RawEventInspector'
+import { DslViewerModal } from './DslViewerModal'
+
+const QUERY_TYPE_LABEL: Record<string, string> = {
+  hybrid: 'Hybrid',
+  bm25_baseline: 'BM25 baseline',
+  quality_gate_retry: 'Quality-gate retry',
+}
 
 interface EventCardProps {
   event: AgentEvent
@@ -274,27 +281,46 @@ function EventDetails({ event }: { event: AgentEvent }) {
         </div>
       )
 
-    case 'opensearch_query':
+    case 'opensearch_query': {
+      const ev = event as any
+      const queryType: string = ev.query_type ?? 'hybrid'
+      const typeLabel = QUERY_TYPE_LABEL[queryType] ?? queryType
       return (
         <div className="space-y-2 text-xs text-gray-300">
-          <div><span className="text-gray-500">Intent:</span> {(event as any).intent}</div>
-          <div><span className="text-gray-500">Alpha:</span> {((event as any).alpha * 100).toFixed(0)}%</div>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <span className="text-gray-500">Type:</span>{' '}
+              <span className="text-yellow-300">{typeLabel}</span>
+            </div>
+            {ev.body && (
+              <DslViewerEyeButton
+                title={`${typeLabel} query DSL`}
+                subtitle={`Intent: ${ev.intent ?? '—'} · alpha ${((ev.alpha ?? 0) * 100).toFixed(0)}%`}
+                body={ev.body}
+                index={ev.index}
+                params={ev.params}
+              />
+            )}
+          </div>
+          <div><span className="text-gray-500">Intent:</span> {ev.intent}</div>
+          <div><span className="text-gray-500">Alpha:</span> {((ev.alpha ?? 0) * 100).toFixed(0)}%</div>
           <div className="space-y-1">
             <div className="text-gray-500">Query:</div>
             <div className="bg-black/30 p-2 rounded text-gray-300 break-words">
-              {(event as any).query}
+              {ev.query}
             </div>
           </div>
-          {(event as any).filter_summary && (
+          {ev.filter_summary && (
             <div className="space-y-1">
               <div className="text-gray-500">Applied Filters:</div>
               <div className="bg-black/30 p-2 rounded text-yellow-300 font-mono">
-                {(event as any).filter_summary}
+                {ev.filter_summary}
               </div>
             </div>
           )}
         </div>
       )
+    }
 
     case 'llm_response_chunk':
       return (
@@ -371,6 +397,43 @@ function EventDetails({ event }: { event: AgentEvent }) {
         </div>
       )
   }
+}
+
+interface DslViewerEyeButtonProps {
+  title: string
+  subtitle?: string
+  body: Record<string, unknown> | null | undefined
+  index?: string
+  params?: Record<string, string>
+}
+
+function DslViewerEyeButton({ title, subtitle, body, index, params }: DslViewerEyeButtonProps) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen(true)
+        }}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-yellow-300/80 hover:text-yellow-200 hover:bg-yellow-500/10 transition-colors"
+        title="View OpenSearch DSL"
+        aria-label={`View ${title}`}
+      >
+        <Eye className="w-3.5 h-3.5" />
+        DSL
+      </button>
+      <DslViewerModal
+        isOpen={open}
+        title={title}
+        subtitle={subtitle}
+        body={body}
+        index={index}
+        params={params}
+        onClose={() => setOpen(false)}
+      />
+    </>
+  )
 }
 
 function getRelativeTime(date: Date): string {

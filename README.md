@@ -261,7 +261,10 @@ The web UI streams typed Pydantic events over WebSocket for every stage:
 - **Intent Classification** — detected intent, confidence, keyword vs LLM path
 - **Query Evaluation** — assigned α, reasoning, query expansion
   (pronouns/comparatives resolved)
-- **OpenSearch Query** — full DSL, α, intent, applied filters
+- **OpenSearch Query** — α, intent, applied filters, plus a small "DSL"
+  eye-icon that opens a modal with the exact query body the retriever
+  sent (hybrid, BM25 baseline, and quality-gate retry are each shown
+  separately; embedding vectors are scrubbed for readability)
 - **Hybrid Search** — vector + BM25 candidates with scores
 - **Reranker** — per-document 0.0–1.0 relevance and top-K selection
 - **Quality Gate** — pass / retry / α adjusted

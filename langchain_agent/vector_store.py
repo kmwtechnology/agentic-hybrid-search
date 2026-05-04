@@ -38,6 +38,28 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
+
+def _scrub_body_for_display(body: Any) -> Any:
+    """Walk an OpenSearch query body and replace embedding vectors with a placeholder.
+
+    The 768-dim float vector is faithful but useless to a human reader and would
+    bloat the WebSocket frame for the observability panel. Replace any list of
+    floats found at a ``"vector"`` key with a sentinel string so the rest of
+    the DSL stays copy-pasteable into Dashboards Dev Tools.
+    """
+    if isinstance(body, dict):
+        out: Dict[str, Any] = {}
+        for k, v in body.items():
+            if k == "vector" and isinstance(v, list) and v and isinstance(v[0], (int, float)):
+                out[k] = f"<EMBEDDING_OMITTED_{len(v)}_DIMS>"
+            else:
+                out[k] = _scrub_body_for_display(v)
+        return out
+    if isinstance(body, list):
+        return [_scrub_body_for_display(item) for item in body]
+    return body
+
+
 # OpenSearch index mapping definition
 INDEX_MAPPING = {
     "settings": {
@@ -313,6 +335,7 @@ class OpenSearchVectorStore:
             alpha=search_kwargs.get("alpha", RETRIEVER_ALPHA),
             filters=search_kwargs.get("filters"),
             optimizations=search_kwargs.get("optimizations"),
+            capture_body=search_kwargs.get("capture_body"),
         )
 
     @staticmethod
@@ -430,6 +453,7 @@ class OpenSearchVectorStore:
         alpha: float = 0.5,
         filters: Optional[List[Dict[str, Any]]] = None,
         optimizations: Optional[Dict[str, bool]] = None,
+        capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """
         Hybrid search combining vector similarity and full-text search.
@@ -457,10 +481,14 @@ class OpenSearchVectorStore:
         # search regardless of the alpha the query evaluator chose.
         opts = optimizations or {}
         if opts.get("hybrid", True) is False:
-            return self._text_search(query, k, filters, optimizations=optimizations)
+            return self._text_search(
+                query, k, filters, optimizations=optimizations, capture_body=capture_body
+            )
 
         if alpha == 0.0:
-            return self._text_search(query, k, filters, optimizations=optimizations)
+            return self._text_search(
+                query, k, filters, optimizations=optimizations, capture_body=capture_body
+            )
 
         if alpha == 1.0:
             return self.similarity_search(query, k)
@@ -473,11 +501,25 @@ class OpenSearchVectorStore:
 
             if self._check_hybrid_support():
                 return self._hybrid_search_native(
-                    query, query_embedding, k, fetch_k, alpha, filters, optimizations
+                    query,
+                    query_embedding,
+                    k,
+                    fetch_k,
+                    alpha,
+                    filters,
+                    optimizations,
+                    capture_body=capture_body,
                 )
             else:
                 return self._hybrid_search_rrf(
-                    query, query_embedding, k, fetch_k, alpha, filters, optimizations
+                    query,
+                    query_embedding,
+                    k,
+                    fetch_k,
+                    alpha,
+                    filters,
+                    optimizations,
+                    capture_body=capture_body,
                 )
 
         except EmbeddingError:
@@ -496,6 +538,7 @@ class OpenSearchVectorStore:
         alpha: float,
         filters: Optional[List[Dict[str, Any]]] = None,
         optimizations: Optional[Dict[str, bool]] = None,
+        capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Native OpenSearch hybrid search using search pipeline with optional attribute filters."""
         # Build filter lists - combine collection_id with attribute filters
@@ -539,6 +582,10 @@ class OpenSearchVectorStore:
 
         # Use search_pipeline parameter to apply normalization
         params = {"search_pipeline": self.search_pipeline}
+        if capture_body is not None:
+            capture_body["body"] = _scrub_body_for_display(body)
+            capture_body["params"] = dict(params)
+            capture_body["index"] = self.index_name
         response = self.client.search(index=self.index_name, body=body, params=params)
         return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
 
@@ -551,6 +598,7 @@ class OpenSearchVectorStore:
         alpha: float,
         filters: Optional[List[Dict[str, Any]]] = None,
         optimizations: Optional[Dict[str, bool]] = None,
+        capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Client-side RRF fallback for older OpenSearch versions."""
         RRF_K = 60
@@ -584,6 +632,11 @@ class OpenSearchVectorStore:
                 }
             },
         }
+        if capture_body is not None:
+            capture_body["body"] = _scrub_body_for_display(
+                {"_rrf_fallback": True, "vector_body": vector_body, "text_body": text_body}
+            )
+            capture_body["index"] = self.index_name
         text_response = self.client.search(index=self.index_name, body=text_body)
 
         # Build rank maps
@@ -619,6 +672,7 @@ class OpenSearchVectorStore:
         k: int = 4,
         filters: Optional[List[Dict[str, Any]]] = None,
         optimizations: Optional[Dict[str, bool]] = None,
+        capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Pure BM25 text search for alpha=0.0."""
         try:
@@ -637,6 +691,10 @@ class OpenSearchVectorStore:
                 },
             }
 
+            if capture_body is not None:
+                capture_body["body"] = _scrub_body_for_display(body)
+                capture_body["index"] = self.index_name
+
             response = self.client.search(index=self.index_name, body=body)
             return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
 
@@ -650,6 +708,7 @@ class OpenSearchVectorStore:
         k: int = 20,
         filters: Optional[List[Dict[str, Any]]] = None,
         optimizations: Optional[Dict[str, bool]] = None,
+        capture_body: Optional[Dict[str, Any]] = None,
     ) -> List[Document]:
         """Public BM25-only search used as the baseline for relevancy metrics.
 
@@ -658,7 +717,13 @@ class OpenSearchVectorStore:
         if they're on for the active hybrid query). The ``hybrid`` toggle
         itself is ignored — this method is the BM25 baseline.
         """
-        return self._text_search(query, k=k, filters=filters, optimizations=optimizations)
+        return self._text_search(
+            query,
+            k=k,
+            filters=filters,
+            optimizations=optimizations,
+            capture_body=capture_body,
+        )
 
     def stock_bm25_search(
         self,
@@ -865,6 +930,7 @@ class OpenSearchRetriever:
         alpha: float = 0.5,
         filters: Optional[List[Dict[str, Any]]] = None,
         optimizations: Optional[Dict[str, bool]] = None,
+        capture_body: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.vector_store = vector_store
         self.search_type = search_type
@@ -873,6 +939,10 @@ class OpenSearchRetriever:
         self.alpha = alpha
         self.filters = filters
         self.optimizations = optimizations
+        # Optional sink for the actual DSL body sent to OpenSearch — populated
+        # in-place during ``invoke()`` so the observability layer can echo
+        # the exact query the cluster saw (with embedding scrubbed).
+        self.capture_body = capture_body
 
     @staticmethod
     def collapse_by_document(
@@ -930,6 +1000,7 @@ class OpenSearchRetriever:
                 alpha=self.alpha,
                 filters=self.filters,
                 optimizations=self.optimizations,
+                capture_body=self.capture_body,
             )
         elif self.search_type == "similarity":
             documents = self.vector_store.similarity_search(query, k=self.k)

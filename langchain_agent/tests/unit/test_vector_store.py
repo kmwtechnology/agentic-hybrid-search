@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 
-from vector_store import OpenSearchRetriever, OpenSearchVectorStore
+from vector_store import OpenSearchRetriever, OpenSearchVectorStore, _scrub_body_for_display
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -536,3 +536,134 @@ class TestOpenSearchRetrieverInvoke:
         results = retriever.invoke("query")
         assert all(r.metadata["product_id"] == "p1" for r in results)
         assert len(results) == 1
+
+
+# ---------------------------------------------------------------------------
+# TestScrubBodyForDisplay
+# ---------------------------------------------------------------------------
+
+
+class TestScrubBodyForDisplay:
+    """The DSL viewer in the observability panel needs a copy-pasteable body
+    without the 768-dim embedding vector that bloats the WebSocket frame and
+    is useless to a human reader."""
+
+    def test_replaces_vector_with_placeholder(self):
+        body = {"query": {"knn": {"embedding": {"vector": [0.1, 0.2, 0.3], "k": 30}}}}
+        scrubbed = _scrub_body_for_display(body)
+        assert scrubbed["query"]["knn"]["embedding"]["vector"] == "<EMBEDDING_OMITTED_3_DIMS>"
+        assert scrubbed["query"]["knn"]["embedding"]["k"] == 30
+
+    def test_preserves_non_embedding_keys(self):
+        body = {
+            "size": 4,
+            "query": {"bool": {"must": [{"multi_match": {"query": "shoes", "fuzziness": "AUTO"}}]}},
+        }
+        scrubbed = _scrub_body_for_display(body)
+        assert scrubbed == body
+
+    def test_does_not_mutate_input(self):
+        body = {"vector": [1.0, 2.0]}
+        _scrub_body_for_display(body)
+        assert body["vector"] == [1.0, 2.0]
+
+    def test_handles_nested_lists(self):
+        body = {
+            "query": {
+                "hybrid": {
+                    "queries": [
+                        {"knn": {"embedding": {"vector": [0.5] * 768}}},
+                        {"bool": {"must": [{"match": {"title": "x"}}]}},
+                    ]
+                }
+            }
+        }
+        scrubbed = _scrub_body_for_display(body)
+        assert (
+            scrubbed["query"]["hybrid"]["queries"][0]["knn"]["embedding"]["vector"]
+            == "<EMBEDDING_OMITTED_768_DIMS>"
+        )
+        assert scrubbed["query"]["hybrid"]["queries"][1]["bool"]["must"][0]["match"]["title"] == "x"
+
+    def test_only_scrubs_float_vectors_not_arbitrary_lists(self):
+        body = {"fields": ["title", "chunk_text"], "vector": [0.1, 0.2]}
+        scrubbed = _scrub_body_for_display(body)
+        assert scrubbed["fields"] == ["title", "chunk_text"]
+        assert scrubbed["vector"] == "<EMBEDDING_OMITTED_2_DIMS>"
+
+
+# ---------------------------------------------------------------------------
+# TestCaptureBody
+# ---------------------------------------------------------------------------
+
+
+class TestCaptureBody:
+    """Verify that the optional `capture_body` sink is filled with the actual
+    DSL sent to OpenSearch, with embedding vectors scrubbed."""
+
+    def test_text_search_captures_body(self):
+        store, mock_client = _make_store()
+        mock_client.search.return_value = {"hits": {"hits": []}}
+
+        capture: dict = {}
+        store._text_search("shoes", k=4, capture_body=capture)
+
+        assert capture, "capture dict should be filled"
+        body = capture["body"]
+        assert body["size"] == 4
+        assert "query" in body
+        assert capture["index"] == "test_index"
+
+    def test_bm25_only_search_captures_body(self):
+        store, mock_client = _make_store()
+        mock_client.search.return_value = {"hits": {"hits": []}}
+
+        capture: dict = {}
+        store.bm25_only_search("blue widgets", k=10, capture_body=capture)
+
+        body = capture["body"]
+        # Pure BM25 has no embedding — body should echo the multi_match clause.
+        must = body["query"]["bool"]["must"]
+        assert any("multi_match" in clause for clause in must)
+
+    def test_hybrid_native_captures_body_with_scrubbed_vector(self):
+        store, mock_client = _make_store()
+        store.search_pipeline = "hybrid_search_pipeline"
+        store._hybrid_supported = True
+        mock_client.search.return_value = {"hits": {"hits": []}}
+
+        capture: dict = {}
+        store._hybrid_search_native(
+            "wireless headphones",
+            query_embedding=[0.42] * 768,
+            k=4,
+            fetch_k=20,
+            alpha=0.5,
+            capture_body=capture,
+        )
+
+        body = capture["body"]
+        # The full body is captured but the 768-dim vector is replaced.
+        knn_clause = body["query"]["hybrid"]["queries"][0]["knn"]
+        assert knn_clause["embedding"]["vector"] == "<EMBEDDING_OMITTED_768_DIMS>"
+        assert capture["params"]["search_pipeline"] == "hybrid_search_pipeline"
+        assert capture["index"] == "test_index"
+
+    def test_capture_body_is_pure_dsl(self):
+        """The body field must contain ONLY valid OpenSearch DSL — no internal
+        sentinels — so users can paste it into Dashboards Dev Tools."""
+        store, mock_client = _make_store()
+        mock_client.search.return_value = {"hits": {"hits": []}}
+
+        capture: dict = {}
+        store._text_search("query", k=4, capture_body=capture)
+
+        body = capture["body"]
+        # No keys starting with `__` (those would be internal capture metadata).
+        assert not any(k.startswith("__") for k in body.keys())
+
+    def test_capture_body_optional_no_op_when_none(self):
+        store, mock_client = _make_store()
+        mock_client.search.return_value = {"hits": {"hits": []}}
+        # Should not raise when capture_body is None (default path).
+        store._text_search("query", k=4)

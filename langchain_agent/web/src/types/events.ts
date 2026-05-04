@@ -71,6 +71,8 @@ export interface QueryExpansionEvent extends BaseEvent {
   expansion_reason: string
 }
 
+export type OpenSearchQueryType = 'hybrid' | 'bm25_baseline' | 'quality_gate_retry'
+
 export interface OpenSearchQueryEvent extends BaseEvent {
   type: 'opensearch_query'
   node: 'retriever'
@@ -80,6 +82,10 @@ export interface OpenSearchQueryEvent extends BaseEvent {
   filter_summary?: string  // Human-readable summary (e.g., "brand: Sony, color: blue")
   intent: string  // intent that triggered the search
   optimizations?: Record<string, boolean>  // Per-feature toggles applied to this search
+  query_type?: OpenSearchQueryType  // Which kind of query this event represents
+  body?: Record<string, unknown>  // Full DSL body sent to OpenSearch (embeddings scrubbed)
+  index?: string  // Index the search ran against
+  params?: Record<string, string>  // Query-string params (e.g. search_pipeline)
 }
 
 export interface QualityGateEvent extends BaseEvent {

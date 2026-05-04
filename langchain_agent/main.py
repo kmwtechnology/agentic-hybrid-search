@@ -2396,25 +2396,6 @@ Original query: {query}
                     f"Retriever (refinement): constraining to {len(prior_product_ids)} prior search product(s)"
                 )
 
-        # Emit OpenSearch query event with filters and modifications
-        if OpenSearchQueryEvent:
-            try:
-                filter_summary = self._format_filter_summary(attribute_filters)
-                event = OpenSearchQueryEvent(
-                    query=query,
-                    alpha=alpha,
-                    filters=attribute_filters,
-                    filter_summary=filter_summary,
-                    intent=intent,
-                    optimizations=state.get("optimizations") or None,
-                )
-                logger.info(
-                    f"Retriever: emitting OpenSearch query event - intent={intent}, filters={bool(attribute_filters)}, filter_summary={filter_summary}"
-                )
-                self._emit_event_from_sync(event)
-            except Exception as e:
-                logger.error(f"Could not emit OpenSearch query event: {e}", exc_info=True)
-
         # Emit embedding progress
         if SearchProgressEvent:
             try:
@@ -2423,6 +2404,13 @@ Original query: {query}
                 )
             except Exception as e:
                 logger.debug(f"Could not emit embedding progress event: {e}")
+
+        # Capture sinks for the actual DSL bodies sent to OpenSearch. Each
+        # parallel search gets its own dict so the threadpool workers don't
+        # race when filling them in. The bodies are emitted to the
+        # observability panel below once the searches return.
+        hybrid_capture: Dict[str, Any] = {}
+        bm25_capture: Dict[str, Any] = {}
 
         # Create retriever with dynamic alpha, attribute filters, and per-message
         # optimization toggles (sent by the frontend via the chat WebSocket).
@@ -2434,6 +2422,7 @@ Original query: {query}
                 "alpha": alpha,
                 "filters": attribute_filters,
                 "optimizations": state.get("optimizations") or {},
+                "capture_body": hybrid_capture,
             },
         )
 
@@ -2467,6 +2456,7 @@ Original query: {query}
                 k=RETRIEVER_FETCH_K,
                 filters=attribute_filters,
                 optimizations=bm25_query_opts,
+                capture_body=bm25_capture,
             )
             return docs, (time.time() - t0) * 1000.0
 
@@ -2498,6 +2488,51 @@ Original query: {query}
             f"stock_bm25={len(stock_bm25_results)} docs ({stock_bm25_latency_ms:.0f}ms), "
             f"wall={retrieve_elapsed:.3f}s"
         )
+
+        # Emit OpenSearch query events with the actual DSL bodies. The hybrid
+        # event flips to `quality_gate_retry` on the second pass so the UI
+        # can surface the retry separately. The BM25 baseline is identical
+        # across passes (alpha doesn't affect it), so we only emit it once
+        # per request — on the first pass.
+        if OpenSearchQueryEvent:
+            filter_summary = self._format_filter_summary(attribute_filters)
+            is_retry = bool(state.get("quality_gate_retried", False))
+            try:
+                hybrid_event = OpenSearchQueryEvent(
+                    query=query,
+                    alpha=alpha,
+                    filters=attribute_filters,
+                    filter_summary=filter_summary,
+                    intent=intent,
+                    optimizations=state.get("optimizations") or None,
+                    query_type="quality_gate_retry" if is_retry else "hybrid",
+                    body=hybrid_capture.get("body"),
+                    index=hybrid_capture.get("index"),
+                    params=hybrid_capture.get("params"),
+                )
+                self._emit_event_from_sync(hybrid_event)
+            except Exception as e:
+                logger.error(f"Could not emit hybrid OpenSearch query event: {e}", exc_info=True)
+
+            if not is_retry:
+                try:
+                    bm25_event = OpenSearchQueryEvent(
+                        query=query,
+                        alpha=0.0,  # BM25 baseline is pure lexical
+                        filters=attribute_filters,
+                        filter_summary=filter_summary,
+                        intent=intent,
+                        optimizations=state.get("optimizations") or None,
+                        query_type="bm25_baseline",
+                        body=bm25_capture.get("body"),
+                        index=bm25_capture.get("index"),
+                        params=bm25_capture.get("params"),
+                    )
+                    self._emit_event_from_sync(bm25_event)
+                except Exception as e:
+                    logger.error(
+                        f"Could not emit BM25 baseline OpenSearch query event: {e}", exc_info=True
+                    )
 
         # Best-effort lookup of ESCI ground-truth judgments. Missing index or
         # missing query is silently treated as "no ground truth" — the UI

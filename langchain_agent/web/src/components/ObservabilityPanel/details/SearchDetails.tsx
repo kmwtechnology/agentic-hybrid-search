@@ -4,9 +4,10 @@
 
 import { useState } from 'react'
 import { useObservabilityStore } from '../../../stores/observabilityStore'
-import { FileText, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Loader2, ExternalLink, Filter } from 'lucide-react'
+import { FileText, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronUp, Loader2, ExternalLink, Filter, Eye } from 'lucide-react'
 import clsx from 'clsx'
 import type { OpenSearchQueryEvent } from '../../../types/events'
+import { DslViewerModal } from '../DslViewerModal'
 
 interface SearchDetailsProps {
   /**
@@ -21,12 +22,23 @@ interface SearchDetailsProps {
 export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
   const { searchCandidates, rerankedDocuments, searchStatus, rerankerStatus, steps } = useObservabilityStore()
   const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set())
+  const [hybridDslOpen, setHybridDslOpen] = useState(false)
+  const [retryDslOpen, setRetryDslOpen] = useState(false)
 
-  // Get OpenSearch query event from retriever step
+  // The retriever step now emits multiple opensearch_query events (one per
+  // query type). Pick the hybrid event for the main query banner; the
+  // BM25 baseline shows up on PipelineSummaryCard, and the quality-gate
+  // retry surfaces below as a second banner when present.
   const retrieverStep = steps.find(s => s.node === 'retriever')
-  const opensearchQueryEvent = retrieverStep?.events.find(
+  const opensearchEvents = (retrieverStep?.events ?? []).filter(
     (e): e is OpenSearchQueryEvent => e.type === 'opensearch_query'
   )
+  // Treat events without an explicit query_type as legacy hybrid for
+  // back-compat with replays from before the multi-emit change.
+  const opensearchQueryEvent = opensearchEvents.find(
+    e => (e.query_type ?? 'hybrid') === 'hybrid'
+  )
+  const retryQueryEvent = opensearchEvents.find(e => e.query_type === 'quality_gate_retry')
 
   // Toggle document expansion
   const toggleDocExpansion = (index: number) => {
@@ -60,9 +72,22 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
       {/* OpenSearch Query Details - Show filters and query modifications */}
       {opensearchQueryEvent && (
         <div className="rounded-lg bg-yellow-500/5 border border-yellow-500/20 p-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-yellow-400 flex-shrink-0" />
-            <span className="text-xs font-semibold text-yellow-300">OpenSearch Query</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Filter className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+              <span className="text-xs font-semibold text-yellow-300">OpenSearch Query</span>
+            </div>
+            {opensearchQueryEvent.body && (
+              <button
+                onClick={() => setHybridDslOpen(true)}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-yellow-300/80 hover:text-yellow-200 hover:bg-yellow-500/10 transition-colors"
+                title="View hybrid query DSL"
+                aria-label="View hybrid OpenSearch query DSL"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                DSL
+              </button>
+            )}
           </div>
 
           <div className="space-y-2 text-xs text-gray-300">
@@ -89,6 +114,52 @@ export function SearchDetails({ mode = 'retriever' }: SearchDetailsProps = {}) {
           </div>
         </div>
       )}
+
+      {/* Quality-gate retry — only shown when the gate fired a second pass */}
+      {retryQueryEvent && (
+        <div className="rounded-lg bg-orange-500/5 border border-orange-500/20 p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Filter className="w-4 h-4 text-orange-400 flex-shrink-0" />
+              <span className="text-xs font-semibold text-orange-300">Quality-Gate Retry</span>
+            </div>
+            {retryQueryEvent.body && (
+              <button
+                onClick={() => setRetryDslOpen(true)}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-orange-300/80 hover:text-orange-200 hover:bg-orange-500/10 transition-colors"
+                title="View retry query DSL"
+                aria-label="View quality-gate retry OpenSearch query DSL"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                DSL
+              </button>
+            )}
+          </div>
+          <div className="text-xs text-gray-300">
+            <span className="text-gray-500">Alpha (after retry):</span>{' '}
+            <span className="text-orange-300">{(retryQueryEvent.alpha * 100).toFixed(0)}%</span>
+          </div>
+        </div>
+      )}
+
+      <DslViewerModal
+        isOpen={hybridDslOpen}
+        title="Hybrid query DSL"
+        subtitle={`Intent: ${opensearchQueryEvent?.intent ?? '—'} · alpha ${((opensearchQueryEvent?.alpha ?? 0) * 100).toFixed(0)}%`}
+        body={opensearchQueryEvent?.body ?? null}
+        index={opensearchQueryEvent?.index}
+        params={opensearchQueryEvent?.params}
+        onClose={() => setHybridDslOpen(false)}
+      />
+      <DslViewerModal
+        isOpen={retryDslOpen}
+        title="Quality-gate retry DSL"
+        subtitle={`alpha ${((retryQueryEvent?.alpha ?? 0) * 100).toFixed(0)}%`}
+        body={retryQueryEvent?.body ?? null}
+        index={retryQueryEvent?.index}
+        params={retryQueryEvent?.params}
+        onClose={() => setRetryDslOpen(false)}
+      />
 
       {/* Search status banner — retriever card only. Label reflects whether
           hybrid retrieval ran or whether the `hybrid` toggle forced pure BM25. */}

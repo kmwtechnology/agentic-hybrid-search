@@ -178,6 +178,19 @@ class OpenSearchQueryEvent(BaseEvent):
     # Per-feature optimization toggles applied to this search (frontend-controlled).
     # Echoed back so the observability panel can show what was actually used.
     optimizations: Optional[Dict[str, bool]] = None
+    # Which kind of query this event represents. The retriever node emits one
+    # `hybrid` and one `bm25_baseline` event per request, plus a
+    # `quality_gate_retry` if the gate triggers a re-run.
+    query_type: Literal["hybrid", "bm25_baseline", "quality_gate_retry"] = "hybrid"
+    # Full DSL body sent to OpenSearch (with embedding vectors scrubbed to a
+    # placeholder). Pure DSL — paste-able into Dashboards Dev Tools.
+    body: Optional[Dict[str, Any]] = None
+    # Index the search ran against (e.g. ``agentic_hybrid_search_docs``).
+    index: Optional[str] = None
+    # Query-string params (e.g. ``{"search_pipeline": "hybrid_search_pipeline"}``).
+    # Rendered above the body in the DSL viewer so users can reproduce the
+    # exact request line.
+    params: Optional[Dict[str, str]] = None
 
 
 class QualityGateEvent(BaseEvent):

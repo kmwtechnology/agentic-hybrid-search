@@ -270,7 +270,10 @@ paths:
         with observability events. Same-origin authentication enforced via
         Origin header. Client sends `chat_message` or `stop_execution` JSON
         payloads; server streams typed events (SearchProgressEvent,
-        OpenSearchQueryEvent, RerankerProgressEvent, LLMResponseChunkEvent,
+        OpenSearchQueryEvent — carries `body` (DSL with embedding scrubbed),
+        `index`, `params`, and `query_type` ∈ {hybrid, bm25_baseline,
+        quality_gate_retry} so the UI can show an eye-icon DSL viewer per
+        query — RerankerProgressEvent, LLMResponseChunkEvent,
         AgentCompleteEvent, etc.) See `api/schemas/events.py` for full
         event catalog.
       security: []

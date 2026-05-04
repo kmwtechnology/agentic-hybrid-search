@@ -98,11 +98,17 @@ export function SearchOptimizationDetails() {
 
   // Pull the optimizations actually applied to the most recent search so the
   // user can confirm what hit OpenSearch (vs. what they have toggled now).
+  // Skip the BM25-baseline event — it forces `hybrid: false` for parity
+  // measurement and would otherwise mislead the "Applied" display.
   const steps = useObservabilityStore((s) => s.steps)
   const opensearchEvents = steps
     .filter((step) => step.node === 'retriever')
     .flatMap((step) => step.events)
-    .filter((e): e is OpenSearchQueryEvent => e.type === 'opensearch_query')
+    .filter(
+      (e): e is OpenSearchQueryEvent =>
+        e.type === 'opensearch_query' &&
+        (e as OpenSearchQueryEvent).query_type !== 'bm25_baseline',
+    )
   const lastApplied =
     opensearchEvents.length > 0
       ? opensearchEvents[opensearchEvents.length - 1].optimizations
