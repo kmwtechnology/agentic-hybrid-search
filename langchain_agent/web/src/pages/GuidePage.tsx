@@ -3,7 +3,7 @@
  * Includes usage, features, examples, and troubleshooting.
  */
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 
 interface Section {
@@ -14,16 +14,45 @@ interface Section {
 
 export function GuidePage() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['intro']))
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
-  const toggleSection = (id: string) => {
-    const newExpanded = new Set(expandedSections)
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id)
-    } else {
-      newExpanded.add(id)
-    }
-    setExpandedSections(newExpanded)
-  }
+  const toggleSection = useCallback((id: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const scrollToSection = useCallback((id: string) => {
+    // Wait for the expand state-update to commit + paint before scrolling, so the
+    // section's final laid-out offset (with content) is what we land on.
+    window.setTimeout(() => {
+      const el = sectionRefs.current[id]
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+  }, [])
+
+  const navigateToSection = useCallback(
+    (id: string) => {
+      // TOC navigation always opens the section (never toggles closed) and scrolls to it.
+      setExpandedSections((prev) => {
+        if (prev.has(id)) return prev
+        const next = new Set(prev)
+        next.add(id)
+        return next
+      })
+      if (window.location.hash !== `#${id}`) {
+        window.history.replaceState(null, '', `#${id}`)
+      }
+      scrollToSection(id)
+    },
+    [scrollToSection]
+  )
 
   const sections: Section[] = [
     {
@@ -631,6 +660,37 @@ Server streams back:
     },
   ]
 
+  const expandAll = useCallback(() => {
+    setExpandedSections(new Set(sections.map((s) => s.id)))
+  }, [])
+
+  const collapseAll = useCallback(() => {
+    setExpandedSections(new Set())
+  }, [])
+
+  // Deep-link support: react to the URL hash on mount and on subsequent hashchange
+  // events (e.g., user pastes a fragment URL into the address bar while already on
+  // /guide). TOC clicks use history.replaceState which is intentionally silent and
+  // does not trigger hashchange — so no feedback loop.
+  useEffect(() => {
+    const applyHash = () => {
+      const hash = window.location.hash.slice(1)
+      if (!hash) return
+      const exists = sections.some((s) => s.id === hash)
+      if (!exists) return
+      setExpandedSections((prev) => {
+        if (prev.has(hash)) return prev
+        const next = new Set(prev)
+        next.add(hash)
+        return next
+      })
+      scrollToSection(hash)
+    }
+    applyHash()
+    window.addEventListener('hashchange', applyHash)
+    return () => window.removeEventListener('hashchange', applyHash)
+  }, [])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4">
       <div className="max-w-4xl mx-auto">
@@ -642,13 +702,32 @@ Server streams back:
 
         {/* Table of Contents */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Quick Navigation</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+            <h2 className="font-semibold text-gray-900">Quick Navigation</h2>
+            <div className="flex items-center gap-1 text-xs">
+              <button
+                onClick={expandAll}
+                className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-2 py-1 rounded transition-colors"
+                title="Expand all sections"
+              >
+                Expand all
+              </button>
+              <span className="text-gray-300" aria-hidden="true">·</span>
+              <button
+                onClick={collapseAll}
+                className="text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-2 py-1 rounded transition-colors"
+                title="Collapse all sections"
+              >
+                Collapse all
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
             {sections.map((section) => (
               <button
                 key={section.id}
-                onClick={() => toggleSection(section.id)}
-                className="text-left text-sm text-blue-600 hover:text-blue-700 hover:underline"
+                onClick={() => navigateToSection(section.id)}
+                className="text-left text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1.5 rounded transition-colors"
               >
                 {section.title}
               </button>
@@ -658,25 +737,44 @@ Server streams back:
 
         {/* Sections */}
         <div className="space-y-4">
-          {sections.map((section) => (
-            <div key={section.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              <button
-                onClick={() => toggleSection(section.id)}
-                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+          {sections.map((section) => {
+            const isExpanded = expandedSections.has(section.id)
+            return (
+              <div
+                key={section.id}
+                id={section.id}
+                ref={(el) => {
+                  sectionRefs.current[section.id] = el
+                }}
+                className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden scroll-mt-4"
               >
-                <h2 className="text-lg font-semibold text-gray-900">{section.title}</h2>
-                {expandedSections.has(section.id) ? (
-                  <ChevronUp className="w-5 h-5 text-gray-500" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-500" />
-                )}
-              </button>
+                <button
+                  onClick={() => toggleSection(section.id)}
+                  className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                  aria-expanded={isExpanded}
+                  aria-controls={`${section.id}-panel`}
+                >
+                  <h2 className="text-lg font-semibold text-gray-900">{section.title}</h2>
+                  {isExpanded ? (
+                    <ChevronUp className="w-5 h-5 text-gray-500" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-500" />
+                  )}
+                </button>
 
-              {expandedSections.has(section.id) && (
-                <div className="border-t border-gray-200 p-4 bg-gray-50">{section.content}</div>
-              )}
-            </div>
-          ))}
+                {isExpanded && (
+                  <div
+                    id={`${section.id}-panel`}
+                    role="region"
+                    aria-labelledby={section.id}
+                    className="border-t border-gray-200 p-4 bg-gray-50"
+                  >
+                    {section.content}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         {/* Footer */}
