@@ -2709,7 +2709,12 @@ Original query: {query}
             except Exception as e:
                 logger.debug(f"Could not emit reranker progress event: {e}")
 
-        reranked_results = self.reranker.rerank(query, retrieved_documents, RERANKER_TOP_K)
+        # Score every retrieved candidate so the observability panel can show
+        # the full cross-encoder ranking (not just the top-K cut sent to the
+        # agent). The agent still gets only the top-K to keep its context
+        # focused; everything below is exposed via ``all_reranked_documents``.
+        all_scored = self.reranker.score_documents(query, retrieved_documents)
+        reranked_results = all_scored[:RERANKER_TOP_K]
         rerank_elapsed = time.time() - rerank_start
 
         # Emit completion progress
@@ -2781,8 +2786,16 @@ Original query: {query}
         else:
             logger.debug("Reranker: order unchanged (already optimally ranked)")
 
+        # Stash reranker scores on every scored doc so the UI can render the
+        # full ranking. The top-K subset shares Document instances with the
+        # agent's ``retrieved_documents`` so scores set above carry over.
+        for doc, score in all_scored:
+            doc.metadata["reranker_score"] = score
+        all_reranked_results = [doc for doc, _ in all_scored]
+
         return {
             "retrieved_documents": results,
+            "all_reranked_documents": all_reranked_results,
             "reranker_max_score": max_score,
             "reranker_latency_ms": rerank_elapsed * 1000.0,
             "intent": intent,  # Pass intent to quality gate
