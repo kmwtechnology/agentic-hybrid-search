@@ -846,8 +846,13 @@ class ObservableAgentService:
             pass
 
         elif node_name == "reranker":
-            # Emit reranker result event with detailed document information
-            documents = output.get("retrieved_documents", [])
+            # Emit reranker result event with detailed document information.
+            # Prefer the full scored list (``all_reranked_documents``) so the
+            # UI can show every candidate the cross-encoder evaluated, not
+            # just the top-K cut handed to the agent.
+            documents = output.get("all_reranked_documents") or output.get(
+                "retrieved_documents", []
+            )
             if documents and ENABLE_RERANKING:
                 reranked_docs = self._compute_reranked_documents(documents)
                 reranking_changed_order = self._check_if_order_changed(documents, reranked_docs)
@@ -1100,7 +1105,10 @@ class ObservableAgentService:
             docs = output.get("retrieved_documents", [])
             return f"{len(docs)} documents retrieved"
         elif node_name == "reranker":
-            docs = output.get("retrieved_documents", [])
+            # Prefer the full scored list so the step header reflects every
+            # candidate the cross-encoder evaluated (the agent still gets
+            # only the top-K subset for grounded generation).
+            docs = output.get("all_reranked_documents") or output.get("retrieved_documents", [])
             max_score = output.get("reranker_max_score", 0.0)
             return f"{len(docs)} documents reranked (max={max_score:.3f})"
         elif node_name == "quality_gate":

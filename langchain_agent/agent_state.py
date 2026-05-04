@@ -135,6 +135,11 @@ class CustomAgentState(TypedDict, total=False):
     # reranker overwrites retrieved_documents. Used to compute hybrid-stage
     # NDCG@10/MRR/Recall@20/Precision@10 in the summary card.
     pre_rerank_documents: List[Document]
+    # Full reranker-scored list (all candidates from the retriever, sorted
+    # descending by reranker score) — preserved before the top-K cut so the
+    # observability panel can show every candidate the cross-encoder
+    # evaluated, not just the top-K passed to the agent.
+    all_reranked_documents: List[Document]
     # Pure BM25 baseline ranking (top fetch_k). Same query, same filters,
     # but no vector search — used as the apples-to-apples baseline.
     bm25_documents: List[Document]

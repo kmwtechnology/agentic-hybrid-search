@@ -416,8 +416,9 @@ class TestRerankerToggle:
         reranker = MagicMock()
         reranker.batch_size = 8
         reranker.device = "cpu"
-        # rerank() returns [(Document, score), ...]
-        reranker.rerank.return_value = [(self._make_doc("doc1"), 0.9)]
+        # score_documents() returns [(Document, score), ...] for ALL candidates
+        # sorted descending by score; reranker_node slices to RERANKER_TOP_K.
+        reranker.score_documents.return_value = [(self._make_doc("doc1"), 0.9)]
         agent = self._make_agent(reranker)
         doc = self._make_doc()
 
@@ -436,9 +437,11 @@ class TestRerankerToggle:
         )
 
         # Reranker was actually invoked
-        reranker.rerank.assert_called_once()
+        reranker.score_documents.assert_called_once()
         # Quality gate is NOT pre-marked retried — let the gate decide
         assert out.get("quality_gate_retried") is not True
+        # Full scored list is exposed to the UI for the demo
+        assert "all_reranked_documents" in out
 
     def test_reranking_default_true_when_key_missing(self, monkeypatch):
         """If the optimizations dict is empty, reranking should run (default True)."""
@@ -449,7 +452,7 @@ class TestRerankerToggle:
         reranker = MagicMock()
         reranker.batch_size = 8
         reranker.device = "cpu"
-        reranker.rerank.return_value = [(self._make_doc(), 0.9)]
+        reranker.score_documents.return_value = [(self._make_doc(), 0.9)]
         agent = self._make_agent(reranker)
         monkeypatch.setattr(agent, "_emit_event_from_sync", lambda *_a, **_kw: None)
 
@@ -462,7 +465,7 @@ class TestRerankerToggle:
                 "optimizations": {},  # missing key — defaults to enabled
             }
         )
-        reranker.rerank.assert_called_once()
+        reranker.score_documents.assert_called_once()
 
     def test_global_enable_reranking_false_overrides_toggle_on(self, monkeypatch):
         """When the env-level ENABLE_RERANKING is False, the per-query toggle
