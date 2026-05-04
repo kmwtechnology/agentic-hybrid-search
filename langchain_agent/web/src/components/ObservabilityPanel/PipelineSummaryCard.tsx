@@ -16,6 +16,7 @@
  */
 
 import { useState } from 'react'
+import { Eye } from 'lucide-react'
 import { useObservabilityStore } from '../../stores/observabilityStore'
 import type {
   ConfidenceLabel,
@@ -24,9 +25,11 @@ import type {
   GenerationVerdict,
   HallucinationCategory,
   LatencyStage,
+  OpenSearchQueryEvent,
   PipelineSummaryEvent,
   StageMetrics,
 } from '../../types/events'
+import { DslViewerModal } from './DslViewerModal'
 
 const CATEGORY_TONE: Record<
   HallucinationCategory,
@@ -161,10 +164,12 @@ function StageRow({
   name,
   stage,
   badge,
+  rightAdornment,
 }: {
   name: string
   stage: StageMetrics | null | undefined
   badge?: React.ReactNode
+  rightAdornment?: React.ReactNode
 }) {
   if (!stage) return null
   return (
@@ -176,11 +181,14 @@ function StageRow({
           {name}
           {badge}
         </span>
-        <span
-          className="text-[10px] uppercase tracking-wide text-gray-500 whitespace-nowrap"
-          title={`${stage.judged_count} of the top-10 returned items had a ground-truth ESCI judgment`}
-        >
-          {stage.judged_count}/10 judged
+        <span className="flex items-center gap-2">
+          {rightAdornment}
+          <span
+            className="text-[10px] uppercase tracking-wide text-gray-500 whitespace-nowrap"
+            title={`${stage.judged_count} of the top-10 returned items had a ground-truth ESCI judgment`}
+          >
+            {stage.judged_count}/10 judged
+          </span>
         </span>
       </div>
       {/* Metrics row — 4 evenly-sized cells. min-w-0 on the cells lets long
@@ -267,9 +275,20 @@ function LatencyTable({ rows }: { rows: LatencyStage[] }) {
 
 export function PipelineSummaryCard() {
   const summary = useObservabilityStore((s) => s.pipelineSummary)
+  const steps = useObservabilityStore((s) => s.steps)
   const [expanded, setExpanded] = useState(true)
+  const [bm25DslOpen, setBm25DslOpen] = useState(false)
 
   if (!summary) return null
+
+  // Locate the BM25 baseline DSL body emitted by the retriever node. The
+  // event is keyed by query_type so it survives a request that emits
+  // multiple opensearch_query events.
+  const retrieverStep = steps.find((s) => s.node === 'retriever')
+  const bm25Event = (retrieverStep?.events ?? []).find(
+    (e): e is OpenSearchQueryEvent =>
+      e.type === 'opensearch_query' && (e as OpenSearchQueryEvent).query_type === 'bm25_baseline',
+  )
 
   return (
     <div className="px-4 pb-4">
@@ -296,6 +315,19 @@ export function PipelineSummaryCard() {
                   name="Your BM25"
                   stage={summary.bm25}
                   badge={<DegradedBadge optimizations={summary.optimizations} />}
+                  rightAdornment={
+                    bm25Event?.body ? (
+                      <button
+                        onClick={() => setBm25DslOpen(true)}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-yellow-300/80 hover:text-yellow-200 hover:bg-yellow-500/10 transition-colors"
+                        title="View BM25 baseline DSL"
+                        aria-label="View BM25 baseline OpenSearch query DSL"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        DSL
+                      </button>
+                    ) : undefined
+                  }
                 />
                 <StageRow name="Hybrid" stage={summary.hybrid} />
                 <StageRow name="Reranked" stage={summary.reranked} />
@@ -315,6 +347,13 @@ export function PipelineSummaryCard() {
           </div>
         )}
       </div>
+      <DslViewerModal
+        isOpen={bm25DslOpen}
+        title="BM25 baseline DSL"
+        subtitle="Pure lexical, optimization toggles applied"
+        body={bm25Event?.body ?? null}
+        onClose={() => setBm25DslOpen(false)}
+      />
     </div>
   )
 }
