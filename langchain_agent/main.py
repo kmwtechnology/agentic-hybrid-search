@@ -521,7 +521,7 @@ class EcommerceSearchAgent:
         user_query = ""
         for msg in reversed(messages):
             if isinstance(msg, HumanMessage) and hasattr(msg, "content") and msg.content:
-                user_query = str(msg.content)
+                user_query = _flatten_llm_content(msg)
                 break
 
         intent, reasoning, confidence, clarifying_questions = self._classify_intent(
@@ -619,7 +619,7 @@ class EcommerceSearchAgent:
         last_user_msg = None
         for msg in reversed(messages):
             if isinstance(msg, HumanMessage):
-                last_user_msg = msg.content
+                last_user_msg = _flatten_llm_content(msg)
                 break
 
         if not last_user_msg:
@@ -1065,7 +1065,7 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         user_query = None
         for msg in reversed(messages):
             if isinstance(msg, HumanMessage):
-                user_query = msg.content
+                user_query = _flatten_llm_content(msg)
                 break
 
         # Check if retrieval failed even after quality gate retry
@@ -1640,19 +1640,36 @@ Return ONLY a JSON object (use null for missing attributes):
             attributes = json.loads(json_match.group())
             filters = []
 
-            # Build OpenSearch filter clauses (as separate filter objects - they're implicitly AND'd)
-            if attributes.get("brand"):
-                filters.append({"match": {"product_brand": {"query": attributes["brand"]}}})
+            # Coerce LLM-extracted attribute values to strings. Gemini sometimes
+            # returns array values (e.g. material_or_feature=["noise canceling"])
+            # even when the prompt asks for a single string. Passing a list to
+            # an OpenSearch ``query`` field fails with
+            #   [multi_match] unknown token [START_ARRAY] after [query]
+            def _coerce(val: Any) -> Optional[str]:
+                if val is None:
+                    return None
+                if isinstance(val, list):
+                    parts = [str(v).strip() for v in val if v not in (None, "")]
+                    return " ".join(parts) if parts else None
+                s = str(val).strip()
+                return s or None
 
-            if attributes.get("color"):
-                filters.append({"match": {"product_color": {"query": attributes["color"]}}})
+            # Build OpenSearch filter clauses (as separate filter objects - they're implicitly AND'd)
+            brand = _coerce(attributes.get("brand"))
+            if brand:
+                filters.append({"match": {"product_brand": {"query": brand}}})
+
+            color = _coerce(attributes.get("color"))
+            if color:
+                filters.append({"match": {"product_color": {"query": color}}})
 
             # material_or_feature → multi_match against title + content
-            if attributes.get("material_or_feature"):
+            material = _coerce(attributes.get("material_or_feature"))
+            if material:
                 filters.append(
                     {
                         "multi_match": {
-                            "query": attributes["material_or_feature"],
+                            "query": material,
                             "fields": ["title", "chunk_text"],
                             "type": "best_fields",
                         }
@@ -1660,11 +1677,12 @@ Return ONLY a JSON object (use null for missing attributes):
                 )
 
             # size → multi_match against title + content
-            if attributes.get("size"):
+            size = _coerce(attributes.get("size"))
+            if size:
                 filters.append(
                     {
                         "multi_match": {
-                            "query": attributes["size"],
+                            "query": size,
                             "fields": ["title", "chunk_text"],
                             "type": "best_fields",
                         }
@@ -2355,7 +2373,7 @@ Original query: {query}
         query = None
         for msg in reversed(messages):
             if isinstance(msg, HumanMessage):
-                query = msg.content
+                query = _flatten_llm_content(msg)
                 break
 
         # Expand vague follow-up queries using conversation context
@@ -2667,7 +2685,7 @@ Original query: {query}
             messages = state["messages"]
             for msg in reversed(messages):
                 if isinstance(msg, HumanMessage):
-                    query = msg.content
+                    query = _flatten_llm_content(msg)
                     break
 
         # Emit reranker start event
