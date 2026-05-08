@@ -181,10 +181,10 @@ export function TypeaheadSuggestions({
   const trimmed = query.trim()
   const hasQuery = trimmed.length > 0
 
+  // Fetch suggestions when query, visibility, or settings change
   useEffect(() => {
+    // If conditions aren't met, don't fetch (stale state is OK - component won't render it)
     if (!hasQuery || !isOpen || !typeaheadEnabled) {
-      setProducts([])
-      setSpelling(null)
       return
     }
 

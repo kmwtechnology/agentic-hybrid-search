@@ -45,11 +45,6 @@ export function ConversationsSidebar({ onConversationSelect }: ConversationsSide
     await logout()
   }, [confirmingLogout, logout])
 
-  // Fetch conversations on mount
-  useEffect(() => {
-    fetchConversations()
-  }, [])
-
   const fetchConversations = useCallback(async () => {
     setConversationsLoading(true)
     setError(null)
@@ -68,6 +63,12 @@ export function ConversationsSidebar({ onConversationSelect }: ConversationsSide
       setConversationsLoading(false)
     }
   }, [setConversations, setConversationsLoading])
+
+  // Fetch conversations on mount - eslint-disable-next-line intentional async in effect
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchConversations()
+  }, [fetchConversations])
 
   const handleNewConversation = useCallback(() => {
     startNewConversation()
