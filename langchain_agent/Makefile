@@ -121,6 +121,8 @@ ci-frontend:
 	@cd web && npm run lint
 	@echo "[CI] tsc --noEmit"
 	@cd web && npx tsc --noEmit
+	@echo "[CI] npm run build (production build)"
+	@cd web && npm run build
 
 ci-docker:
 	@echo "[CI] docker build (no push)"
