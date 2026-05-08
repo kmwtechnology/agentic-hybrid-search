@@ -6,7 +6,7 @@ import asyncio
 import re
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -613,7 +613,7 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
 
     thread_id = chat_request.thread_id or f"conversation_{uuid.uuid4().hex[:8]}"
 
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
 
     # Collect events (we won't stream them in REST mode)
     events = []
@@ -630,7 +630,7 @@ async def chat_rest(request: Request, chat_request: ChatRequest):
             emit=collect_event,
         )
 
-        duration_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        duration_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
 
         # Extract citations from the agent complete event
         citations: List[Citation] = []

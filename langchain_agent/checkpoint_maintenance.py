@@ -18,7 +18,7 @@ Usage:
     deleted = cleanup_orphaned_checkpoints()
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import psycopg
@@ -45,7 +45,7 @@ def compact_checkpoints(
     Returns:
         Number of checkpoint blob rows deleted
     """
-    cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=older_than_days)
 
     with psycopg.connect(DATABASE_URL) as conn:
         with conn.cursor() as cur:

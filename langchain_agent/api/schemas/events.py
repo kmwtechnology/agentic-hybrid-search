@@ -5,10 +5,10 @@ These events are streamed in real-time as the agent executes,
 providing full observability into every step and decision.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ============================================================================
 # TYPE ALIASES FOR BOUNDED SCORES
@@ -46,11 +46,10 @@ class BaseEvent(BaseModel):
     """
 
     type: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     node: Optional[str] = None  # Current graph node name
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    model_config = ConfigDict(ser_json_encoders={datetime: lambda v: v.isoformat()})
 
 
 # ============================================================================
