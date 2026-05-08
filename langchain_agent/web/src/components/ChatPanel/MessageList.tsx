@@ -11,7 +11,7 @@ export function MessageList() {
   const { messages, streamingContent, isProcessing } = useChatStore()
   const { currentNode, steps } = useObservabilityStore()
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const scrollTimeoutRef = useRef<number>()
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   // Map node IDs to user-friendly display names
   const getNodeDisplayName = (node: string): string => {

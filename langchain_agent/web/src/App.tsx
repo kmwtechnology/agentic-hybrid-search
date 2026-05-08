@@ -68,7 +68,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter>
       <AuthGate>
         <Routes>
           <Route path="/" element={<ChatApp />} />
