@@ -4,7 +4,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 ## System Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         User Interfaces                             │
 │  ┌─────────────────────────┐         ┌─────────────────────────┐   │
@@ -68,6 +68,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 **Input State**: `messages` (conversation history)
 
 **Process**:
+
 - Keyword-based fast-path: pattern matching for 6 intents
   - `search` — product discovery ("find me...")
   - `comparison` — compare products ("Sony vs Bose")
@@ -79,6 +80,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 - Emits `IntentClassificationEvent` with detected intent and confidence
 
 **Output State**:
+
 - `intent`: Detected intent (one of 6 above)
 - `intent_confidence`: 0.0–1.0 score
 - `user_query`: Cleaned query string
@@ -93,6 +95,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 **Input State**: `user_query`, `intent`
 
 **Process**:
+
 - **Fast-path**: Immediate α assignment for intent-specific categories
   - `comparison` → α = 0.60 (semantic-heavy, needs meaning matching)
   - `attribute_filter` → α = 0.25 (lexical-heavy, exact attributes)
@@ -103,6 +106,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 - Emits `QueryEvaluationEvent` with assigned α, reasoning, expanded query if applicable
 
 **Output State**:
+
 - `alpha`: 0.0–1.0 weighting for hybrid search
 - `query_analysis`: Explanation of α choice
 
@@ -123,22 +127,27 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 **Input State**: `alpha`, `user_query`, optional filters
 
 **Process**:
+
 - **Dual-path search**:
   1. **Vector Search** (HNSW): Gemini 768-dim embeddings, cosine similarity
   2. **Lexical Search** (BM25): OpenSearch analyzer, term frequency
 - **RRF Fusion** (Reciprocal Rank Fusion):
-  ```
+
+  ```text
   score = Σ 1/(rank + k)  where k=60 (RRF constant)
   ```
+
   Normalizes ranks from both methods, avoids probability calibration
 - **Candidate fetching**: `fetch_k=20` candidates (before deduplication/reranking)
 - **Product deduplication**: ESCI products may have multiple chunks; collapse to one per product
 - Emits `RetrievalProgressEvent` with candidate counts, top-K previews
 
 **Output State**:
+
 - `retrieved_documents`: List of top `fetch_k` candidates (Document objects)
 
 **Key Details**:
+
 - `alpha=0.0` → pure BM25 (ignores vector scores)
 - `alpha=1.0` → pure vector (ignores lexical scores)
 - RRF is robust to outliers and doesn't require probability calibration
@@ -150,6 +159,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 **Input State**: `retrieved_documents`, `user_query`
 
 **Process**:
+
 - **Batch scoring**: Sends up to `batch_size=10` documents per LLM call
 - **Structured output**: Gemini 3.1 Flash Lite returns JSON with score per document
 - **Pydantic validation**: Ensures all scores are floats in [0.0, 1.0]
@@ -158,9 +168,11 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 - Sets `reranker_max_score` for Quality Gate decision
 
 **Output State**:
+
 - `reranker_max_score`: Maximum score across all documents (0.0–1.0)
 
 **Score Interpretation**:
+
 - 0.0–0.2: Off-topic, unrelated
 - 0.2–0.5: Partial match, weak relevance
 - 0.5–0.7: Good match, clearly relevant
@@ -173,6 +185,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 **Input State**: `reranker_max_score`, `alpha`, `retrieved_documents`
 
 **Process**:
+
 - **Decision Logic**:
   1. If `max_score >= 0.50` → **PASS**: Continue to agent
   2. If `max_score < 0.50` and not yet retried → **RETRY**:
@@ -186,10 +199,12 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 - Emits `QualityGateEvent` with pass/retry/accept decision and reasoning
 
 **Output State**:
+
 - `quality_gate_retried`: Boolean flag (True if retry was triggered)
 - `quality_gate_reason`: Explanation of decision
 
 **Why This Works**:
+
 - Catches cases where initial α was poorly calibrated
 - If original α favored semantics but query is exact ID → adjust to lexical
 - If original α favored lexical but query is conceptual → adjust to semantic
@@ -202,6 +217,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 **Input State**: `retrieved_documents` (after quality gate), `user_query`, `messages`
 
 **Process**:
+
 - **Document formatting**: Creates context window with product details
 - **LLM generation**: Gemini 3 Flash generates conversational response
 - **Citation building**:
@@ -214,10 +230,12 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 - Emits `AgentCompleteEvent` when done
 
 **Output State**:
+
 - Appends `AIMessage` to `messages`
 - Updates checkpoint in PostgreSQL (for conversation persistence)
 
 **Key Details**:
+
 - ESCI products have ASIN metadata; canonical URL construction
 - Streaming allows real-time UI feedback (not waiting for full response)
 - Link verification filters out broken URLs (trust but verify)
@@ -255,6 +273,7 @@ class CustomAgentState(TypedDict, total=False):
 **IMPORTANT**: Since `total=False`, optional fields are **not guaranteed** at runtime.
 
 **Safe Access**:
+
 ```python
 alpha = state.get("alpha", 0.25)  # ✓ Safe
 alpha = state["alpha"]             # ✗ KeyError before query_evaluator runs
@@ -268,7 +287,7 @@ The pipeline emits typed Pydantic events over WebSocket for every stage. Fronten
 
 ### Event Flow
 
-```
+```text
 Backend (main.py)              WebSocket               Frontend (React)
 ─────────────────              ─────────────           ───────────────
 emit_event(event) ──JSON──────────────────────────────► receiveEvent(json)
@@ -293,6 +312,7 @@ emit_event(event) ──JSON─────────────────�
 **Critical**: Event Pydantic models in `api/schemas/events.py` **must** stay in sync with TypeScript types in `web/src/types/events.ts`.
 
 **Check-in workflow**:
+
 1. Add new event to `api/schemas/events.py` (e.g., `NewNodeProgressEvent`)
 2. Add TypeScript type to `web/src/types/events.ts` with same field names
 3. Call `_emit_event_from_sync(NewNodeProgressEvent(...), node="my_node")` in backend node
@@ -308,7 +328,7 @@ If the two schemas diverge, WebSocket serialization will fail or frontend won't 
 The typeahead surface lives outside the LangGraph pipeline — it's a
 synchronous FastAPI route backed directly by OpenSearch.
 
-```
+```text
 User keystroke (debounced)
    │
    ▼
@@ -348,7 +368,7 @@ UI-assist path.
 Admin routes (`api/routes/admin.py`) provide operational control over the
 ESCI index without redeploying:
 
-```
+```text
 GET /api/admin/reindex?reset_index=true&limit=10000
    │
    ├─► spawns background task (FastAPI BackgroundTasks)
@@ -409,7 +429,7 @@ as a collapsible "Search Optimizations" card, alongside the existing
 
 ### RRF Formula
 
-```
+```text
 For each document in rank list:
   score = Σ 1/(rank_vector + 60) + 1/(rank_lexical + 60)
 
@@ -425,21 +445,27 @@ Normalize both ranks before fusion:
 **Definition**: `alpha = weight of vector score`
 
 - **α=0.0** (pure lexical):
-  ```
+
+  ```text
   final_score = lexical_score × 1.0 + vector_score × 0.0
   ```
+
   Best for exact IDs, ASINs, model numbers (e.g., "iPhone 15 Pro")
 
 - **α=0.5** (balanced):
-  ```
+
+  ```text
   final_score = lexical_score × 0.5 + vector_score × 0.5
   ```
+
   Good for mixed queries (e.g., "blue running shoes")
 
 - **α=1.0** (pure semantic):
-  ```
+
+  ```text
   final_score = lexical_score × 0.0 + vector_score × 1.0
   ```
+
   Best for conceptual queries (e.g., "gift ideas for someone who loves hiking")
 
 ### Quality Gate Retry with Alpha Adjustment
@@ -457,7 +483,8 @@ If `reranker_max_score < 0.5`:
 3. If still low score, accept results (avoid endless retry)
 
 **Example**:
-```
+
+```text
 User: "best gifts for someone into photography"
 Intent: search (LLM-path)
 Query Evaluator: α=0.8 (conceptual)
@@ -645,18 +672,23 @@ Cached queries (60-min embedding cache) save ~2–3s.
 ## Debugging Tips
 
 ### Use LangSmith Tracing
-Enable `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT` in `.env`. View traces at https://smith.langchain.com.
+
+Enable `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT` in `.env`. View traces at <https://smith.langchain.com>.
 
 ### Check Observability Panel
+
 Open browser DevTools → Network tab. WebSocket messages show every event emitted.
 
 ### Log Structured Output
+
 Structured logging (`json` format) in `logging_config.py` makes it easy to grep specific fields:
+
 ```bash
 grep '"node":"retriever"' app.log
 ```
 
 ### Verify Vector Embeddings
+
 ```python
 from vector_store import get_embeddings
 emb = get_embeddings("wireless headphones")
@@ -664,6 +696,7 @@ print(len(emb))  # Should be 768
 ```
 
 ### Test RRF Fusion
+
 ```python
 from vector_store import OpenSearchRetriever
 retriever.invoke("query", search_type="hybrid", alpha=0.5)
@@ -674,6 +707,7 @@ retriever.invoke("query", search_type="hybrid", alpha=0.5)
 ## Summary
 
 The Agentic Hybrid Search system is a **LangGraph-powered RAG agent** that:
+
 1. **Classifies intent** (6 categories) to route conversation
 2. **Evaluates queries** with dynamic α to balance semantic/lexical search
 3. **Retrieves candidates** via hybrid search (vector + BM25 fused by RRF)
@@ -684,4 +718,3 @@ The Agentic Hybrid Search system is a **LangGraph-powered RAG agent** that:
 8. **Emits observable events** for real-time UI visualization
 
 Every stage is testable, extensible, and documented. The system is designed for e-commerce product discovery but generalizes to any RAG use case.
-

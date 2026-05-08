@@ -619,6 +619,7 @@ Test against deployed Cloud Run instance.
 ### Docstring Requirements
 
 Every public function must have:
+
 - One-line summary (what it does)
 - **Args** section with types and descriptions
 - **Returns** section with return type and description
@@ -650,6 +651,7 @@ async def my_node(state: CustomAgentState) -> Dict[str, Any]:
 ### Avoid Breaking Changes
 
 When modifying:
+
 - **State fields**: Add optional fields (never remove)
 - **Event schemas**: Add fields with defaults, never remove
 - **API routes**: Versioning (`/v1/chat`, `/v2/chat`)
@@ -661,7 +663,7 @@ When modifying:
 
 ### Import Errors
 
-```
+```text
 ModuleNotFoundError: No module named 'config'
 ```
 
@@ -683,6 +685,7 @@ Symptom: Frontend shows `TypeError: Cannot read property 'node' of undefined`
 Symptom: Agent stalls after a certain node
 
 **Fix**:
+
 1. Check `QUERY_EVAL_TIMEOUT_MS`, `LINK_VERIFICATION_TIMEOUT_MS` in config
 2. Add `asyncio.timeout()` to long-running operations
 3. Use LangSmith tracing to profile which node is slow
@@ -693,6 +696,7 @@ Symptom: Agent stalls after a certain node
 Symptom: Quality gate keeps retrying, never reaches agent
 
 **Fix**: Quality gate has max 1 retry. If still seeing issues:
+
 1. Check `QUALITY_GATE_THRESHOLD` (default 0.50) — may be too strict
 2. Verify reranker is returning sensible scores (not all 0.0 or 1.0)
 3. Try adjusting α bounds in quality gate retry logic
@@ -716,6 +720,5 @@ Symptom: Quality gate keeps retrying, never reaches agent
 
 - **Architecture questions**: Read `ARCHITECTURE.md`, check docstrings
 - **LangGraph questions**: Consult [LangGraph docs](https://langchain-ai.github.io/langgraph/)
-- **Debugging**: Enable `LANGSMITH_API_KEY` for tracing at https://smith.langchain.com
+- **Debugging**: Enable `LANGSMITH_API_KEY` for tracing at <https://smith.langchain.com>
 - **Tests failing**: Check `tests/README.md` for test-specific guidance
-

@@ -3,18 +3,20 @@
 A step-by-step guide for presenting the Agentic Hybrid Search agent at a technical conference or lecture. Use this script to showcase all key features in ~15–20 minutes with compelling live demonstrations.
 
 **Setup**: Before the demo, ensure the application is running locally:
+
 ```bash
 cd langchain_agent
 ./scripts/start.sh  # Starts Docker, backend on :8000, frontend on :5173
 ```
 
-Open browser to **http://localhost:5173** and keep DevTools hidden (press `F12` to toggle).
+Open browser to **<http://localhost:5173>** and keep DevTools hidden (press `F12` to toggle).
 
 ---
 
 ## Demo Overview
 
 ### Timeline
+
 - **Intro** (1 min): What we're building
 - **Intent Classification** (2 min): Show 6 intents with different queries
 - **Hybrid Search** (2 min): Demonstrate α (alpha) weighting
@@ -93,6 +95,7 @@ and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
 **Expected**: Intent = `search`, α = LLM-assigned (likely 0.65–0.75, semantic-heavy)
 
 **Observe**:
+
 - Intent Classifier step shows "search" with keyword fast-path
 - Query Evaluator step shows assigned α and reasoning
 - Knowledge Search retrieves relevant headphones
@@ -111,6 +114,7 @@ and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
 **Expected**: Intent = `comparison`, α = 0.60 (fast-path, semantic-heavy)
 
 **Observe**:
+
 - Intent Classifier shows keyword match ("vs" pattern), confidence ~0.95
 - Query Evaluator assigns α=0.60 instantly (fast-path, no LLM)
 - Knowledge Search retrieves both specific models
@@ -129,6 +133,7 @@ and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
 **Expected**: Intent = `attribute_filter`, α = 0.25 (fast-path, lexical-heavy)
 
 **Observe**:
+
 - Intent Classifier detects attribute keywords (brand + color + size)
 - Query Evaluator assigns α=0.25 (lexical-heavy fast-path)
 - Knowledge Search prioritizes exact attribute matching
@@ -147,10 +152,12 @@ and submit, `Esc` to close. The whole surface uses ARIA combobox semantics.
 Then immediately: `Make them waterproof` (refinement)
 
 **Expected**:
+
 - First query: `search` intent, fresh retrieval
 - Second query: `refinement` intent, constrains prior results
 
 **Observe**:
+
 - First retrieval shows blue running shoes
 - Second retrieval narrows to waterproof variants **from the prior set**
 - Quality Gate validates continuity (category match)
@@ -169,6 +176,7 @@ Then immediately: `Make them waterproof` (refinement)
 **Expected**: Intent = `follow_up`, triggers query expansion
 
 **Observe**:
+
 - Intent Classifier detects vagueness ("next one", "that", "does it")
 - Query Evaluator expands the query using conversation history
 - Expanded query shown in observability panel
@@ -187,6 +195,7 @@ Then immediately: `Make them waterproof` (refinement)
 **Expected**: Intent = `summary`, bypasses retriever, LLM summarizes conversation
 
 **Observe**:
+
 - Intent Classifier detects "summarize", "what did we...", "recap"
 - Skips retriever/reranker
 - Agent node generates summary from conversation history
@@ -213,6 +222,7 @@ Then immediately: `Make them waterproof` (refinement)
 **Expected**: α ≈ 0.75 (semantic-heavy), retrieves by meaning (tripods, lighting, camera bags)
 
 **Observe**:
+
 - Query Evaluator shows α=0.75, reasoning: "Conceptual, gift-based query"
 - Knowledge Search shows OpenSearch query with RRF fusion
 - Results are conceptually related (meaning-driven)
@@ -236,6 +246,7 @@ Then immediately: `Make them waterproof` (refinement)
 (This is intentionally complex/niche to trigger low confidence)
 
 **Expected**:
+
 - Retriever fetches candidates with initial α
 - Reranker scores them low (< 0.5)
 - Quality Gate detects low max_score
@@ -243,6 +254,7 @@ Then immediately: `Make them waterproof` (refinement)
 - New results score higher
 
 **Observe** in Observability Panel:
+
 1. Intent Classifier: `attribute_filter` or `search`
 2. Query Evaluator: α assigned
 3. Knowledge Search: First retrieval
@@ -351,17 +363,20 @@ If time permits, show:
 
 ## Troubleshooting During Demo
 
-### If frontend doesn't load:
+### If frontend doesn't load
+
 ```bash
 # Restart the dev server
 make dev
 ```
 
-### If backend is slow/timing out:
+### If backend is slow/timing out
+
 - Check OpenSearch is running: `docker ps`
 - Restart services: `./scripts/stop.sh && ./scripts/start.sh`
 
-### If observability panel doesn't show events:
+### If observability panel doesn't show events
+
 - Check WebSocket connection (DevTools → Network → WS)
 - Verify `GOOGLE_API_KEY` is set
 
@@ -381,15 +396,18 @@ make dev
 ## Demo Script Variants
 
 ### Quick Demo (5–8 min)
+
 - Intent: search + comparison + quality gate retry
 - Focus on hybrid search & quality gate
 
 ### Full Demo (15–20 min)
+
 - All 6 intents
 - Hybrid search
 - Quality gate retry
 
 ### Deep-Dive Demo (30+ min)
+
 - All of above
 - Show code: main.py, architecture
 - Run tests live
@@ -402,9 +420,8 @@ make dev
 
 Point the audience to:
 
-- **GitHub Repo**: https://github.com/kmwtechnology/agentic-hybrid-search
+- **GitHub Repo**: <https://github.com/kmwtechnology/agentic-hybrid-search>
 - **ARCHITECTURE.md**: Deep-dive on pipeline design
 - **CONTRIBUTING.md**: How to extend (add intents, nodes, events)
 - **README.md**: Quick start, deployment instructions
 - **Docstrings**: Every module has comprehensive docstrings
-

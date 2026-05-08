@@ -11,12 +11,14 @@ The benchmark focuses on **hard queries** (bottom-quartile by standard-hybrid ND
 **Source:** [amazon-science/esci-data](https://github.com/amazon-science/esci-data) (public repository)
 
 **Size:**
+
 - ~1.8M products (Amazon catalog)
 - ~2.6M judgments globally (~1.8M US)
 - ~97K queries (US locale)
 
 **Directory structure** (after cloning):
-```
+
+```text
 ../esci/shopping_queries_dataset/
 ├── shopping_queries_dataset_products.parquet
 ├── shopping_queries_dataset_examples.parquet
@@ -43,6 +45,7 @@ docker compose up -d     # PostgreSQL + OpenSearch + Dashboards (from repo root)
 ```
 
 Verify OpenSearch is ready:
+
 ```bash
 curl -s http://localhost:9200/_cluster/health | python -m json.tool
 # Should return "status": "yellow" or "green"
@@ -67,6 +70,7 @@ PYTHONPATH=. python ingest_esci_judgments.py --locale us --reset
 Expected: ~5 minutes, ~1.8M judgments nested in `esci_judgments` index.
 
 Verify:
+
 ```bash
 curl -s http://localhost:9200/esci_judgments/_count | python -m json.tool
 # Should show ~97K documents (one per unique query)
@@ -115,6 +119,7 @@ PYTHONPATH=. python benchmark_esci.py --limit 5000 --hard-only --fast \
 ```
 
 Output JSON structure:
+
 ```json
 {
   "timestamp": "2026-04-30T14:30:00",
@@ -168,7 +173,7 @@ All benchmarks use these fixed values (defined in `benchmark_esci.py` and Makefi
 **Query sample:** 5000 judged US queries (industry-standard scale)  
 **Hard-query count:** 1250 / 5000 (bottom-quartile NDCG@10 <= 0.2393)
 
-```
+```text
 ======================================================
 ESCI HARD-QUERY RELEVANCY BENCHMARK
 ======================================================
@@ -188,7 +193,7 @@ Adaptive:  NDCG@10 +13.3%   MRR +12.6%   Recall@20 +7.2%
 
 ### Full-Set Results (Appendix)
 
-```
+```text
 System               NDCG@10     MRR         Recall@20   n
 ─────────────────────────────────────────────────────────
 Lexical (BM25)       0.3310      0.4910      0.3691      5000
@@ -202,19 +207,22 @@ Adaptive             0.3897      0.5467      0.4243      5000
 
 ### What Each System Does
 
-**Lexical floor (α=0.0)**
+#### Lexical floor (α=0.0)
+
 - Pure BM25 retrieval (no semantic/vector component)
 - k=20 candidates fetched and ranked by BM25 score
 - No reranking
 - Baseline for understanding lexical-only quality
 
-**Standard Hybrid (α=0.25)**
+#### Standard Hybrid (α=0.25)
+
 - Hybrid search: 40% vector + 60% BM25 (RRF fusion with k=60)
 - k=20 candidates ranked by hybrid score
 - No reranking
 - Reference point (standard production setting)
 
-**Adaptive (intent-driven α + reranker + quality gate)**
+#### Adaptive (intent-driven α + reranker + quality gate)
+
 - Intent → alpha mapping (fast-path table, deterministic)
 - Hybrid search with intent-specific alpha
 - Cross-encoder reranking: top-20 by model score
@@ -279,6 +287,7 @@ For development/testing, use `--limit 500`. For final slide deck numbers, use `-
 ## Contact
 
 If results differ significantly from expected or you suspect the ESCI dataset has changed:
+
 1. Confirm ESCI parquet files match amazon-science/esci-data main branch
 2. Run with `--output results.json` and check the `timestamp` and commit hash
 3. Document the variance (e.g., "run on commit XYZ vs YZX showed 1.2% NDCG@10 difference")
