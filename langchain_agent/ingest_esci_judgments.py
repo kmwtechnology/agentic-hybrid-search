@@ -2,6 +2,12 @@
 """
 ESCI Judgments Ingestion Script.
 
+DEPRECATED for standard ingest: setup.py now uses Lucille ETL
+(langchain_agent/scripts/lucille_ingest.sh + lucille/esci/conf/judgments.conf).
+The pre-aggregation step is handled by scripts/prepare_judgments_parquet.py.
+
+Still available as a fallback if Lucille is unavailable.
+
 Loads the Amazon Shopping Queries Dataset judgments
 (``shopping_queries_dataset_examples.parquet``) and indexes one document
 *per query* into a dedicated ``esci_judgments`` OpenSearch index.

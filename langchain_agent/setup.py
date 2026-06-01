@@ -327,25 +327,32 @@ def main():
         if not args.skip_models:
             validate_google_api()
 
-        # Step 3: Product Data Loading
+        # Step 3: Product + Judgment Data Loading via Lucille ETL
         if not args.skip_docs:
-            print("\n[6/7] Loading ESCI e-commerce products...")
+            print("\n[6/7] Loading ESCI products and judgments via Lucille ETL...")
             print(
-                "      Ensure ESCI dataset files are present in ../esci/shopping_queries_dataset/"
+                "      Requires Java 17+ and Maven. Embeddings are precomputed — no API calls needed."
             )
-            print("      Embeddings are batched (100/call) — progress shown per batch.", flush=True)
             try:
-                from ingest_esci_products import ingest_esci_products
+                import subprocess
 
-                docs_loaded, chunks_loaded = ingest_esci_products(reset_index=args.reset_index)
-                print(f"      ✓ Loaded {docs_loaded:,} products ({chunks_loaded:,} chunks)")
-            except Exception as e:
-                print(f"      ⚠ Error loading ESCI products: {e}")
-                import traceback
-
-                traceback.print_exc()
-                print("      You can manually load products later with:")
+                lucille_script = Path(__file__).parent / "scripts" / "lucille_ingest.sh"
+                result = subprocess.run(
+                    [str(lucille_script)],
+                    cwd=str(Path(__file__).parent),
+                    check=True,
+                )
+                print("      ✓ Products and judgments loaded via Lucille ETL")
+            except subprocess.CalledProcessError as e:
+                print(f"      ⚠ Lucille ingest failed (exit {e.returncode})")
+                print("      You can retry manually:")
+                print("      bash langchain_agent/scripts/lucille_ingest.sh")
+                print("      Or fall back to the Python ingest scripts:")
                 print("      PYTHONPATH=. python ingest_esci_products.py")
+                print("      PYTHONPATH=. python ingest_esci_judgments.py")
+            except FileNotFoundError:
+                print("      ⚠ lucille_ingest.sh not found — skipping Lucille ingest")
+                print("      Run manually: bash langchain_agent/scripts/lucille_ingest.sh")
 
         # Summary
         print("\n" + "=" * 70)

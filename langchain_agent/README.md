@@ -44,7 +44,11 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 docker --version      # Docker Desktop
 python3 --version     # Python 3.13+
 node --version        # Node.js 24+
+java -version         # Java 17+ (for Lucille ETL ingest)
+mvn -version          # Maven 3.8+ (for Lucille ETL ingest)
 ```
+
+Install Java + Maven on macOS: `brew install openjdk@17 maven`
 
 You'll also need a Google API key from <https://aistudio.google.com/apikey>
 (set `GOOGLE_API_KEY` in `.env`).
@@ -63,7 +67,7 @@ Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample 
 3. Starts PostgreSQL and OpenSearch via Docker
 4. Initializes the checkpoint DB and OpenSearch index
 5. Validates the Google AI API key
-6. Ingests an ESCI product sample (default 10 k; reuses precomputed embeddings)
+6. Ingests an ESCI product sample (9,618 docs) and judgments (97,345 queries) via [Lucille ETL](../lucille/esci/)
 
 ### Start / Stop
 
@@ -519,7 +523,27 @@ TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 
 ## Development
 
-### Re-ingest ESCI products
+### Re-ingest ESCI data (Lucille ETL — default)
+
+The standard ingest path uses [Lucille](../lucille/esci/) — a Java ETL framework
+that reads parquet files and bulk-indexes into OpenSearch without calling the
+embedding API (embeddings are precomputed in the shipped parquet).
+
+```bash
+# Re-run the full ingest (products + judgments)
+bash scripts/lucille_ingest.sh
+
+# Pre-aggregate only (skip if esci_judgments_aggregated.parquet already exists)
+python scripts/prepare_judgments_parquet.py --locale us --force
+```
+
+Config lives in `lucille/esci/conf/` (HOCON). The script auto-builds the Maven
+module on first run and skips the build when no source files changed.
+
+#### Fallback: Python ingest scripts (large samples, stats, custom locales)
+
+The Python scripts are deprecated for the default 10 k ingest but remain useful
+for larger samples and one-off operations:
 
 ```bash
 PYTHONPATH=. python ingest_esci_products.py              # default 10 k sample
@@ -529,14 +553,7 @@ PYTHONPATH=. python ingest_esci_products.py --resample   # force new sample
 PYTHONPATH=. python ingest_esci_products.py --stats
 ```
 
-Sample parquets are cached at `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`. The default 10 k sample ships with precomputed 768-dim embeddings, so re-ingesting it makes zero embedding API calls. Use `--resample` to generate a new sample (requires re-embedding).
-
-### Ingest ESCI relevance judgments
-
-Powers the Pipeline Quality Summary's ground-truth metrics. Loads
-`esci/shopping_queries_dataset/shopping_queries_dataset_examples.parquet`,
-filters by locale, aggregates one document per query, and indexes into
-`esci_judgments` (~97 k US queries / ~1.8 M judgments).
+Sample parquets are cached at `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`. The default 10 k sample ships with precomputed 768-dim embeddings. Use `--resample` to generate a new sample (requires re-embedding).
 
 ```bash
 PYTHONPATH=. python ingest_esci_judgments.py             # full --reset (default), us locale
