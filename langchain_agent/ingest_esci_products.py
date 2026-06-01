@@ -2,15 +2,21 @@
 """
 Amazon ESCI E-Commerce Product Ingestion Script
 
-Ingests product data from the Amazon Shopping Queries Dataset (ESCI)
-into OpenSearch for hybrid search over e-commerce product listings.
+DEPRECATED for default 10K ingest: setup.py now uses Lucille ETL
+(langchain_agent/scripts/lucille_ingest.sh + lucille/esci/conf/products.conf)
+which reads the precomputed embeddings from the parquet directly — no API calls.
+
+Still useful for:
+  --all        ingest all ~1.2M US products (requires Google embedding API)
+  --resample   generate a fresh sample with new random seed
+  --stats      inspect index counts without re-ingesting
 
 Uses cached parquet samples for idempotent ingestion:
 - esci_products_sample_10000.parquet — default 10K English (US) products
 - esci_products_sample_{limit}.parquet — custom sample sizes
 
 Usage:
-    python ingest_esci_products.py              # Ingest default 10K sample
+    python ingest_esci_products.py              # Ingest default 10K sample (prefer Lucille)
     python ingest_esci_products.py --limit N    # Custom sample size
     python ingest_esci_products.py --resample   # Force re-sample
     python ingest_esci_products.py --all        # Ingest all EN products

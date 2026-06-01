@@ -217,6 +217,14 @@ esci/shopping_queries_dataset/shopping_queries_dataset_products.parquet
 esci/shopping_queries_dataset/esci_products_full_us.parquet
 esci/shopping_queries_dataset/esci_products_sample_[0-9]*.parquet
 esci/shopping_queries_dataset/esci_products_sample_[a-z]*.parquet
-# except the 10K
+# except the 10K precomputed sample (LFS-tracked, ships with repo)
 !esci/shopping_queries_dataset/esci_products_sample_10000.parquet
 docs/
+
+# Lucille ETL source tree (downloaded by lucille_ingest.sh, not tracked)
+# Ignore the full source tree but keep the esci config module.
+# Note: git requires negation patterns to exclude individual files, not dirs,
+# when the parent dir is ignored. Use a file glob to un-ignore lucille/esci/ contents.
+lucille/*
+!lucille/esci
+lucille/esci/target/
