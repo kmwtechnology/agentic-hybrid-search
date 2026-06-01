@@ -415,7 +415,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          lfs: true
+          lfs: false
+
+      - name: Cache LFS objects
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.gitattributes') }}-${{ hashFiles('data/*.parquet') }}
+          restore-keys: lfs-${{ hashFiles('.gitattributes') }}-
+
+      - name: Fetch LFS objects
+        run: git lfs pull
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -427,6 +437,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: ${{ env.PROJECT_ID }}
+          version: latest
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
