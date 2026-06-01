@@ -216,10 +216,7 @@ CLAUDE.md
 esci/
 docs/
 
-# Lucille ETL source tree (downloaded by lucille_ingest.sh, not tracked)
-# Ignore the full source tree but keep the esci config module.
-# Note: git requires negation patterns to exclude individual files, not dirs,
-# when the parent dir is ignored. Use a file glob to un-ignore lucille/esci/ contents.
-lucille/*
-!lucille/esci
-lucille/esci/target/
+# Lucille ETL source tree (downloaded by lucille_ingest.sh, not tracked in git)
+# Config module lives at langchain_agent/lucille-esci/ instead.
+lucille/
+langchain_agent/lucille-esci/target/

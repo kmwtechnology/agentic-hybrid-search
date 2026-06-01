@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_DIR="$(dirname "$AGENT_DIR")"
 LUCILLE_DIR="$REPO_DIR/lucille"
-ESCI_MODULE_DIR="$LUCILLE_DIR/esci"
+ESCI_MODULE_DIR="$AGENT_DIR/lucille-esci"
 
 # ── Colour helpers ──────────────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
