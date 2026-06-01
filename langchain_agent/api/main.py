@@ -35,7 +35,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from api.middleware.auth import AuthConfigurationError
 from api.routes import admin, auth, chat, conversations, health, suggest
 from config import (
-    API_KEY,
     LOGIN_PASSWORD,
     RATE_LIMIT_ENABLED,
     SESSION_COOKIE_NAME,
@@ -65,11 +64,6 @@ async def lifespan(app: FastAPI):
     decorators with a modern async context manager pattern.
     """
     # Startup
-    if not API_KEY:
-        raise AuthConfigurationError(
-            "API_KEY environment variable is not set. "
-            "Authentication is required. Set API_KEY in your .env file."
-        )
     if not LOGIN_PASSWORD:
         raise AuthConfigurationError(
             "LOGIN_PASSWORD environment variable is not set. "

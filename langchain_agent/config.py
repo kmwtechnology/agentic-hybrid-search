@@ -161,9 +161,6 @@ __all__ = [
     # Observable agent streaming configuration
     "ENABLE_ASYNC_STREAMING",
     # API Security
-    "API_KEY",
-    "API_KEY_HEADER",
-    "API_KEY_QUERY_PARAM",
     "RATE_LIMIT_CONVERSATIONS",
     "RATE_LIMIT_CHAT",
     "RATE_LIMIT_LOGIN",
@@ -479,12 +476,6 @@ ENABLE_ASYNC_STREAMING = True
 # ============================================================================
 
 # API Key authentication (REQUIRED)
-# Set API_KEY environment variable to enable authentication
-# The API will fail to start if API_KEY is not set
-API_KEY = os.getenv("API_KEY")
-API_KEY_HEADER = "X-API-Key"
-API_KEY_QUERY_PARAM = "api_key"  # For WebSocket authentication
-
 # Rate limiting configuration
 RATE_LIMIT_CONVERSATIONS = "10/minute"  # List/manage conversations
 RATE_LIMIT_CHAT = "20/minute"  # Chat requests (REST + WebSocket)

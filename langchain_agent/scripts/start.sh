@@ -70,13 +70,12 @@ echo ""
 
 # Optional: Re-ingest product data
 if [ "$1" == "--update-docs" ]; then
-    echo "📚 Re-ingesting ESCI product data..."
-    # shellcheck source=/dev/null
-    source "$PROJECT_DIR/.venv/bin/activate"
-    if PYTHONPATH="$PROJECT_DIR" python "$PROJECT_DIR/ingest_esci_products.py" > "$PROJECT_DIR/logs/docs-update.log" 2>&1; then
+    echo "📚 Re-ingesting ESCI product data via Lucille ETL..."
+    if bash "$SCRIPT_DIR/lucille_ingest.sh" > "$PROJECT_DIR/logs/docs-update.log" 2>&1; then
         echo "✓ Product data updated"
     else
-        echo "⚠ Product data update had issues (continuing anyway)"
+        echo "⚠ Lucille ingest had issues — see logs/docs-update.log"
+        echo "  Fallback (requires GOOGLE_API_KEY): PYTHONPATH=$PROJECT_DIR python $PROJECT_DIR/ingest_esci_products.py"
     fi
     echo ""
 fi
