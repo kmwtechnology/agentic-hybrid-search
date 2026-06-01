@@ -581,6 +581,8 @@ jobs:
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
+        with:
+          version: latest
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -614,13 +616,21 @@ jobs:
       - name: Wait for service to be ready
         run: |
           SERVICE_URL="${{ steps.service-url.outputs.SERVICE_URL }}"
-          max_retries=10
+          max_retries=5
           retry_count=0
 
+          # deploy-cloud-run already health-checks before promoting to 100%
+          # traffic, so the service is almost always ready immediately. 5
+          # retries × 3s = 15s max wait covers the rare slow-start case.
           echo "Waiting for Cloud Run service to be ready..."
           while [ $retry_count -lt $max_retries ]; do
-            if curl -sf "$SERVICE_URL/api/health" > /dev/null 2>&1; then
+            response=$(curl -s "$SERVICE_URL/api/health")
+            if echo "$response" | grep -q '"status"' && \
+               echo "$response" | grep -q '"postgres"' && \
+               echo "$response" | grep -q '"google_ai"' && \
+               echo "$response" | grep -q '"vector_store"'; then
               echo "✓ Service is ready"
+              echo "Health response: $response"
               exit 0
             fi
             echo "⏳ Attempt $((retry_count + 1))/$max_retries - Service not ready yet"
@@ -631,23 +641,7 @@ jobs:
           echo "❌ Service failed to become ready after $max_retries attempts"
           exit 1
 
-      - name: Run health check smoke test
-        run: |
-          SERVICE_URL="${{ steps.service-url.outputs.SERVICE_URL }}"
-          echo "Testing health endpoint: $SERVICE_URL/api/health"
-
-          response=$(curl -s "$SERVICE_URL/api/health")
-          echo "Health response: $response"
-
-          # Check if response contains expected fields
-          echo "$response" | grep -q '"status"' || (echo "❌ Missing status field" && exit 1)
-          echo "$response" | grep -q '"postgres"' || (echo "❌ Missing postgres field" && exit 1)
-          echo "$response" | grep -q '"google_ai"' || (echo "❌ Missing google_ai field" && exit 1)
-          echo "$response" | grep -q '"vector_store"' || (echo "❌ Missing vector_store field" && exit 1)
-
-          echo "✓ Health check passed"
-
-      - name: Run deployment smoke tests
+      - name: Run e2e smoke tests (parallel)
         env:
           CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
           API_KEY: ${{ steps.service-url.outputs.API_KEY }}
@@ -656,84 +650,37 @@ jobs:
         run: |
           cd langchain_agent
 
-          # --timeout=240: WEBSOCKET_TIMEOUT is 180s (model load + processing),
-          # but pytest --timeout must be higher to include test setup/teardown and
-          # account for worst-case latencies. 240s provides 60s buffer above the
-          # 180s inner timeout.
+          # --timeout=240: WEBSOCKET_TIMEOUT is 180s (model load + processing);
+          # 240s provides 60s buffer above the inner timeout for setup/teardown.
+          # The three suites are independent (no shared state) so run in parallel
+          # to cut wall-clock time from ~9-15 min sequential to ~3-5 min.
           pytest tests/e2e/test_deployment_smoke.py \
-            -v \
-            -ra \
-            --tb=short \
-            -m "e2e and slow" \
-            --timeout=240 \
-            --asyncio-mode=auto \
-            2>&1 | tee smoke-test-results.txt
-
-          exit_code=${PIPESTATUS[0]}
-
-          if [ "$exit_code" -eq 0 ]; then
-            echo "✓ Smoke tests passed"
-          else
-            echo "❌ Smoke tests failed"
-          fi
-
-          exit "$exit_code"
-
-      - name: Run Cloud Run deployment tests
-        env:
-          CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
-          API_KEY: ${{ steps.service-url.outputs.API_KEY }}
-          LOGIN_PASSWORD: ${{ steps.service-url.outputs.LOGIN_PASSWORD }}
-          PYTHONPATH: langchain_agent
-        run: |
-          cd langchain_agent
+            -v -ra --tb=short -m "e2e and slow" \
+            --timeout=240 --asyncio-mode=auto \
+            2>&1 | tee smoke-test-results.txt &
+          pid1=$!
 
           pytest tests/e2e/test_cloud_run_deployment.py \
-            -v \
-            -ra \
-            --tb=short \
-            -m "e2e and slow" \
-            --timeout=240 \
-            --asyncio-mode=auto \
-            2>&1 | tee cloud-run-test-results.txt
-
-          exit_code=${PIPESTATUS[0]}
-
-          if [ "$exit_code" -eq 0 ]; then
-            echo "✓ Cloud Run tests passed"
-          else
-            echo "❌ Cloud Run tests failed"
-          fi
-
-          exit "$exit_code"
-
-      - name: Run deployment data tests
-        env:
-          CLOUD_RUN_URL: ${{ steps.service-url.outputs.SERVICE_URL }}
-          API_KEY: ${{ steps.service-url.outputs.API_KEY }}
-          LOGIN_PASSWORD: ${{ steps.service-url.outputs.LOGIN_PASSWORD }}
-          PYTHONPATH: langchain_agent
-        run: |
-          cd langchain_agent
+            -v -ra --tb=short -m "e2e and slow" \
+            --timeout=240 --asyncio-mode=auto \
+            2>&1 | tee cloud-run-test-results.txt &
+          pid2=$!
 
           pytest tests/e2e/test_deployment_data.py \
-            -v \
-            -ra \
-            --tb=short \
-            -m "e2e and slow" \
-            --timeout=240 \
-            --asyncio-mode=auto \
-            2>&1 | tee data-test-results.txt
+            -v -ra --tb=short -m "e2e and slow" \
+            --timeout=240 --asyncio-mode=auto \
+            2>&1 | tee data-test-results.txt &
+          pid3=$!
 
-          exit_code=${PIPESTATUS[0]}
+          wait $pid1; exit1=$?
+          wait $pid2; exit2=$?
+          wait $pid3; exit3=$?
 
-          if [ "$exit_code" -eq 0 ]; then
-            echo "✓ Data tests passed"
-          else
-            echo "❌ Data tests failed"
-          fi
+          [ "$exit1" -eq 0 ] && echo "✓ Smoke tests passed"      || echo "❌ Smoke tests failed"
+          [ "$exit2" -eq 0 ] && echo "✓ Cloud Run tests passed"  || echo "❌ Cloud Run tests failed"
+          [ "$exit3" -eq 0 ] && echo "✓ Data tests passed"       || echo "❌ Data tests failed"
 
-          exit "$exit_code"
+          [ $((exit1 + exit2 + exit3)) -eq 0 ] || exit 1
 
       - name: Upload test results
         if: always()
