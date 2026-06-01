@@ -53,6 +53,8 @@ else
   OPENSEARCH_URL="http://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
 fi
 OPENSEARCH_INDEX="${OPENSEARCH_INDEX_NAME:-agentic_hybrid_search_docs}"
+DATA_DIR="$REPO_DIR/data"
+# Raw ESCI dataset (external clone, not tracked in git)
 ESCI_DIR="${ESCI_DATASET_DIR:-$REPO_DIR/esci/shopping_queries_dataset}"
 LUCILLE_VERSION="0.9.0-SNAPSHOT"
 
@@ -111,7 +113,7 @@ else
 fi
 
 # ── Step 3: Pre-aggregate judgments parquet ──────────────────────────────────
-JUDGMENTS_PARQUET="$ESCI_DIR/esci_judgments_aggregated.parquet"
+JUDGMENTS_PARQUET="$DATA_DIR/esci_judgments_aggregated.parquet"
 if [[ ! -f "$JUDGMENTS_PARQUET" ]]; then
   info "Pre-aggregating ESCI judgments (2.6M rows → ~97k per-query rows)..."
   PYTHON="${AGENT_DIR}/.venv/bin/python"
@@ -125,7 +127,7 @@ else
 fi
 
 # ── Step 4: Run products ingest ───────────────────────────────────────────────
-PRODUCTS_PARQUET="$ESCI_DIR/esci_products_sample_10000.parquet"
+PRODUCTS_PARQUET="$DATA_DIR/esci_products_sample_10000.parquet"
 if [[ ! -f "$PRODUCTS_PARQUET" ]]; then
   error "Products parquet not found: $PRODUCTS_PARQUET"
   exit 1

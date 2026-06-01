@@ -28,12 +28,12 @@ import pandas as pd
 ESCI_RELEVANCE = {"E": 4.0, "S": 1.0, "C": 0.1, "I": 0.0}
 
 BASE_DIR = Path(__file__).parent.parent.parent
+# Raw ESCI dataset — external clone, not tracked in git
 EXAMPLES_PARQUET = (
     BASE_DIR / "esci" / "shopping_queries_dataset" / "shopping_queries_dataset_examples.parquet"
 )
-OUTPUT_PARQUET = (
-    BASE_DIR / "esci" / "shopping_queries_dataset" / "esci_judgments_aggregated.parquet"
-)
+# Output goes to data/ — tracked in git alongside the precomputed products sample
+OUTPUT_PARQUET = BASE_DIR / "data" / "esci_judgments_aggregated.parquet"
 
 
 def aggregate(locale: str = "us") -> pd.DataFrame:
