@@ -3,8 +3,11 @@
 
 # Testing
 pytest>=7.0.0              # Testing framework
+pytest-asyncio>=0.23.0     # Async test support (@pytest.mark.asyncio); required by auth/ws unit tests
 pytest-cov>=4.0.0          # Coverage reporting
 pytest-timeout>=2.1.0      # Timeout handling for long-running tests
+pytest-xdist>=3.0.0        # Parallel test execution (used by make ci)
+psutil>=5.9.0              # Process/resource introspection in tests
 
 # Code Quality
 black>=23.0.0              # Code formatter (PEP 8)
