@@ -54,8 +54,6 @@ else
 fi
 OPENSEARCH_INDEX="${OPENSEARCH_INDEX_NAME:-agentic_hybrid_search_docs}"
 DATA_DIR="$REPO_DIR/data"
-# Raw ESCI dataset (external clone, not tracked in git)
-ESCI_DIR="${ESCI_DATASET_DIR:-$REPO_DIR/esci/shopping_queries_dataset}"
 LUCILLE_VERSION="0.9.0-SNAPSHOT"
 
 # ── Prerequisite checks ──────────────────────────────────────────────────────
