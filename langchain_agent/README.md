@@ -56,14 +56,14 @@ cd langchain_agent
 ./scripts/setup.sh
 ```
 
-Takes 10–20 min on first run:
+Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample — no API calls needed for the default 10 k ingest):
 
 1. Generates a secure `API_KEY`
 2. Creates `.venv`, installs Python + frontend dependencies
 3. Starts PostgreSQL and OpenSearch via Docker
 4. Initializes the checkpoint DB and OpenSearch index
 5. Validates the Google AI API key
-6. Ingests an ESCI product sample (default 10 k)
+6. Ingests an ESCI product sample (default 10 k; reuses precomputed embeddings)
 
 ### Start / Stop
 
@@ -529,7 +529,7 @@ PYTHONPATH=. python ingest_esci_products.py --resample   # force new sample
 PYTHONPATH=. python ingest_esci_products.py --stats
 ```
 
-Sample parquets are cached at `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`.
+Sample parquets are cached at `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`. The default 10 k sample ships with precomputed 768-dim embeddings, so re-ingesting it makes zero embedding API calls. Use `--resample` to generate a new sample (requires re-embedding).
 
 ### Ingest ESCI relevance judgments
 
