@@ -55,6 +55,9 @@ jobs:
         run: |
           cd langchain_agent
           pip install --upgrade pip
+          # Pre-install CPU-only torch so sentence-transformers reuses it instead
+          # of pulling the ~3GB default GPU wheel. Mirrors the Dockerfile pattern.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov pytest-timeout pytest-xdist
 
@@ -191,6 +194,9 @@ jobs:
         run: |
           cd langchain_agent
           pip install --upgrade pip
+          # Pre-install CPU-only torch so sentence-transformers reuses it instead
+          # of pulling the ~3GB default GPU wheel. Mirrors the Dockerfile pattern.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-cov pytest-timeout pytest-xdist
 
