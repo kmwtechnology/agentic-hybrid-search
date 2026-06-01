@@ -345,9 +345,9 @@ def main():
                 print("      ✓ Products and judgments loaded via Lucille ETL")
             except subprocess.CalledProcessError as e:
                 print(f"      ⚠ Lucille ingest failed (exit {e.returncode})")
-                print("      You can retry manually:")
-                print("      bash langchain_agent/scripts/lucille_ingest.sh")
-                print("      Or fall back to the Python ingest scripts:")
+                print("      Check prerequisites: java -version (17+) and mvn -version (3.8+)")
+                print("      Retry manually: bash langchain_agent/scripts/lucille_ingest.sh")
+                print("      Python fallback (requires GOOGLE_API_KEY for embedding):")
                 print("      PYTHONPATH=. python ingest_esci_products.py")
                 print("      PYTHONPATH=. python ingest_esci_judgments.py")
             except FileNotFoundError:

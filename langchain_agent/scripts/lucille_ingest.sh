@@ -10,7 +10,10 @@
 #
 # Required env vars (sourced from langchain_agent/.env):
 #   OPENSEARCH_HOST, OPENSEARCH_PORT, OPENSEARCH_INDEX_NAME
-#   ESCI_DATASET_DIR
+#
+# Parquet files are read from: <repo-root>/data/
+#   esci_products_sample_10000.parquet  — precomputed products (shipped with repo)
+#   esci_judgments_aggregated.parquet   — pre-aggregated judgments (generated on first run)
 #
 # Optional:
 #   LUCILLE_THREADS (default: 2) — worker threads per pipeline

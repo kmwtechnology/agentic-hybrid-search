@@ -67,7 +67,7 @@ Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample 
 3. Starts PostgreSQL and OpenSearch via Docker
 4. Initializes the checkpoint DB and OpenSearch index
 5. Validates the Google AI API key
-6. Ingests an ESCI product sample (9,618 docs) and judgments (97,345 queries) via [Lucille ETL](../lucille/esci/)
+6. Ingests an ESCI product sample (9,618 docs) and judgments (97,345 queries) via [Lucille ETL](lucille-esci/)
 
 ### Start / Stop
 
@@ -525,7 +525,7 @@ TypedDict — only `messages` is guaranteed. Always use `state.get(...)`.
 
 ### Re-ingest ESCI data (Lucille ETL — default)
 
-The standard ingest path uses [Lucille](../lucille/esci/) — a Java ETL framework
+The standard ingest path uses [Lucille](lucille-esci/) — a Java ETL framework
 that reads parquet files and bulk-indexes into OpenSearch without calling the
 embedding API (embeddings are precomputed in the shipped parquet).
 
@@ -537,7 +537,7 @@ bash scripts/lucille_ingest.sh
 python scripts/prepare_judgments_parquet.py --locale us --force
 ```
 
-Config lives in `lucille/esci/conf/` (HOCON). The script auto-builds the Maven
+Config lives in `lucille-esci/conf/` (HOCON). The script auto-builds the Maven
 module on first run and skips the build when no source files changed.
 
 #### Fallback: Python ingest scripts (large samples, stats, custom locales)
@@ -553,7 +553,7 @@ PYTHONPATH=. python ingest_esci_products.py --resample   # force new sample
 PYTHONPATH=. python ingest_esci_products.py --stats
 ```
 
-Sample parquets are cached at `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`. The default 10 k sample ships with precomputed 768-dim embeddings. Use `--resample` to generate a new sample (requires re-embedding).
+The default 10 k sample ships precomputed at `data/esci_products_sample_10000.parquet` (read by Lucille). Larger/custom samples are written to `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`. Use `--resample` to generate a new sample (requires re-embedding).
 
 ```bash
 PYTHONPATH=. python ingest_esci_judgments.py             # full --reset (default), us locale

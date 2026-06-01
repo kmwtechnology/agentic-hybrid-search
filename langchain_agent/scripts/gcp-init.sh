@@ -136,7 +136,7 @@ fi
 if [ -f "$PROJECT_DIR/.env" ]; then
     GOOGLE_KEY=$(grep "^GOOGLE_API_KEY=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
     if [ -z "$GOOGLE_KEY" ] || [ "$GOOGLE_KEY" = "your-google-api-key-here" ]; then
-        err "GOOGLE_API_KEY not configured in .env. Needed for embedding generation."
+        err "GOOGLE_API_KEY not configured in .env. Needed for LLM inference (and embedding generation if using the Python ingest fallback instead of Lucille)."
     fi
 else
     err ".env file not found. Run setup.sh first or create .env with GOOGLE_API_KEY."
@@ -342,10 +342,11 @@ echo ""
 echo "  The Cloud Run service should now pass health checks at:"
 echo "    /api/health"
 echo ""
-echo "  To re-ingest products later:"
-echo "    python ingest_esci_products.py"
+echo "  To re-ingest products and judgments later (Lucille ETL — default):"
+echo "    bash langchain_agent/scripts/lucille_ingest.sh"
 echo ""
-echo "  To re-ingest judgments later:"
-echo "    python ingest_esci_judgments.py"
+echo "  Python fallback (requires GOOGLE_API_KEY for re-embedding):"
+echo "    PYTHONPATH=langchain_agent python langchain_agent/ingest_esci_products.py"
+echo "    PYTHONPATH=langchain_agent python langchain_agent/ingest_esci_judgments.py"
 echo ""
 echo "============================================================"
