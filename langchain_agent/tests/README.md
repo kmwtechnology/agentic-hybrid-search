@@ -28,29 +28,26 @@ tests/
 ├── integration/                   # Multi-component; requires services
 │   ├── test_admin_reindex.py
 │   ├── test_agent_response.py
-│   ├── test_content_generation_e2e.py
-│   ├── test_content_generators.py
+│   ├── test_conversations.py
 │   ├── test_edge_cases.py
 │   ├── test_pipeline_flow.py
 │   ├── test_quality_gate_retry.py
 │   ├── test_retriever_reranker.py
 │   ├── test_suggest.py
-│   ├── test_websocket_content_streaming.py
 │   └── test_websocket_integration.py
 │
 ├── e2e/                           # Against a deployed Cloud Run instance
 │   ├── test_cloud_run_deployment.py
+│   ├── test_demo_queries_smoke.py
 │   ├── test_deployment_data.py
 │   ├── test_deployment_smoke.py
 │   ├── test_latency_profiling.py
 │   ├── test_performance_load.py
 │   ├── test_real_world_scenarios.py
 │   ├── test_stress.py
-│   ├── DEPLOYMENT_TESTING.md
 │   └── README.md
 │
 ├── conftest.py                    # Shared fixtures + env defaults
-├── PERFORMANCE_TESTING.md         # Perf test guidance
 ├── load_test_phase3.js            # k6 load script
 └── README.md                      # This file
 ```
@@ -112,7 +109,8 @@ services — everything is mocked through `conftest.py`.
 | `intent/test_intent_classifier.py` | 6-intent classification, keyword fast-path vs LLM fallback, confidence thresholds |
 | `evaluator/test_query_evaluator.py` | Dynamic α selection, query expansion, fast-path vs LLM-path |
 | `quality_gate/test_quality_gate.py` | Retry decision logic, α adjustment bounds, intent-specific thresholds |
-| `test_auth_middleware.py` | API key validation, constant-time comparison, header/query-param auth |
+| `test_auth_routes.py` | Login/logout/session route behavior |
+| `test_admin_routes_auth.py` | Admin route auth contract: session or `X-Admin-Token` |
 | `test_config_validation.py` | Required env vars, value ranges, type checks |
 | `test_doc_replacer.py` | Replacement scoring, broken-link substitution, cleanup |
 | `test_embedding_cache.py` | LRU eviction, TTL, disabled-cache no-op, thread safety |
@@ -152,10 +150,8 @@ pre-commit, CI fast lane.
 | `test_retriever_reranker.py` | Hybrid search + RRF fusion + reranker scoring |
 | `test_quality_gate_retry.py` | Retry triggered when max reranker score < 0.5, α ±0.3 adjustment |
 | `test_agent_response.py` | Response generation, citation formatting, Amazon URL construction |
-| `test_content_generators.py` | Per-type generators (social, blog, article, tutorial, comprehensive) |
-| `test_content_generation_e2e.py` | End-to-end content generation with streaming |
+| `test_conversations.py` | Conversation CRUD, checkpoint-backed state, session behavior |
 | `test_websocket_integration.py` | WebSocket lifecycle, auth, event ordering |
-| `test_websocket_content_streaming.py` | Token-by-token streaming contract |
 | `test_suggest.py` | `/api/suggest` typeahead: prefix matches, spell correction (Levenshtein + ratio), fuzzy distance-1 fallback, corpus-token and prefix guards |
 | `test_admin_reindex.py` | `/api/admin/reindex` background job, `/api/admin/reindex/status` polling, `/api/admin/health` index status |
 | `test_edge_cases.py` | Empty retrievals, malformed input, low-confidence intents |
@@ -167,14 +163,14 @@ pre-commit, CI fast lane.
 
 **Purpose:** smoke and regression testing against a deployed Cloud Run
 instance. See [`tests/e2e/README.md`](e2e/README.md) for scenarios and
-[`tests/e2e/DEPLOYMENT_TESTING.md`](e2e/DEPLOYMENT_TESTING.md) for the
-testing workflow.
+required environment.
 
 | File | Focus |
 | --- | --- |
 | `test_deployment_smoke.py` | Health check, auth, basic round-trip (18 tests) |
 | `test_cloud_run_deployment.py` | Cold start, scaling, service metadata, rate-limit ordering (17 tests) |
 | `test_deployment_data.py` | Product index population, sample queries, checkpoint persistence (10 tests) |
+| `test_demo_queries_smoke.py` | Demo query regression checks against deployed data |
 | `test_real_world_scenarios.py` | All 6 intents against live data with realistic queries |
 | `test_latency_profiling.py` | Per-node latency breakdown |
 | `test_performance_load.py` | Sustained load, throughput, p95/p99 |
@@ -230,8 +226,8 @@ still recommended for consistency with the rest of the project.
 ```bash
 cd langchain_agent
 pip install -r requirements-dev.txt
-../scripts/setup.sh          # one-time: Docker + venv + DB + ingestion
-../scripts/start.sh          # start services
+./scripts/setup.sh           # one-time: Docker + venv + DB + ingestion
+./scripts/start.sh           # start services
 PYTHONPATH=. pytest tests/ -v
 ```
 
@@ -243,7 +239,7 @@ integration tests (ephemeral Postgres + OpenSearch), strict lint
 deploy + smoke test. Runners use Node.js 24.
 
 `.github/workflows/reindex.yml` is a separate manual-dispatch workflow
-that calls `POST /api/admin/reindex` against the deployed Cloud Run
+that calls `GET /api/admin/reindex` against the deployed Cloud Run
 service — not invoked by the regular test/deploy flow.
 
 ## Common Issues

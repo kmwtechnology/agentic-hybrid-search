@@ -32,13 +32,29 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 - **Data layer:** OpenSearch 2.19.1 (HNSW + BM25) · PostgreSQL 16
   (LangGraph checkpoints only)
 - **LLM:** Google Gemini 3 Flash (generation) + Gemini 3.1 Flash Lite
-  (classify/rerank) · `text-embedding-005` (embeddings)
+  (classify/rerank) · `models/gemini-embedding-001` (embeddings)
 
 ---
 
-## Quick Start
+## Deployment Paths
+
+This application has two supported run paths:
+
+- **Path A: Local development with Docker** — `setup.sh` and `start.sh`
+  run PostgreSQL/OpenSearch locally with Docker, plus the FastAPI backend
+  and React frontend.
+- **Path B: Deployment to GCP** — `deploy.sh` deploys to Cloud Run,
+  connects to Cloud SQL for checkpoints, reads secrets from Secret
+  Manager, and uses an externally hosted OpenSearch cluster.
+
+Path A is the right starting point for development and tests. Path B is
+for deployed Cloud Run environments.
 
 ### Prerequisites
+
+Both paths need a Google API key from <https://aistudio.google.com/apikey>.
+
+Path A needs:
 
 ```bash
 docker --version      # Docker Desktop
@@ -50,14 +66,23 @@ mvn -version          # Maven 3.8+ (for Lucille ETL ingest)
 
 Install Java + Maven on macOS: `brew install openjdk@17 maven`
 
-You'll also need a Google API key from <https://aistudio.google.com/apikey>
-(set `GOOGLE_API_KEY` in `.env`).
+Path B needs the Google Cloud SDK authenticated to the target project,
+permissions for Cloud Run, Cloud SQL, Artifact Registry, Secret Manager,
+and IAM, plus a reachable OpenSearch cluster. The deployment scripts do
+not provision OpenSearch.
 
-### Setup (one-time)
+For local browser login, `setup.sh` generates `LOGIN_PASSWORD`,
+`SESSION_SECRET`, and `SESSION_COOKIE_SECURE=false` in `.env`. In
+production, keep `SESSION_COOKIE_SECURE=true`.
+
+### Path A: Local Development With Docker
 
 ```bash
 cd langchain_agent
+cp .env.example .env
+# Set GOOGLE_API_KEY in .env before continuing.
 ./scripts/setup.sh
+./scripts/start.sh
 ```
 
 Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample — no API calls needed for the default 10 k ingest):
@@ -69,24 +94,35 @@ Takes ~3–5 min on first run (embeddings are precomputed in the shipped sample 
 5. Validates the Google AI API key
 6. Ingests an ESCI product sample (9,618 docs) and judgments (97,345 queries) via [Lucille ETL](lucille-esci/)
 
-### Start / Stop
-
-```bash
-./scripts/start.sh    # → http://localhost:5173
-./scripts/stop.sh
-```
-
 Backend FastAPI runs on `:8000`, React frontend on `:5173` (Vite proxies
 `/api` to the backend).
 
-### Teardown
+The login password is stored as `LOGIN_PASSWORD` in `.env`. The UI uses a
+signed session cookie after login; admin automation can use
+`X-Admin-Token: $API_KEY` on protected admin routes.
+
+Stop or clean up local services:
 
 ```bash
+./scripts/stop.sh
 ./scripts/teardown.sh
 ```
 
 Removes running services, the Docker volumes, `.venv`, `node_modules`, and
 log files. Keeps `.env` by default (prompted separately).
+
+### Path B: Deployment to GCP
+
+```bash
+cd langchain_agent
+./scripts/deploy.sh --project <GCP_PROJECT_ID>
+./scripts/gcp-init.sh --project <GCP_PROJECT_ID>
+./scripts/smoke_test.sh <CLOUD_RUN_URL>
+```
+
+`deploy.sh` builds and deploys the Cloud Run service. `gcp-init.sh`
+initializes Cloud SQL and ingests ESCI products into OpenSearch. The smoke
+test verifies the deployed API.
 
 ---
 
@@ -232,7 +268,7 @@ Everything lives in `config.py` with `.env` overrides (see `.env.example`).
 LLM_MODEL=gemini-3-flash-preview                   # generation
 RERANKER_MODEL=gemini-3.1-flash-lite-preview       # reranking
 QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview     # query evaluator
-EMBEDDINGS_MODEL=models/text-embedding-005         # 768-dim embeddings
+EMBEDDINGS_MODEL=models/gemini-embedding-001      # 768-dim embeddings
 VECTOR_DIMENSION=768
 LLM_TEMPERATURE=0
 QUERY_EVAL_TEMPERATURE=0
@@ -288,9 +324,9 @@ rather than as a separate intent class.
 
 ---
 
-## GCP Deployment
+## GCP Deployment Details
 
-### Deploy to Cloud Run
+### Path B: Deploy to Cloud Run
 
 ```bash
 ./scripts/deploy.sh --project <GCP_PROJECT_ID>
@@ -304,13 +340,13 @@ This will:
 4. Wire secrets (`GOOGLE_API_KEY`, `API_KEY`, OpenSearch creds) via Secret Manager
 5. Connect to Cloud SQL via the built-in proxy
 
-### One-time Cloud SQL + product ingestion
+### Path B: One-time Cloud SQL + product ingestion
 
 ```bash
 ./scripts/gcp-init.sh --project <GCP_PROJECT_ID>
 ```
 
-### Check Cloud Run logs
+### Path B: Check Cloud Run logs
 
 ```bash
 gcloud logging read resource.type=cloud_run_revision --project=<GCP_PROJECT_ID>
@@ -437,10 +473,12 @@ Implementation:
 
 ### Admin reindex API
 
-`POST /api/admin/reindex?reset_index=true&limit=10000` kicks off a
+`GET /api/admin/reindex?reset_index=true&limit=10000` kicks off a
 background ESCI re-ingestion. `GET /api/admin/reindex/status` returns
-`running` / `success` / `error` with detail. `GET /api/admin/health`
-returns index health and document count. A dedicated GitHub Actions
+`idle` / `queued` / `running` / `success` / `error` with detail.
+`GET /api/admin/health` returns index health and document count. Add
+`reindex_judgments=true` when the ESCI judgment index also needs a rebuild.
+A dedicated GitHub Actions
 workflow (`.github/workflows/reindex.yml`) exposes the flow as a manual
 dispatch against a deployed Cloud Run instance.
 
@@ -597,6 +635,12 @@ PYTHONPATH=. pytest tests/e2e/            # requires deployed Cloud Run
 PYTHONPATH=. pytest --cov=. --cov-report=html
 ```
 
+`make ci` runs the local pre-push gate used by this repo: backend format,
+lint/import checks, unit tests, and frontend test/lint/type/build. It only
+collects integration and e2e tests; execute those suites separately when a
+change touches service wiring, WebSocket contracts, OpenSearch mappings, or
+Cloud Run behavior.
+
 See [tests/README.md](tests/README.md) for the full layout and fixtures, and
 [tests/e2e/README.md](tests/e2e/README.md) for Cloud Run smoke/regression
 scenarios.
@@ -752,7 +796,7 @@ curl http://localhost:8000/api/health
 ```bash
 echo $GOOGLE_API_KEY
 python -c "from langchain_google_genai import GoogleGenerativeAIEmbeddings; \
-  e = GoogleGenerativeAIEmbeddings(model='models/text-embedding-005'); \
+  e = GoogleGenerativeAIEmbeddings(model='models/gemini-embedding-001', output_dimensionality=768); \
   print(len(e.embed_query('test')))"
 ```
 

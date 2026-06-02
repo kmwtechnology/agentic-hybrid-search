@@ -9,17 +9,63 @@ Combines hybrid retrieval (vector + BM25 via RRF), LLM-based reranking, intent
 routing, and real-time WebSocket streaming. Deployed on
 **GCP Cloud Run** with Google Gemini.
 
-## Quick Start
+## Deployment Paths
 
-### Local Development
+This repository supports two ways to run the application:
+
+- **Path A: Local development with Docker** — runs PostgreSQL and
+  OpenSearch in Docker, the FastAPI backend on `localhost:8000`, and the
+  Vite frontend on `localhost:5173`.
+- **Path B: Deployment to GCP** — deploys the app to Cloud Run, stores
+  checkpoints in Cloud SQL, reads secrets from Secret Manager, and uses an
+  externally hosted OpenSearch cluster.
+
+Pick one path below. Path A is for local iteration; Path B is for a
+deployed Cloud Run environment.
+
+### Prerequisites
+
+Both paths need:
+
+- Google AI API key from <https://aistudio.google.com/apikey>
+
+Path A also needs:
+
+- Docker Desktop
+- Python 3.13+
+- Node.js 24+
+- Java 17+ and Maven 3.8+ for the Lucille ETL ingest
+
+Path B also needs:
+
+- Google Cloud SDK authenticated to the target project
+- Permission to manage Cloud Run, Cloud SQL, Artifact Registry, Secret
+  Manager, and IAM
+- A reachable OpenSearch cluster; these scripts do not provision
+  OpenSearch
+
+### Path A: Local Development With Docker
 
 ```bash
 cd langchain_agent
+cp .env.example .env
+# Set GOOGLE_API_KEY in .env before continuing.
 ./scripts/setup.sh    # One-time setup (10–20 min)
 ./scripts/start.sh    # Start backend + frontend → http://localhost:5173
 ```
 
-### Cloud Deployment (GCP)
+`setup.sh` creates a local login password in `.env` and prints it during
+setup. The backend runs on `http://localhost:8000`; the Vite frontend runs
+on `http://localhost:5173`.
+
+Useful follow-up commands:
+
+```bash
+./scripts/stop.sh         # Stop backend/frontend and Docker services
+./scripts/teardown.sh     # Remove services, volumes, .venv, node_modules, logs
+```
+
+### Path B: Deployment to GCP
 
 ```bash
 cd langchain_agent
@@ -29,6 +75,13 @@ cd langchain_agent
 Deploys to Cloud Run with Cloud SQL (PostgreSQL checkpoints), an externally
 hosted OpenSearch cluster, Secret Manager, and Artifact Registry. Scales to
 zero when idle.
+
+After the first deploy, initialize Cloud SQL and ingest product data:
+
+```bash
+./scripts/gcp-init.sh --project <GCP_PROJECT_ID>
+./scripts/smoke_test.sh <CLOUD_RUN_URL>
+```
 
 ## What It Does
 
@@ -110,7 +163,7 @@ flowchart TB
     subgraph GoogleAI["Google Gemini"]
         LLM["gemini-3-flash-preview<br/>(generation)"]
         CLASSIFIER["gemini-3.1-flash-lite-preview<br/>(intent, eval, rerank fallback)"]
-        EMB["text-embedding-005<br/>(768-dim)"]
+        EMB["models/gemini-embedding-001<br/>(768-dim)"]
     end
 
     subgraph Reranking["Reranking"]
@@ -197,7 +250,7 @@ retries with an opposite-direction α adjustment.
 | **LLM (generation)** | Gemini 3 Flash (preview) | Response generation |
 | **LLM (classify/eval)** | Gemini 3.1 Flash Lite (preview) | Intent classification, query evaluation, reranking fallback |
 | **Document Reranking** | `ms-marco-MiniLM-L-12-v2` (cross-encoder) | Default reranker (~10ms/query); Gemini Flash Lite fallback (~500ms) |
-| **Embeddings** | `text-embedding-005` | 768-dim vectors |
+| **Embeddings** | `models/gemini-embedding-001` | 768-dim vectors |
 | **Vector Database** | OpenSearch 2.19.1 | HNSW `knn_vector` + BM25 |
 | **Search Fusion** | Reciprocal Rank Fusion (k=60) | Hybrid score fusion |
 | **Checkpoints** | PostgreSQL 16 | LangGraph state persistence |
@@ -322,7 +375,6 @@ Pure-Python metric implementations live in
 ```text
 agentic-hybrid-search/
 ├── README.md                     # This file
-├── CLAUDE.md                     # Repo-specific Claude Code guidance
 ├── docker-compose.yml            # PostgreSQL + OpenSearch (local dev)
 ├── LICENSE
 ├── langchain_agent/              # Main application (see its README)
@@ -347,13 +399,22 @@ agentic-hybrid-search/
 │   ├── tests/                    # unit, integration, e2e suites
 │   ├── Dockerfile                # Multi-stage build (Node + Python)
 │   └── cloudbuild.yaml
-├── esci/                         # Amazon ESCI dataset (gitignored data)
+├── esci/                         # Amazon ESCI dataset (created by setup; gitignored)
 └── web/                          # Skeleton web app (separate, less developed)
 ```
 
+## Documentation Map
+
+Use the repo root README for architecture and deployment orientation. Use
+[`langchain_agent/README.md`](langchain_agent/README.md) for day-to-day
+local development, API usage, configuration, and troubleshooting. Use
+[`langchain_agent/tests/README.md`](langchain_agent/tests/README.md) for
+the test suite and [`langchain_agent/tests/e2e/README.md`](langchain_agent/tests/e2e/README.md)
+for deployed Cloud Run checks.
+
 ## Search Optimization
 
-- **Vector search** — 768-dim `text-embedding-005` via HNSW (~200–500 ms)
+- **Vector search** — 768-dim `models/gemini-embedding-001` via HNSW (~200–500 ms)
 - **Lexical search** — BM25 via OpenSearch's Lucene analyzer (~100–300 ms)
 - **RRF fusion** — `score = Σ 1/(rank + 60)` normalizes across methods
 - **Dynamic α** — set per-query by the Query Evaluator
@@ -372,9 +433,27 @@ ENABLE_QUERY_EVALUATION=true
 ESCI_INGEST_LIMIT=10000
 ```
 
-## Deployment
+## Operations
 
-### GCP Cloud Run
+### Path A: Local Development With Docker
+
+Local development is fully driven by scripts in `langchain_agent/scripts/`:
+
+```bash
+cd langchain_agent
+cp .env.example .env        # Fill in GOOGLE_API_KEY
+./scripts/setup.sh          # Docker + venv + DB + product ingestion
+./scripts/start.sh          # Backend :8000 + frontend :5173
+./scripts/stop.sh           # Stop local services
+./scripts/teardown.sh       # Full cleanup
+```
+
+**Prerequisites:** Docker Desktop, Python 3.13+, Node.js 24+,
+Java 17+, Maven 3.8+, Google API key
+([get one](https://aistudio.google.com/apikey)), and ~1.5 GB disk for the
+ESCI dataset plus Docker volumes.
+
+### Path B: Deployment to GCP
 
 `scripts/deploy.sh` handles production deployment:
 
@@ -427,10 +506,10 @@ Set `OPENSEARCH_HOST` and `OPENSEARCH_PORT` in your environment before running `
   linting is enforced — lint failures block the pipeline.
 - `.github/workflows/reindex.yml` — separate manual-dispatch workflow that
   runs the ESCI reindex against a deployed Cloud Run instance (calls
-  `POST /api/admin/reindex` and polls `GET /api/admin/reindex/status`).
+  `GET /api/admin/reindex` and polls `GET /api/admin/reindex/status`).
 
 Runners use Node.js 24. Authentication uses Workload Identity Federation
-(no long-lived keys). See [CLAUDE.md](CLAUDE.md) for one-time WIF setup.
+(no long-lived keys).
 
 ### Docker image bundles a sample ESCI parquet
 
@@ -439,21 +518,6 @@ embeddings at `/esci/` so the container can run `ingest_esci_products.py`
 without downloading the full ~1 GB dataset. The file is committed directly
 to the repo (no Git LFS) and copied into the image during the multi-stage
 build.
-
-### Local Development
-
-```bash
-cd langchain_agent
-cp .env.example .env        # Fill in GOOGLE_API_KEY
-./scripts/setup.sh          # Docker + venv + DB + product ingestion
-./scripts/start.sh          # Backend :8000 + frontend :5173
-./scripts/stop.sh
-./scripts/teardown.sh       # Full cleanup
-```
-
-**Prerequisites:** Docker Desktop, Python 3.13+, Node.js 24+,
-Google API key ([get one](https://aistudio.google.com/apikey)), ~1 GB disk
-for ESCI dataset.
 
 ## Performance
 

@@ -8,8 +8,6 @@ auth, WebSocket streaming, pipeline correctness across all 6 intents,
 ESCI data presence, latency profile, and behavior under load.
 
 These are pytest + httpx + websockets tests (not browser automation).
-See [`DEPLOYMENT_TESTING.md`](DEPLOYMENT_TESTING.md) for the full testing
-workflow.
 
 ## Prerequisites
 
@@ -37,7 +35,7 @@ the suite to run.
   `attribute_filter`, `refinement`, `follow_up`, `summary`) produces a
   valid response with expected event ordering
 - `TestCitations` — citation URLs present when reranker score ≥ 0.10,
-  Amazon `dp/{ASIN}` shape
+  Amazon search-by-title URL shape (`/s?k=...`)
 - `TestResponseTiming` — end-to-end latency budget assertions
 
 ### `test_cloud_run_deployment.py` — infrastructure behavior
@@ -62,12 +60,10 @@ the suite to run.
 
 ### `test_real_world_scenarios.py` — user journeys
 
-Seven scenario classes covering realistic personas end-to-end:
+Scenario classes covering realistic personas end-to-end:
 
 - `TestEcommerceShopperScenario` — search → compare → refine → follow-up
 - `TestProductExpertScenario` — deep attribute-filter queries, technical language
-- `TestContentCreatorScenario` — Product Comparison Writer across all
-  5 content types
 - `TestSupportAgentScenario` — summary intent, conversation history
 - `TestMobileShopperScenario` — short queries, high follow-up rate
 - `TestAccessibilityScenario` — screen-reader-friendly output, alt text in citations
@@ -227,7 +223,7 @@ test origin.
 
 **Data tests fail** — check document count
 (`curl $CLOUD_RUN_URL/api/health | grep document_count`); re-ingest via
-`POST /api/admin/reindex` if empty.
+`GET /api/admin/reindex` if empty.
 
 ## See Also
 
