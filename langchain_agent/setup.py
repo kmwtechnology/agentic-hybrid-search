@@ -297,13 +297,19 @@ def main():
         action="store_true",
         help="Delete the existing OpenSearch index before creating a new one (forces re-index with new mapping)",
     )
+    parser.add_argument(
+        "--skip-db",
+        action="store_true",
+        help="Skip PostgreSQL setup (OpenSearch index + search pipeline only). Used by lucille_ingest.sh --reset-index on CI runners that have no Postgres.",
+    )
     args = parser.parse_args()
 
     print("\n" + "=" * 70)
     print("E-COMMERCE SEARCH AGENT - COMPLETE SETUP")
     print("=" * 70)
     print("\nThis script will:")
-    print("  1. Create PostgreSQL database (for checkpoints)")
+    if not args.skip_db:
+        print("  1. Create PostgreSQL database (for checkpoints)")
     print("  2. Create OpenSearch index (for products)")
     print("  3. Create search pipeline (for hybrid search)")
     if not args.skip_models:
@@ -313,11 +319,12 @@ def main():
     print("\n" + "=" * 70)
 
     try:
-        # Step 1: PostgreSQL Setup (checkpoints only)
-        create_database()
-        verify_connection()
-        init_checkpoint_tables()
-        init_metadata_table()
+        # Step 1: PostgreSQL Setup (checkpoints only) — skipped on CI runners
+        if not args.skip_db:
+            create_database()
+            verify_connection()
+            init_checkpoint_tables()
+            init_metadata_table()
 
         # Step 2-3: OpenSearch Setup (documents + search)
         create_opensearch_index()
