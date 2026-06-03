@@ -103,41 +103,18 @@ DATA_DIR="$REPO_DIR/data"
 LUCILLE_VERSION="1.0.0-SNAPSHOT"
 
 # ── Step 4 (optional): Reset products index ──────────────────────────────────
-# Deletes the existing index then re-creates it with the proper knn_vector
-# mapping via setup.py --skip-docs --skip-models. Lucille then writes into a
-# correctly-mapped index instead of an auto-mapped one.
+# Passes --reset-index to setup.py, which deletes and atomically recreates the
+# index with the correct knn_vector mapping before Lucille starts. Doing this
+# in Python (not curl) prevents a race where Lucille's indexer initialization
+# auto-creates the index with default mappings between the curl DELETE and
+# Lucille's first write.
 if [[ "$RESET_INDEX" == "true" ]]; then
-  OPENSEARCH_INDEX_DISPLAY="$_DISPLAY_URL/$OPENSEARCH_INDEX"
-  info "Resetting index: DELETE $OPENSEARCH_INDEX_DISPLAY"
-  if [[ -n "$OPENSEARCH_USER" && -n "$OPENSEARCH_PASSWORD" ]]; then
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-      -u "${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}" \
-      -k -X DELETE "$OPENSEARCH_URL/$OPENSEARCH_INDEX")
-  else
-    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-      -k -X DELETE "$OPENSEARCH_URL/$OPENSEARCH_INDEX")
-  fi
-  if [[ "$HTTP_STATUS" == "200" ]]; then
-    info "Index deleted."
-  elif [[ "$HTTP_STATUS" == "404" ]]; then
-    info "Index did not exist — nothing to delete."
-  elif [[ "$HTTP_STATUS" == "401" ]]; then
-    error "Authentication failed deleting index — check OPENSEARCH_USER/PASSWORD."
-    exit 1
-  else
-    error "Unexpected HTTP $HTTP_STATUS deleting index."
-    exit 1
-  fi
-
-  # Recreate the index with the correct knn_vector mapping + search pipeline.
-  # setup.py --skip-docs --skip-models creates the index schema only (no ingest,
-  # no API key validation), so it works on CI runners without GOOGLE_API_KEY.
-  info "Recreating index mapping via setup.py..."
+  info "Resetting index mapping: deleting and recreating via setup.py $_DISPLAY_URL/$OPENSEARCH_INDEX"
   PYTHON="${AGENT_DIR}/.venv/bin/python"
   if [[ ! -x "$PYTHON" ]]; then
     PYTHON="$(command -v python3)"
   fi
-  (cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" setup.py --skip-db --skip-docs --skip-models)
+  (cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" setup.py --reset-index --skip-db --skip-docs --skip-models)
   info "Index mapping recreated."
 fi
 
