@@ -23,6 +23,7 @@ from tests.e2e.conftest import auth_rest_headers, auth_ws_headers
 CLOUD_RUN_URL = os.environ.get("CLOUD_RUN_URL", "http://localhost:8000")
 API_KEY = os.environ.get("API_KEY", "test-api-key")
 TIMEOUT = 30
+WEBSOCKET_TIMEOUT = 180  # seconds — Cold Cloud Run (model load + inference) can exceed 30s
 # Same-origin Origin header so the deployment's verify_same_origin allow-list
 # accepts the WebSocket handshake.
 ORIGIN_HEADER = CLOUD_RUN_URL
