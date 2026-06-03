@@ -347,9 +347,6 @@ def main():
                 print(f"      ⚠ Lucille ingest failed (exit {e.returncode})")
                 print("      Check prerequisites: java -version (17+) and mvn -version (3.8+)")
                 print("      Retry manually: bash langchain_agent/scripts/lucille_ingest.sh")
-                print("      Python fallback (requires GOOGLE_API_KEY for embedding):")
-                print("      PYTHONPATH=. python ingest_esci_products.py")
-                print("      PYTHONPATH=. python ingest_esci_judgments.py")
             except FileNotFoundError:
                 print("      ⚠ lucille_ingest.sh not found — skipping Lucille ingest")
                 print("      Run manually: bash langchain_agent/scripts/lucille_ingest.sh")

@@ -127,8 +127,8 @@ tags_metadata = [
     {
         "name": "admin",
         "description": (
-            "Operational endpoints: background reindex trigger + status polling, index "
-            "diagnostics. Used by the `reindex.yml` GitHub Actions workflow."
+            "Operational endpoints: index diagnostics and health checks. "
+            "Re-indexing is handled by the `reindex.yml` GitHub Actions workflow (Lucille ETL on runner)."
         ),
     },
     {
@@ -152,7 +152,6 @@ app = FastAPI(
         "- **Reranking + quality gate**: Gemini-scored 0.0–1.0, with adaptive alpha retry\n"
         "- **Typeahead autocomplete**: `/api/suggest` edge-ngram prefix matching with "
         "spell correction and distance-1 fuzzy fallback\n"
-        "- **Admin reindex**: `/api/admin/reindex` background re-ingestion with polling\n"
         "- **BM25 optimizations**: synonyms, phrase boosting, field boosting, phonetic matching\n"
         "- **Per-query optimization toggles**: 9 flags (hybrid, fuzzy, synonyms, phonetic, "
         "phrase_boost, field_boost, typeahead, reranking, llm) sent on every WebSocket chat "
