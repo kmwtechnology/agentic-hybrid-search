@@ -159,8 +159,11 @@ class TestGracefulShutdown:
                 )
                 await websocket.send(msg)
 
-                # Should receive response without abrupt termination
-                response = await asyncio.wait_for(websocket.recv(), timeout=TIMEOUT)
+                # Should receive at least one event (e.g. search_progress) without
+                # abrupt termination. Use WEBSOCKET_TIMEOUT (180s) not TIMEOUT (30s)
+                # — a cold Cloud Run instance (model load + inference) can take 35s+
+                # before emitting the first event.
+                response = await asyncio.wait_for(websocket.recv(), timeout=WEBSOCKET_TIMEOUT)
                 assert response is not None
         except asyncio.TimeoutError:
             pytest.fail("Request timed out during graceful shutdown test")
