@@ -72,10 +72,21 @@ fi
 OPENSEARCH_HOST="${OPENSEARCH_HOST:-localhost}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 OPENSEARCH_SCHEME="${OPENSEARCH_USE_SSL:-false}"
-if [[ "$OPENSEARCH_SCHEME" == "true" ]]; then
-  OPENSEARCH_URL="https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
+OPENSEARCH_USER="${OPENSEARCH_USER:-}"
+OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD:-}"
+
+# Lucille reads credentials from the URL itself (user:pass@host).
+# Embed them only when both are set (local Docker has no auth).
+if [[ -n "$OPENSEARCH_USER" && -n "$OPENSEARCH_PASSWORD" ]]; then
+  _AUTH="${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}@"
 else
-  OPENSEARCH_URL="http://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
+  _AUTH=""
+fi
+
+if [[ "$OPENSEARCH_SCHEME" == "true" ]]; then
+  OPENSEARCH_URL="https://${_AUTH}${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
+else
+  OPENSEARCH_URL="http://${_AUTH}${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
 fi
 OPENSEARCH_INDEX="${OPENSEARCH_INDEX_NAME:-agentic_hybrid_search_docs}"
 DATA_DIR="$REPO_DIR/data"
