@@ -12,8 +12,10 @@
 #   - gcloud CLI installed and authenticated
 #   - Cloud SQL Auth Proxy installed (auto-downloaded if missing)
 #   - Python virtual environment with dependencies installed (.venv/)
-#   - ESCI dataset available (../esci/shopping_queries_dataset/*.parquet)
-#   - GOOGLE_API_KEY set in .env (needed for embedding generation)
+#   - Java 17+ and Maven, plus a Lucille checkout (LUCILLE_DIR, default
+#     ~/github/kmwtechnology/lucille) — the ESCI ingest runs via Lucille ETL
+#   - Static ESCI parquets in data/ (shipped with the repo; no ../esci/ clone needed)
+#   - GOOGLE_API_KEY set in .env (LLM inference; embeddings are precomputed)
 #   - deploy.sh already run (Cloud SQL instance must exist)
 #
 # Usage:
@@ -69,13 +71,14 @@ WHAT THIS SCRIPT DOES:
     1. Downloads Cloud SQL Auth Proxy (if not installed)
     2. Starts the proxy to tunnel to Cloud SQL
     3. Creates checkpoint and metadata tables in Cloud SQL
-    4. Ingests ESCI product data into hosted OpenSearch
+    4. Ingests ESCI products + judgments into hosted OpenSearch via Lucille ETL
     5. Shuts down the proxy
 
 PREREQUISITES:
     - Run deploy.sh first to create the Cloud SQL instance
-    - ESCI dataset: ../esci/shopping_queries_dataset/*.parquet
-    - GOOGLE_API_KEY set in .env (needed for embeddings)
+    - Java 17+ & Maven + a Lucille checkout (LUCILLE_DIR) for the ETL ingest
+    - Static ESCI parquets in data/ (shipped with repo; no ../esci/ clone needed)
+    - GOOGLE_API_KEY set in .env (LLM inference; embeddings are precomputed)
     - Python venv with dependencies: source .venv/bin/activate
 
 EOF
@@ -130,6 +133,18 @@ fi
 # Check virtual environment
 if [ ! -d "$PROJECT_DIR/.venv" ]; then
     err "Python virtual environment not found. Run: python3 -m venv .venv && pip install -r requirements.txt"
+fi
+
+# Check Java + Maven (required by the Lucille ETL ingest, run via setup.py).
+# gcp-init runs on a workstation, so the JDK/Maven/Lucille checkout are available
+# here even though the Cloud Run container is Java-free.
+if ! $SKIP_DOCS; then
+    if ! command -v java >/dev/null 2>&1; then
+        err "Java 17+ not found. Required for the Lucille ESCI ingest (brew install openjdk@17). Or re-run with --skip-docs to ingest data later."
+    fi
+    if ! command -v mvn >/dev/null 2>&1; then
+        err "Maven not found. Required for the Lucille ESCI ingest (brew install maven). Or re-run with --skip-docs to ingest data later."
+    fi
 fi
 
 # Check .env for GOOGLE_API_KEY
@@ -289,14 +304,12 @@ print(f'      OpenSearch documents: {count}')
 echo ""
 
 # ============================================================================
-# STEP 6: INGEST ESCI JUDGMENTS (if not skipped)
+# STEP 6: (products + judgments already ingested by setup.py via Lucille ETL)
 # ============================================================================
-
-if ! $SKIP_DOCS; then
-    log "Ingesting ESCI ground-truth judgments..."
-    python ingest_esci_judgments.py || warn "Judgments ingestion failed (index may have been partially created)"
-    echo ""
-fi
+# setup.py runs scripts/lucille_ingest.sh, which ingests BOTH products and
+# judgments from the static parquets in data/ — targeting the hosted OpenSearch
+# because lucille_ingest.sh honours the OPENSEARCH_* vars exported above
+# (non-override .env load). No separate Python judgments pass is needed.
 
 # ============================================================================
 # STEP 7: VERIFY
@@ -327,7 +340,7 @@ try:
     judgment_count = client.count(index='esci_judgments')['count']
     print(f'      ESCI judgments:       {judgment_count}')
 except:
-    print('      ESCI judgments:       not found (run ingest_esci_judgments.py)')
+    print('      ESCI judgments:       not found (re-run the Lucille ingest)')
 " 2>/dev/null || warn "Could not verify OpenSearch."
 
 echo ""
@@ -342,10 +355,12 @@ echo ""
 echo "  The Cloud Run service should now pass health checks at:"
 echo "    /api/health"
 echo ""
-echo "  To re-ingest products and judgments later (Lucille ETL — default):"
-echo "    bash langchain_agent/scripts/lucille_ingest.sh"
+echo "  To re-ingest products + judgments into hosted OpenSearch later (Lucille ETL):"
+echo "    OPENSEARCH_HOST=34.138.97.13 OPENSEARCH_PORT=9200 OPENSEARCH_USE_SSL=true \\"
+echo "      bash langchain_agent/scripts/lucille_ingest.sh"
+echo "    (the exported OPENSEARCH_* vars override .env, so it targets GCP not localhost)"
 echo ""
-echo "  Python fallback (requires GOOGLE_API_KEY for re-embedding):"
+echo "  Python fallback (in-container admin reindex path; requires GOOGLE_API_KEY for --all):"
 echo "    PYTHONPATH=langchain_agent python langchain_agent/ingest_esci_products.py"
 echo "    PYTHONPATH=langchain_agent python langchain_agent/ingest_esci_judgments.py"
 echo ""
