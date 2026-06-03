@@ -38,10 +38,17 @@ warn()  { echo -e "${YELLOW}[lucille_ingest]${NC} $*"; }
 error() { echo -e "${RED}[lucille_ingest] ERROR:${NC} $*" >&2; }
 
 # ── Load .env ────────────────────────────────────────────────────────────────
+# NON-OVERRIDE semantics (matches python-dotenv default): a variable already
+# present in the environment wins over the .env value. This is what lets callers
+# like gcp-init.sh export OPENSEARCH_HOST=<hosted-ip> and have Lucille target it
+# — without this guard the .env line (OPENSEARCH_HOST=localhost) would clobber
+# the exported host and the ingest would silently write to localhost.
 ENV_FILE="$AGENT_DIR/.env"
 if [[ -f "$ENV_FILE" ]]; then
   while IFS='=' read -r key value; do
     [[ -z "$key" || "$key" == \#* ]] && continue
+    # Skip keys already set in the environment (non-override).
+    [[ -n "${!key+x}" ]] && continue
     # Strip inline comments and surrounding quotes
     value="${value%%#*}"
     value="${value%"${value##*[![:space:]]}"}"
