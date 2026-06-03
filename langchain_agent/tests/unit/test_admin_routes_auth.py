@@ -30,24 +30,6 @@ def test_app() -> FastAPI:
         request.session["authenticated"] = True
         return {"status": "logged_in"}
 
-    @app.get("/api/admin/reindex")
-    async def admin_reindex(request: Request):
-        await verify_same_origin(request)
-        try:
-            await verify_session(request)
-        except HTTPException:
-            await verify_admin_token(request)
-        return {"status": "ok"}
-
-    @app.get("/api/admin/reindex/status")
-    async def admin_reindex_status(request: Request):
-        await verify_same_origin(request)
-        try:
-            await verify_session(request)
-        except HTTPException:
-            await verify_admin_token(request)
-        return {"status": "idle"}
-
     @app.get("/api/admin/diagnose")
     async def admin_diagnose(request: Request, q: str = "test"):
         await verify_same_origin(request)
@@ -81,7 +63,7 @@ def client(test_app: FastAPI) -> TestClient:
 
 @pytest.mark.parametrize(
     "endpoint",
-    ["/api/admin/reindex", "/api/admin/reindex/status", "/api/admin/diagnose", "/api/admin/health"],
+    ["/api/admin/diagnose", "/api/admin/health"],
 )
 def test_admin_routes_reject_unauthenticated_access(client: TestClient, endpoint: str) -> None:
     response = client.get(endpoint, headers={"Host": "localhost:8000"})
@@ -98,7 +80,7 @@ def test_admin_routes_reject_unauthenticated_access(client: TestClient, endpoint
 
 @pytest.mark.parametrize(
     "endpoint",
-    ["/api/admin/reindex", "/api/admin/reindex/status", "/api/admin/diagnose", "/api/admin/health"],
+    ["/api/admin/diagnose", "/api/admin/health"],
 )
 def test_admin_routes_accept_valid_session(client: TestClient, endpoint: str) -> None:
     """Session auth: authenticate via test login endpoint, then access admin routes."""
@@ -121,7 +103,7 @@ def test_admin_routes_accept_valid_session(client: TestClient, endpoint: str) ->
 
 @pytest.mark.parametrize(
     "endpoint",
-    ["/api/admin/reindex", "/api/admin/reindex/status", "/api/admin/diagnose", "/api/admin/health"],
+    ["/api/admin/diagnose", "/api/admin/health"],
 )
 def test_admin_routes_accept_admin_token_when_session_missing(
     client: TestClient, endpoint: str, monkeypatch
@@ -150,7 +132,7 @@ def test_admin_routes_accept_admin_token_when_session_missing(
 
 @pytest.mark.parametrize(
     "endpoint",
-    ["/api/admin/reindex", "/api/admin/reindex/status", "/api/admin/diagnose", "/api/admin/health"],
+    ["/api/admin/diagnose", "/api/admin/health"],
 )
 def test_admin_routes_enforce_origin_check(client: TestClient, endpoint: str, monkeypatch) -> None:
     """Even with valid admin token, disallowed Origin is still rejected."""

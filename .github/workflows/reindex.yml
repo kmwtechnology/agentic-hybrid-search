@@ -1,31 +1,28 @@
 name: Re-Index OpenSearch
 
-# Drop-and-rebuild the product index (and optionally the judgments index) on Cloud Run.
+# Rebuild the product index (and optionally the judgments index) by running
+# Lucille ETL directly on the GitHub Actions runner. No in-container ingest;
+# Lucille reads the static parquets from data/ in the repo checkout.
 #
 # Flow:
-#   1. POST /api/admin/reindex — accepted synchronously, queues a background task.
-#      The handler also resets in-process job state to "queued" so polling
-#      can't be fooled by a previous run's terminal state.
-#   2. Poll /api/admin/reindex/status until status is "success" or "error".
-#      Doc count is intentionally ignored as a completion signal — the ETL
-#      may ingest fewer than `limit` documents (dedup, sample caps, etc.).
-#   3. Smoke-test the typeahead endpoint against the rebuilt index.
+#   1. Authenticate with GCP via Workload Identity Federation
+#   2. Fetch OpenSearch credentials from Secret Manager
+#   3. Install Java 17 + Maven on the runner
+#   4. Clone Lucille from GitHub
+#   5. Run lucille_ingest.sh (products always; judgments optionally)
+#   6. Verify the rebuilt index via /api/admin/health
 
 on:
   workflow_dispatch:
     inputs:
       reset_index:
-        description: 'Drop and recreate the index before ingest (use true when mappings changed)'
+        description: 'Drop and recreate the products index before ingest (use true when mappings changed)'
         required: true
         default: 'true'
         type: choice
         options:
           - 'true'
           - 'false'
-      limit:
-        description: 'Max products to ingest (final count may be ≤ this)'
-        required: true
-        default: '10000'
       reindex_judgments:
         description: 'Also rebuild the esci_judgments index (ground-truth NDCG/MRR data)'
         required: true
@@ -37,96 +34,78 @@ on:
 
 env:
   SERVICE_URL: https://agentic-hybrid-search-375500751528.us-central1.run.app
-  POLL_INTERVAL_SECONDS: 15
-  DEADLINE_MINUTES: 45
+  PROJECT_ID: gen-lang-client-0250737934
 
 jobs:
   reindex:
-    name: Re-index OpenSearch
+    name: Re-index OpenSearch via Lucille
     runs-on: ubuntu-latest
     timeout-minutes: 50
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
-      - name: Trigger re-index
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate with GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Fetch OpenSearch credentials from Secret Manager
+        id: secrets
         run: |
-          set -euo pipefail
-          RESET='${{ github.event.inputs.reset_index }}'
-          LIMIT='${{ github.event.inputs.limit }}'
-          JUDGMENTS='${{ github.event.inputs.reindex_judgments }}'
+          OS_USER=$(gcloud secrets versions access latest \
+            --secret=agentic-hybrid-search-opensearch-user \
+            --project="${{ env.PROJECT_ID }}")
+          OS_PASS=$(gcloud secrets versions access latest \
+            --secret=agentic-hybrid-search-opensearch-password \
+            --project="${{ env.PROJECT_ID }}")
+          echo "::add-mask::${OS_USER}"
+          echo "::add-mask::${OS_PASS}"
+          echo "os_user=${OS_USER}" >> "$GITHUB_OUTPUT"
+          echo "os_pass=${OS_PASS}" >> "$GITHUB_OUTPUT"
 
-          echo "Service:            ${SERVICE_URL}"
-          echo "reset_index:        ${RESET}"
-          echo "limit:              ${LIMIT}"
-          echo "reindex_judgments:  ${JUDGMENTS}"
-          echo
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
 
-          RESP=$(curl -sS -w "\n%{http_code}" \
-            "${SERVICE_URL}/api/admin/reindex?reset_index=${RESET}&limit=${LIMIT}&reindex_judgments=${JUDGMENTS}")
-          HTTP=$(echo "$RESP" | tail -n 1)
-          BODY=$(echo "$RESP" | head -n -1)
+      - name: Install Maven
+        run: sudo apt-get install -y --no-install-recommends maven
 
-          echo "Trigger response (HTTP $HTTP):"
-          echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+      - name: Clone Lucille
+        run: git clone --depth=1 https://github.com/kmwtechnology/lucille.git /tmp/lucille
 
-          if [ "$HTTP" != "200" ]; then
-            echo "::error::Trigger failed with HTTP $HTTP"
-            exit 1
-          fi
-
-      - name: Wait for ETL completion
-        id: wait
+      - name: Run Lucille ingest
+        env:
+          LUCILLE_DIR: /tmp/lucille
+          OPENSEARCH_HOST: 34.138.97.13
+          OPENSEARCH_PORT: "9200"
+          OPENSEARCH_USE_SSL: "true"
+          OPENSEARCH_VERIFY_CERTS: "false"
+          OPENSEARCH_INDEX_NAME: agentic_hybrid_search_docs
+          OPENSEARCH_USER: ${{ steps.secrets.outputs.os_user }}
+          OPENSEARCH_PASSWORD: ${{ steps.secrets.outputs.os_pass }}
         run: |
-          set -euo pipefail
-          POLL=${POLL_INTERVAL_SECONDS}
-          DEADLINE=$(( $(date +%s) + DEADLINE_MINUTES * 60 ))
-          START=$(date +%s)
-          LAST=""
+          ARGS=()
+          [[ "${{ github.event.inputs.reset_index }}" == "true" ]] && ARGS+=(--reset-index)
+          [[ "${{ github.event.inputs.reindex_judgments }}" == "false" ]] && ARGS+=(--skip-judgments)
+          bash langchain_agent/scripts/lucille_ingest.sh "${ARGS[@]}"
 
-          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-            sleep "$POLL"
-
-            BODY=$(curl -sS --max-time 10 "${SERVICE_URL}/api/admin/reindex/status" || echo '{}')
-            STATUS=$(echo "$BODY" | jq -r '.status // "unknown"')
-            ELAPSED=$(( $(date +%s) - START ))
-
-            if [ "$STATUS" != "$LAST" ]; then
-              echo "[t+${ELAPSED}s] status: ${LAST:-<start>} -> ${STATUS}"
-              LAST="$STATUS"
-            elif [ $(( ELAPSED % 60 )) -lt "$POLL" ]; then
-              echo "[t+${ELAPSED}s] status: ${STATUS}"
-            fi
-
-            case "$STATUS" in
-              success)
-                echo
-                echo "════════════════════════════════════════════════"
-                echo "Re-index completed"
-                echo "$BODY" | jq '{status, started_at, finished_at, limit, reset_index, documents_ingested, chunks_created, judgments_indexed}'
-                exit 0
-                ;;
-              error)
-                echo "::error::ETL failed"
-                echo "$BODY" | jq '.'
-                exit 1
-                ;;
-            esac
-          done
-
-          echo "::error::Deadline (${DEADLINE_MINUTES} min) exceeded without terminal status"
-          echo "Last status response:"
-          curl -sS "${SERVICE_URL}/api/admin/reindex/status" | jq '.' || true
-          exit 1
-
-      - name: Verify index and typeahead
-        if: success()
+      - name: Verify index health
         run: |
           set -euo pipefail
           echo "Final index health:"
-          curl -sS "${SERVICE_URL}/api/admin/health" | jq '.'
+          curl -sS "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
           echo
           echo "Typeahead probe (q=son):"
-          curl -sS "${SERVICE_URL}/api/suggest?q=son" | jq '{
+          curl -sS "${{ env.SERVICE_URL }}/api/suggest?q=son" | jq '{
             count: (.suggestions | length),
-            top3: (.suggestions[0:3] | map({title, brand, score})),
-            spell_correction
+            top3: (.suggestions[0:3] | map({title, brand, score}))
           }'

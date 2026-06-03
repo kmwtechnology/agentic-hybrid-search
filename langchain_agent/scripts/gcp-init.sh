@@ -360,8 +360,4 @@ echo "    OPENSEARCH_HOST=34.138.97.13 OPENSEARCH_PORT=9200 OPENSEARCH_USE_SSL=t
 echo "      bash langchain_agent/scripts/lucille_ingest.sh"
 echo "    (the exported OPENSEARCH_* vars override .env, so it targets GCP not localhost)"
 echo ""
-echo "  Python fallback (in-container admin reindex path; requires GOOGLE_API_KEY for --all):"
-echo "    PYTHONPATH=langchain_agent python langchain_agent/ingest_esci_products.py"
-echo "    PYTHONPATH=langchain_agent python langchain_agent/ingest_esci_judgments.py"
-echo ""
 echo "============================================================"

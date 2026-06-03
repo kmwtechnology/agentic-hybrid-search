@@ -25,6 +25,16 @@
 
 set -euo pipefail
 
+SKIP_JUDGMENTS=false
+RESET_INDEX=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-judgments) SKIP_JUDGMENTS=true; shift ;;
+    --reset-index)    RESET_INDEX=true;    shift ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_DIR="$(dirname "$AGENT_DIR")"
@@ -62,14 +72,40 @@ fi
 OPENSEARCH_HOST="${OPENSEARCH_HOST:-localhost}"
 OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
 OPENSEARCH_SCHEME="${OPENSEARCH_USE_SSL:-false}"
-if [[ "$OPENSEARCH_SCHEME" == "true" ]]; then
-  OPENSEARCH_URL="https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
+OPENSEARCH_USER="${OPENSEARCH_USER:-}"
+OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD:-}"
+
+# Lucille reads credentials from the URL itself (user:pass@host).
+# Embed them only when both are set (local Docker has no auth).
+if [[ -n "$OPENSEARCH_USER" && -n "$OPENSEARCH_PASSWORD" ]]; then
+  _AUTH="${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}@"
 else
-  OPENSEARCH_URL="http://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
+  _AUTH=""
+fi
+
+if [[ "$OPENSEARCH_SCHEME" == "true" ]]; then
+  OPENSEARCH_URL="https://${_AUTH}${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
+else
+  OPENSEARCH_URL="http://${_AUTH}${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
 fi
 OPENSEARCH_INDEX="${OPENSEARCH_INDEX_NAME:-agentic_hybrid_search_docs}"
 DATA_DIR="$REPO_DIR/data"
 LUCILLE_VERSION="1.0.0-SNAPSHOT"
+
+# ── Optional index reset ──────────────────────────────────────────────────────
+if [[ "$RESET_INDEX" == "true" ]]; then
+  info "Resetting index: DELETE $OPENSEARCH_URL/$OPENSEARCH_INDEX"
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -u "${OPENSEARCH_USER:-admin}:${OPENSEARCH_PASSWORD:-admin}" \
+    -k -XDELETE "$OPENSEARCH_URL/$OPENSEARCH_INDEX")
+  if [[ "$HTTP_STATUS" == "200" ]]; then
+    info "Index deleted."
+  elif [[ "$HTTP_STATUS" == "404" ]]; then
+    info "Index did not exist."
+  else
+    error "Unexpected HTTP $HTTP_STATUS deleting index."; exit 1
+  fi
+fi
 
 # ── Prerequisite checks ──────────────────────────────────────────────────────
 if ! command -v java &>/dev/null; then
@@ -164,16 +200,21 @@ OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
 info "Products ingest complete."
 
 # ── Step 5: Run judgments ingest ──────────────────────────────────────────────
-info "Running Lucille judgments ingest..."
-info "  Source: $JUDGMENTS_PARQUET"
-info "  Target: ${OPENSEARCH_URL}/esci_judgments"
+if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
+  info "Running Lucille judgments ingest..."
+  info "  Source: $JUDGMENTS_PARQUET"
+  info "  Target: ${OPENSEARCH_URL}/esci_judgments"
 
-JUDGMENTS_PARQUET_PATH="$JUDGMENTS_PARQUET" \
-OPENSEARCH_URL="$OPENSEARCH_URL" \
-  java \
-    -Dconfig.file="$ESCI_MODULE_DIR/conf/judgments.conf" \
-    -cp "$ESCI_MODULE_DIR/target/lib/*:$ESCI_MODULE_DIR/target/lucille-esci-1.0.0.jar" \
-    com.kmwllc.lucille.core.Runner
+  JUDGMENTS_PARQUET_PATH="$JUDGMENTS_PARQUET" \
+  OPENSEARCH_URL="$OPENSEARCH_URL" \
+    java \
+      -Dconfig.file="$ESCI_MODULE_DIR/conf/judgments.conf" \
+      -cp "$ESCI_MODULE_DIR/target/lib/*:$ESCI_MODULE_DIR/target/lucille-esci-1.0.0.jar" \
+      com.kmwllc.lucille.core.Runner
 
-info "Judgments ingest complete."
-info "All done. Products → $OPENSEARCH_INDEX | Judgments → esci_judgments"
+  info "Judgments ingest complete."
+  info "All done. Products → $OPENSEARCH_INDEX | Judgments → esci_judgments"
+else
+  info "Skipping judgments ingest (--skip-judgments)."
+  info "All done. Products → $OPENSEARCH_INDEX"
+fi
