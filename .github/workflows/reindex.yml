@@ -79,6 +79,17 @@ jobs:
       - name: Install Maven
         run: sudo apt-get install -y --no-install-recommends maven
 
+      - name: Set up Python (for index mapping recreation on --reset-index)
+        if: ${{ github.event.inputs.reset_index == 'true' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install Python dependencies (for index mapping recreation)
+        if: ${{ github.event.inputs.reset_index == 'true' }}
+        run: pip install -r langchain_agent/requirements.txt
+
       - name: Clone Lucille
         run: git clone --depth=1 https://github.com/kmwtechnology/lucille.git /tmp/lucille
 
@@ -92,6 +103,9 @@ jobs:
           OPENSEARCH_INDEX_NAME: agentic_hybrid_search_docs
           OPENSEARCH_USER: ${{ steps.secrets.outputs.os_user }}
           OPENSEARCH_PASSWORD: ${{ steps.secrets.outputs.os_pass }}
+          # API_KEY is required by the app lifespan but unused for setup --skip-docs --skip-models.
+          # Set a placeholder so setup.py doesn't fail its env-var validation during --reset-index.
+          API_KEY: placeholder
         run: |
           ARGS=()
           [[ "${{ github.event.inputs.reset_index }}" == "true" ]] && ARGS+=(--reset-index)

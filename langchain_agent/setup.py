@@ -337,8 +337,11 @@ def main():
                 import subprocess
 
                 lucille_script = Path(__file__).parent / "scripts" / "lucille_ingest.sh"
+                lucille_args = [str(lucille_script)]
+                if args.reset_index:
+                    lucille_args.append("--reset-index")
                 result = subprocess.run(
-                    [str(lucille_script)],
+                    lucille_args,
                     cwd=str(Path(__file__).parent),
                     check=True,
                 )

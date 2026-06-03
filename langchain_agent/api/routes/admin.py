@@ -13,7 +13,6 @@ Protected by two-layer auth:
 """
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
