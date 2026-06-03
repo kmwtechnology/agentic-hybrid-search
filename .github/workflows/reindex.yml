@@ -57,14 +57,14 @@ jobs:
         run: |
           OS_USER=$(gcloud secrets versions access latest \
             --secret=agentic-hybrid-search-opensearch-user \
-            --project=${{ env.PROJECT_ID }})
+            --project="${{ env.PROJECT_ID }}")
           OS_PASS=$(gcloud secrets versions access latest \
             --secret=agentic-hybrid-search-opensearch-password \
-            --project=${{ env.PROJECT_ID }})
-          echo "::add-mask::$OS_USER"
-          echo "::add-mask::$OS_PASS"
-          echo "os_user=$OS_USER" >> $GITHUB_OUTPUT
-          echo "os_pass=$OS_PASS" >> $GITHUB_OUTPUT
+            --project="${{ env.PROJECT_ID }}")
+          echo "::add-mask::${OS_USER}"
+          echo "::add-mask::${OS_PASS}"
+          echo "os_user=${OS_USER}" >> "$GITHUB_OUTPUT"
+          echo "os_pass=${OS_PASS}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
