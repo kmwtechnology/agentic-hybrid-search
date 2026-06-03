@@ -93,8 +93,14 @@ def verify_connection():
         raise
 
 
-def create_opensearch_index():
-    """Create the OpenSearch index with knn and text mappings"""
+def create_opensearch_index(reset: bool = False):
+    """Create the OpenSearch index with knn and text mappings.
+
+    Args:
+        reset: If True, delete an existing index before recreating it. Used by
+               --reset-index to guarantee a fresh knn_vector mapping even if a
+               prior (broken or auto-mapped) index already exists.
+    """
     print("\n[2/7] Creating OpenSearch index...")
 
     try:
@@ -105,6 +111,13 @@ def create_opensearch_index():
         # Verify connectivity
         info = client.info()
         print(f"      ✓ Connected to OpenSearch {info['version']['number']}")
+
+        # When reset=True, delete any existing index so the next create always
+        # uses INDEX_MAPPING (knn_vector + analyzers). Without this, an auto-
+        # created or stale index would be silently skipped by the exists() check.
+        if reset and client.indices.exists(index=OPENSEARCH_INDEX_NAME):
+            client.indices.delete(index=OPENSEARCH_INDEX_NAME)
+            print(f"      ✓ Index '{OPENSEARCH_INDEX_NAME}' deleted (reset)")
 
         # Create index if it doesn't exist
         if client.indices.exists(index=OPENSEARCH_INDEX_NAME):
@@ -327,7 +340,7 @@ def main():
             init_metadata_table()
 
         # Step 2-3: OpenSearch Setup (documents + search)
-        create_opensearch_index()
+        create_opensearch_index(reset=args.reset_index)
         create_search_pipeline()
 
         # Step 2: Google AI API validation (optional)
