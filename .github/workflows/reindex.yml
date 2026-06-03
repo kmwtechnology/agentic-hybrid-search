@@ -41,6 +41,9 @@ jobs:
     name: Re-index OpenSearch via Lucille
     runs-on: ubuntu-latest
     timeout-minutes: 50
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Check out repository
