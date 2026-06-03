@@ -17,13 +17,18 @@
 #
 # Optional:
 #   LUCILLE_THREADS (default: 2) — worker threads per pipeline
+#   LUCILLE_DIR     — path to an external Lucille checkout, used in Step 1 to
+#                     install the lucille-parquet plugin into ~/.m2. Defaults to
+#                     a sibling clone at ~/github/kmwtechnology/lucille. Only
+#                     needed on first run (or after a Lucille version bump);
+#                     once the plugin is in ~/.m2 the checkout is not read again.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AGENT_DIR="$(dirname "$SCRIPT_DIR")"
 REPO_DIR="$(dirname "$AGENT_DIR")"
-LUCILLE_DIR="$REPO_DIR/lucille"
+LUCILLE_DIR="${LUCILLE_DIR:-$HOME/github/kmwtechnology/lucille}"
 ESCI_MODULE_DIR="$AGENT_DIR/lucille-esci"
 
 # ── Colour helpers ──────────────────────────────────────────────────────────
@@ -57,7 +62,7 @@ else
 fi
 OPENSEARCH_INDEX="${OPENSEARCH_INDEX_NAME:-agentic_hybrid_search_docs}"
 DATA_DIR="$REPO_DIR/data"
-LUCILLE_VERSION="0.9.0-SNAPSHOT"
+LUCILLE_VERSION="1.0.0-SNAPSHOT"
 
 # ── Prerequisite checks ──────────────────────────────────────────────────────
 if ! command -v java &>/dev/null; then
@@ -81,10 +86,13 @@ if [[ ! -f "$PARQUET_JAR" ]]; then
   info "Installing Lucille plugins to local Maven repo..."
   if [[ ! -d "$LUCILLE_DIR/lucille-plugins" ]]; then
     error "Lucille source not found at $LUCILLE_DIR"
-    error "Run: curl -sL https://github.com/kmwtechnology/lucille/archive/refs/tags/0.9.0.tar.gz | tar -xz -C $REPO_DIR && mv $REPO_DIR/lucille-0.9.0 $LUCILLE_DIR"
+    error "Clone it (or set LUCILLE_DIR to an existing checkout):"
+    error "  git clone https://github.com/kmwtechnology/lucille.git $LUCILLE_DIR"
     exit 1
   fi
-  (cd "$LUCILLE_DIR" && mvn install -pl lucille-plugins/lucille-parquet -am -q -DskipTests)
+  # lucille-bom is imported by lucille-esci/pom.xml but is not pulled in by the
+  # parquet plugin's reactor (-am), so install it explicitly alongside.
+  (cd "$LUCILLE_DIR" && mvn install -pl lucille-bom,lucille-plugins/lucille-parquet -am -q -DskipTests)
   info "Lucille plugins installed."
 else
   info "Lucille parquet plugin already in local Maven repo."

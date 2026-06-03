@@ -216,7 +216,9 @@ CLAUDE.md
 esci/
 docs/
 
-# Lucille ETL source tree (downloaded by lucille_ingest.sh, not tracked in git)
-# Config module lives at langchain_agent/lucille-esci/ instead.
+# Lucille ETL source tree now lives in an external checkout
+# (default ~/github/kmwtechnology/lucille, override via LUCILLE_DIR).
+# The in-repo config module is at langchain_agent/lucille-esci/.
+# Keep ignoring lucille/ as a guard against accidental in-repo clones.
 lucille/
 langchain_agent/lucille-esci/target/

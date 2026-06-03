@@ -12,7 +12,7 @@
   <description>Lucille-based ETL for ingesting ESCI products and judgments into OpenSearch</description>
 
   <properties>
-    <lucille.version>0.9.0-SNAPSHOT</lucille.version>
+    <lucille.version>1.0.0-SNAPSHOT</lucille.version>
     <maven.compiler.source>17</maven.compiler.source>
     <maven.compiler.target>17</maven.compiler.target>
   </properties>
