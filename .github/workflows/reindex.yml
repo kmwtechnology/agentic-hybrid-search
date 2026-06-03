@@ -115,11 +115,15 @@ jobs:
       - name: Verify index health
         run: |
           set -euo pipefail
-          echo "Final index health:"
-          curl -sS "${{ env.SERVICE_URL }}/api/admin/health" | jq '.'
+          echo "Service health (/api/health — public endpoint):"
+          curl -sS "${{ env.SERVICE_URL }}/api/health" | jq '{status, document_count}'
           echo
           echo "Typeahead probe (q=son):"
-          curl -sS "${{ env.SERVICE_URL }}/api/suggest?q=son" | jq '{
-            count: (.suggestions | length),
-            top3: (.suggestions[0:3] | map({title, brand, score}))
-          }'
+          SUGGEST=$(curl -sS "${{ env.SERVICE_URL }}/api/suggest?q=son")
+          echo "$SUGGEST" | jq '{count: (.suggestions | length), top3: (.suggestions[0:3] | map({title, brand, score}))}'
+          COUNT=$(echo "$SUGGEST" | jq '.suggestions | length')
+          if [[ "$COUNT" -eq 0 ]]; then
+            echo "::error::Typeahead returned 0 results for q=son — title_suggest/brand_suggest fields may be missing"
+            exit 1
+          fi
+          echo "✓ Typeahead healthy ($COUNT suggestions)"
