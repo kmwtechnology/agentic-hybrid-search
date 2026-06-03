@@ -137,7 +137,7 @@ if [[ "$RESET_INDEX" == "true" ]]; then
   if [[ ! -x "$PYTHON" ]]; then
     PYTHON="$(command -v python3)"
   fi
-  (cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" setup.py --skip-docs --skip-models)
+  (cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" setup.py --skip-db --skip-docs --skip-models)
   info "Index mapping recreated."
 fi
 
