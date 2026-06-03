@@ -106,11 +106,11 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   on product titles + brands with spell correction (Levenshtein +
   SequenceMatcher), fuzzy fallback for single-character typos, and a
   three-section UI (Did you mean? / Suggestions / Recent Searches)
-- **Admin reindex API** — `GET /api/admin/reindex` triggers a background
-  ESCI re-ingestion; `GET /api/admin/reindex/status` polls progress;
-  `GET /api/admin/health` reports index health and doc count. Requires
-  session auth (UI login) or `X-Admin-Token` header (GitHub Actions
-  automation)
+- **Admin diagnostics** — `GET /api/admin/health` reports index health and
+  doc count; `GET /api/admin/diagnose` probes field-level hit counts.
+  Requires session auth (UI login) or `X-Admin-Token` header (GitHub Actions
+  automation). Re-indexing is triggered via the `reindex.yml` workflow
+  (Lucille ETL on the runner), not an HTTP endpoint
 - **BM25 lexical optimizations** — synonym expansion, fuzzy matching, phrase
   boosting, field boosting, and phonetic matching (double_metaphone via the
   `analysis-phonetic` plugin), displayed in the observability panel's
@@ -385,8 +385,6 @@ agentic-hybrid-search/
 │   ├── reranker.py               # CrossEncoderReranker (default, ~10ms) + GeminiReranker (fallback, ~500ms)
 │   ├── link_verifier.py          # URL validation w/ TTL cache
 │   ├── embedding_cache.py        # Query embedding cache
-│   ├── ingest_esci_products.py   # ESCI product ingestion (deterministic sampling)
-│   ├── ingest_esci_judgments.py  # ESCI relevance judgments → esci_judgments index
 │   ├── relevancy_metrics.py      # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
 │   ├── bigquery_batch_embeddings.py  # Parallel embedding via BigQuery ML
 │   ├── generate_embeddings.py    # Serial embedding fallback
@@ -505,19 +503,20 @@ Set `OPENSEARCH_HOST` and `OPENSEARCH_PORT` in your environment before running `
   Artifact Registry (main only), Cloud Run deploy, and smoke tests. Strict
   linting is enforced — lint failures block the pipeline.
 - `.github/workflows/reindex.yml` — separate manual-dispatch workflow that
-  runs the ESCI reindex against a deployed Cloud Run instance (calls
-  `GET /api/admin/reindex` and polls `GET /api/admin/reindex/status`).
+  re-ingests ESCI data by running Lucille ETL directly on the Actions runner
+  (Java/Maven + Lucille checkout; reads `data/*.parquet`; targets GCP OpenSearch
+  via WIF-authenticated Secret Manager credentials).
 
 Runners use Node.js 24. Authentication uses Workload Identity Federation
 (no long-lived keys).
 
-### Docker image bundles a sample ESCI parquet
+### ESCI data ships in `data/`
 
-The Docker image includes a pre-sampled 10 k ESCI parquet with pre-computed
-embeddings at `/esci/` so the container can run `ingest_esci_products.py`
-without downloading the full ~1 GB dataset. The file is committed directly
-to the repo (no Git LFS) and copied into the image during the multi-stage
-build.
+`data/esci_products_sample_10000.parquet` (9,618 products with pre-computed
+768-dim embeddings) and `data/esci_judgments_aggregated.parquet` (97,345
+judgment queries) are committed to the repo and read directly by
+`scripts/lucille_ingest.sh`. The Docker image does not bundle these — ingest
+runs from workstations and the GitHub Actions runner, not inside the container.
 
 ## Performance
 
