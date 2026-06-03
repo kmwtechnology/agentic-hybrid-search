@@ -5,8 +5,9 @@
 #   1. Install Lucille plugins to local Maven repo (skipped if already installed)
 #   2. Build the lucille/esci module (skipped if JAR is up-to-date)
 #   3. Pre-aggregate judgments parquet (skipped if output already exists)
-#   4. Run Lucille products ingest (ParquetConnector → OpenSearch)
-#   5. Run Lucille judgments ingest (ParquetConnector → OpenSearch)
+#   4. (Optional) Delete the products index + recreate mapping for a clean rebuild
+#   5. Run Lucille products ingest (ParquetConnector → OpenSearch)
+#   6. Run Lucille judgments ingest (ParquetConnector → OpenSearch)
 #
 # Required env vars (sourced from langchain_agent/.env):
 #   OPENSEARCH_HOST, OPENSEARCH_PORT, OPENSEARCH_INDEX_NAME
@@ -15,18 +16,25 @@
 #   esci_products_sample_10000.parquet  — precomputed products (shipped with repo)
 #   esci_judgments_aggregated.parquet   — pre-aggregated judgments (generated on first run)
 #
-# Optional:
+# Optional env vars:
 #   LUCILLE_THREADS (default: 2) — worker threads per pipeline
 #   LUCILLE_DIR     — path to an external Lucille checkout, used in Step 1 to
 #                     install the lucille-parquet plugin into ~/.m2. Defaults to
 #                     a sibling clone at ~/github/kmwtechnology/lucille. Only
 #                     needed on first run (or after a Lucille version bump);
 #                     once the plugin is in ~/.m2 the checkout is not read again.
+#
+# Optional flags:
+#   --reset-index     Delete the products index, then recreate the mapping via
+#                     setup.py before ingest. Use when mappings change.
+#   --skip-judgments  Skip Step 6 (judgments ingest)
 
 set -euo pipefail
 
+# ── Argument parsing ─────────────────────────────────────────────────────────
 SKIP_JUDGMENTS=false
 RESET_INDEX=false
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-judgments) SKIP_JUDGMENTS=true; shift ;;
@@ -85,26 +93,52 @@ fi
 
 if [[ "$OPENSEARCH_SCHEME" == "true" ]]; then
   OPENSEARCH_URL="https://${_AUTH}${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
+  _DISPLAY_URL="https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
 else
   OPENSEARCH_URL="http://${_AUTH}${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
+  _DISPLAY_URL="http://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"
 fi
 OPENSEARCH_INDEX="${OPENSEARCH_INDEX_NAME:-agentic_hybrid_search_docs}"
 DATA_DIR="$REPO_DIR/data"
 LUCILLE_VERSION="1.0.0-SNAPSHOT"
 
-# ── Optional index reset ──────────────────────────────────────────────────────
+# ── Step 4 (optional): Reset products index ──────────────────────────────────
+# Deletes the existing index then re-creates it with the proper knn_vector
+# mapping via setup.py --skip-docs --skip-models. Lucille then writes into a
+# correctly-mapped index instead of an auto-mapped one.
 if [[ "$RESET_INDEX" == "true" ]]; then
-  info "Resetting index: DELETE $OPENSEARCH_URL/$OPENSEARCH_INDEX"
-  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -u "${OPENSEARCH_USER:-admin}:${OPENSEARCH_PASSWORD:-admin}" \
-    -k -XDELETE "$OPENSEARCH_URL/$OPENSEARCH_INDEX")
+  OPENSEARCH_INDEX_DISPLAY="$_DISPLAY_URL/$OPENSEARCH_INDEX"
+  info "Resetting index: DELETE $OPENSEARCH_INDEX_DISPLAY"
+  if [[ -n "$OPENSEARCH_USER" && -n "$OPENSEARCH_PASSWORD" ]]; then
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      -u "${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}" \
+      -k -X DELETE "$OPENSEARCH_URL/$OPENSEARCH_INDEX")
+  else
+    HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      -k -X DELETE "$OPENSEARCH_URL/$OPENSEARCH_INDEX")
+  fi
   if [[ "$HTTP_STATUS" == "200" ]]; then
     info "Index deleted."
   elif [[ "$HTTP_STATUS" == "404" ]]; then
-    info "Index did not exist."
+    info "Index did not exist — nothing to delete."
+  elif [[ "$HTTP_STATUS" == "401" ]]; then
+    error "Authentication failed deleting index — check OPENSEARCH_USER/PASSWORD."
+    exit 1
   else
-    error "Unexpected HTTP $HTTP_STATUS deleting index."; exit 1
+    error "Unexpected HTTP $HTTP_STATUS deleting index."
+    exit 1
   fi
+
+  # Recreate the index with the correct knn_vector mapping + search pipeline.
+  # setup.py --skip-docs --skip-models creates the index schema only (no ingest,
+  # no API key validation), so it works on CI runners without GOOGLE_API_KEY.
+  info "Recreating index mapping via setup.py..."
+  PYTHON="${AGENT_DIR}/.venv/bin/python"
+  if [[ ! -x "$PYTHON" ]]; then
+    PYTHON="$(command -v python3)"
+  fi
+  (cd "$AGENT_DIR" && PYTHONPATH=. "$PYTHON" setup.py --skip-docs --skip-models)
+  info "Index mapping recreated."
 fi
 
 # ── Prerequisite checks ──────────────────────────────────────────────────────
@@ -178,7 +212,7 @@ else
   info "Judgments parquet already exists: $JUDGMENTS_PARQUET"
 fi
 
-# ── Step 4: Run products ingest ───────────────────────────────────────────────
+# ── Step 5: Run products ingest ───────────────────────────────────────────────
 PRODUCTS_PARQUET="$DATA_DIR/esci_products_sample_10000.parquet"
 if [[ ! -f "$PRODUCTS_PARQUET" ]]; then
   error "Products parquet not found: $PRODUCTS_PARQUET"
@@ -187,7 +221,7 @@ fi
 
 info "Running Lucille products ingest..."
 info "  Source: $PRODUCTS_PARQUET"
-info "  Target: $OPENSEARCH_URL/$OPENSEARCH_INDEX"
+info "  Target: $_DISPLAY_URL/$OPENSEARCH_INDEX"
 
 PARQUET_PATH="$PRODUCTS_PARQUET" \
 OPENSEARCH_URL="$OPENSEARCH_URL" \
@@ -199,11 +233,11 @@ OPENSEARCH_INDEX="$OPENSEARCH_INDEX" \
 
 info "Products ingest complete."
 
-# ── Step 5: Run judgments ingest ──────────────────────────────────────────────
+# ── Step 6: Run judgments ingest ──────────────────────────────────────────────
 if [[ "$SKIP_JUDGMENTS" == "false" ]]; then
   info "Running Lucille judgments ingest..."
   info "  Source: $JUDGMENTS_PARQUET"
-  info "  Target: ${OPENSEARCH_URL}/esci_judgments"
+  info "  Target: $_DISPLAY_URL/esci_judgments"
 
   JUDGMENTS_PARQUET_PATH="$JUDGMENTS_PARQUET" \
   OPENSEARCH_URL="$OPENSEARCH_URL" \
