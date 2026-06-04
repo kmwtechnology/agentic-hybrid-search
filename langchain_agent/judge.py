@@ -33,6 +33,8 @@ from langchain_core.documents import Document
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field, field_validator
 
+from config import GOOGLE_API_KEY
+
 logger = logging.getLogger(__name__)
 
 
@@ -239,6 +241,7 @@ class LLMJudge:
             temperature=0,
             streaming=False,
             max_output_tokens=1024,
+            google_api_key=GOOGLE_API_KEY,
         )
         self.structured_llm = self.llm.with_structured_output(JudgmentResult)
         logger.info("LLMJudge loaded: model=%s", model_name)

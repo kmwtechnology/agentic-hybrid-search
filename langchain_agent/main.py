@@ -372,6 +372,7 @@ class EcommerceSearchAgent:
             temperature=LLM_TEMPERATURE,
             streaming=True,
             max_output_tokens=8192,
+            google_api_key=GOOGLE_API_KEY,
         )
         print("✓ LLM initialized")
 
@@ -382,6 +383,7 @@ class EcommerceSearchAgent:
                 temperature=QUERY_EVAL_TEMPERATURE,
                 streaming=False,
                 max_output_tokens=QUERY_EVAL_MAX_TOKENS,
+                google_api_key=GOOGLE_API_KEY,
             )
             self.alpha_structured = self.alpha_estimator_llm.with_structured_output(AlphaEstimation)
             self.intent_structured = self.alpha_estimator_llm.with_structured_output(
@@ -398,6 +400,7 @@ class EcommerceSearchAgent:
         self.embeddings = GoogleGenerativeAIEmbeddings(
             model=EMBEDDINGS_MODEL,
             output_dimensionality=VECTOR_DIMENSION,
+            google_api_key=GOOGLE_API_KEY,
         )
         print("✓ Embeddings initialized")
 

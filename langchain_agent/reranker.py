@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field, field_validator
 
-from config import RERANKER_BATCH_SIZE
+from config import GOOGLE_API_KEY, RERANKER_BATCH_SIZE
 from exceptions import RerankerLLMError, RerankerValidationError
 
 logger = logging.getLogger(__name__)
@@ -160,6 +160,7 @@ class GeminiReranker:
             temperature=0,
             streaming=False,
             max_output_tokens=2048,
+            google_api_key=GOOGLE_API_KEY,
         )
         self.structured_llm = self.llm.with_structured_output(RerankerScores)
 
