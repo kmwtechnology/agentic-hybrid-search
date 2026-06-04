@@ -71,7 +71,7 @@ export function GuidePage() {
               <li>✓ Product comparison and attribute filtering</li>
               <li>✓ Real-time streaming responses with citations</li>
               <li>✓ Conversation memory and resumption</li>
-              <li>✓ Per-query search optimization toggles (9 flags) — fuzzy, synonyms, phonetic, phrase boost, field boost, hybrid, typeahead, reranker, LLM</li>
+              <li>✓ Per-query search optimization toggles (10 flags) — hybrid, fuzzy, synonyms, phonetic, phrase_boost, field_boost, typeahead, reranking, llm, llm_judge</li>
               <li>✓ Pipeline Quality Summary card — offline NDCG/MRR/Recall@20/Precision@10 vs an ESCI ground-truth baseline, with latency cost-benefit framing</li>
               <li>✓ Full pipeline observability with real-time events</li>
             </ul>
@@ -121,8 +121,8 @@ export function GuidePage() {
 
             <div className="border-l-4 border-purple-500 pl-4">
               <h4 className="font-semibold text-gray-900">Intent Classification</h4>
-              <p className="text-sm text-gray-600">Six classes: search, comparison, attribute_filter, refinement, follow_up, summary</p>
-              <p className="text-xs text-gray-500 mt-1">Keyword fast-path + LLM fallback. Confidence below 0.7 routes to a clarification request instead of a guess.</p>
+              <p className="text-sm text-gray-600">Seven classes: search, comparison, attribute_filter, refinement, follow_up, summary, clarify</p>
+              <p className="text-xs text-gray-500 mt-1">Keyword fast-path + LLM fallback. Confidence below 0.7 returns `clarify` intent with clarification questions instead of a guess.</p>
             </div>
 
             <div className="border-l-4 border-orange-500 pl-4">
@@ -500,16 +500,17 @@ Server streams back:
             </div>
           </div>
 
-          <h4 className="font-semibold text-gray-900 mt-4">Admin Operations (Requires X-Admin-Token)</h4>
+          <h4 className="font-semibold text-gray-900 mt-4">Admin Operations (Requires X-Admin-Token or Session)</h4>
           <div className="space-y-2 text-sm">
             <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
-              <p className="font-mono text-blue-900">POST /api/admin/reindex</p>
-              <p className="text-blue-600 text-xs mt-1">Trigger a full index reindex via Lucille ETL (GitHub Actions workflow). Requires <code className="bg-white px-1">X-Admin-Token</code> header.</p>
+              <p className="font-mono text-blue-900">GET /api/admin/health</p>
+              <p className="text-blue-600 text-xs mt-1">Index-level health: document count, index state, connectivity. Used by GitHub Actions <code>reindex.yml</code> workflow to confirm ingestion completion. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
             </div>
             <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
-              <p className="font-mono text-blue-900">GET /api/admin/health</p>
-              <p className="text-blue-600 text-xs mt-1">Operational health: current document count, index state. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
+              <p className="font-mono text-blue-900">GET /api/admin/diagnose?q=query</p>
+              <p className="text-blue-600 text-xs mt-1">Diagnostic probe: check which fields index a query term (title, product_brand, suggest fields). Helps verify index mapping after reindex. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
             </div>
+            <p className="text-xs text-gray-500 mt-2"><strong>Reindexing:</strong> Handled externally by <code>bash scripts/lucille_ingest.sh</code> (local dev) or <code>reindex.yml</code> GitHub Actions workflow (production). No in-container ingest.</p>
           </div>
         </div>
       ),
@@ -558,11 +559,11 @@ Server streams back:
       content: (
         <div className="space-y-4">
           <div className="space-y-2 text-sm">
-            <p className="font-semibold text-gray-900">Core Pipeline (7 nodes)</p>
+            <p className="font-semibold text-gray-900">Core Pipeline (8 nodes)</p>
             <pre className="bg-gray-900 text-gray-100 p-2 rounded text-xs overflow-x-auto">
-              <code>Intent Classifier → Query Rewriter → Query Evaluator → Retriever → Reranker → Quality Gate → Agent → LLM Judge</code>
+              <code>Intent Classifier → Query Evaluator → Retriever → Reranker → Quality Gate → Agent → LLM Judge</code>
             </pre>
-            <p className="text-xs text-gray-600">Quality Gate may loop once back to the retriever with α adjusted ±0.3. LLM Judge runs only when both <code>llm</code> and <code>llm_judge</code> toggles are on; it can trigger a second auto-correction generation when fabrications are flagged (see "LLM-as-Judge" section).</p>
+            <p className="text-xs text-gray-600"><strong>Query expansion</strong> (resolving pronouns/follow-ups) happens inside the Retriever node, not as a separate step. Quality Gate may loop once back to Retriever with α adjusted ±0.3. LLM Judge runs only when both <code>llm</code> and <code>llm_judge</code> toggles are on; it can trigger a second auto-correction generation when fabrications are flagged (see "LLM-as-Judge" section).</p>
 
             <p className="font-semibold text-gray-900 mt-3">Tech Stack</p>
             <div className="grid grid-cols-2 gap-2">
