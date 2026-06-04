@@ -335,7 +335,9 @@ class OpenSearchVectorStore:
                     f"Failed to generate embedding: {e}", recoverable=recoverable
                 ) from e
 
-        raise EmbeddingError(f"Failed to generate embedding after {max_retries} retries") from last_error
+        raise EmbeddingError(
+            f"Failed to generate embedding after {max_retries} retries"
+        ) from last_error
 
     def as_retriever(
         self,
