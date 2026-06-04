@@ -1,4 +1,4 @@
-.PHONY: help setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick
+.PHONY: help doctor setup test lint format clean run stop test-reranker test-hybrid test-query dev dev-api dev-web install-web ci ci-format ci-lint ci-test ci-tools benchmark-esci benchmark-esci-fast smoke-local smoke-local-quick
 
 # Virtual environment — all Python/pip commands use this
 VENV := .venv/bin
@@ -7,6 +7,7 @@ help:
 	@echo "Agentic Hybrid Search - Development Commands"
 	@echo ""
 	@echo "Setup & Initialization:"
+	@echo "  make doctor             - Check prerequisites and system health"
 	@echo "  make setup              - Run complete system setup (database, models, data)"
 	@echo "  make install-web        - Install web UI dependencies (npm install)"
 	@echo ""
@@ -44,6 +45,9 @@ help:
 	@echo "  make clean              - Remove generated files and caches"
 	@echo "  make clean-db           - Reset PostgreSQL database (WARNING: removes all data)"
 	@echo ""
+
+doctor:
+	@bash scripts/doctor.sh
 
 setup:
 	@echo "[1/1] Running complete setup..."
