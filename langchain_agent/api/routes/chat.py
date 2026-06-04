@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -117,8 +117,10 @@ class ConnectionManager:
             websocket = self.active_connections[thread_id]
             try:
                 await websocket.send_json(event.model_dump(mode="json"))
-            except Exception as e:
+            except (WebSocketDisconnect, RuntimeError, ValueError) as e:
                 logger.error("websocket_send_error", thread_id=thread_id, error=str(e))
+            except Exception as e:
+                logger.error("unexpected_websocket_send_error", thread_id=thread_id, error=str(e))
 
     def get_connection_count(self) -> int:
         """Return number of active connections."""
@@ -137,8 +139,10 @@ class ConnectionManager:
             try:
                 websocket = self.active_connections[thread_id]
                 await websocket.close()
+            except (WebSocketDisconnect, RuntimeError):
+                pass  # Connection already closed or in invalid state
             except Exception as e:
-                logger.error("websocket_close_error", thread_id=thread_id, error=str(e))
+                logger.error("unexpected_websocket_close_error", thread_id=thread_id, error=str(e))
         self.active_connections.clear()
 
         # Cleanup agent service if initialized
@@ -146,8 +150,10 @@ class ConnectionManager:
             try:
                 await self._agent_service.cleanup()
                 self._agent_service = None
+            except (RuntimeError, TimeoutError, ConnectionError) as e:
+                logger.warning("agent_service_cleanup_error", error=str(e))
             except Exception as e:
-                logger.error("agent_service_cleanup_error", error=str(e))
+                logger.error("unexpected_agent_service_cleanup_error", error=str(e))
 
 
 # Global connection manager instance

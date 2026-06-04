@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import json
+import logging
 import os
 import sys
 import time
@@ -39,6 +40,8 @@ from config import (
 )
 from reranker import GeminiReranker
 from vector_store import OpenSearchVectorStore
+
+logger = logging.getLogger(__name__)
 
 # Benchmark test queries covering different types
 BENCHMARK_QUERIES = [
@@ -350,8 +353,8 @@ class SearchBenchmark:
         """Cleanup resources."""
         try:
             self.pool.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error closing connection pool during cleanup: {e}")
 
 
 def main():
@@ -411,8 +414,8 @@ def main():
     finally:
         try:
             benchmark.cleanup()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error during benchmark cleanup: {e}")
 
 
 if __name__ == "__main__":
