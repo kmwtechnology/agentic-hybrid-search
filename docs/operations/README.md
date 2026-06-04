@@ -8,6 +8,7 @@ Runbooks and operational guidance for running Agentic Hybrid Search in productio
 
 | Runbook | Purpose | When to use |
 |---------|---------|-----------|
+| [GCP First-Timer Guide](gcp-quickstart.md) | Project creation, WIF, deploy.sh, gcp-init.sh, CI/CD setup | First-time GCP deployment from scratch |
 | [Deployment](deployment.md) | Pre-deploy checklist, blue-green rollback, re-indexing | Before pushing to production; incident recovery |
 | [Monitoring](monitoring.md) | GCP Logs Explorer queries, metrics, alert setup | During/after deployment; proactive health checks |
 | [Troubleshooting](troubleshooting.md) | Common failure patterns and fixes | When something breaks; startup errors |
