@@ -93,9 +93,16 @@ export function GuidePage() {
 
             <h4 className="font-semibold text-gray-900 mt-4">2. Open the UI</h4>
             <p className="text-sm">Visit <a href="http://localhost:5173" className="text-blue-600 hover:underline">http://localhost:5173</a></p>
+            <p className="text-xs text-gray-500 mt-1">The UI automatically detects the API URL: localhost:5173 connects to http://localhost:8000; Cloud Run detects the Cloud Run service URL.</p>
 
             <h4 className="font-semibold text-gray-900 mt-4">3. Start asking</h4>
             <p className="text-sm text-gray-600">Try: "What are the best wireless earbuds with active noise cancellation?"</p>
+
+            <h4 className="font-semibold text-gray-900 mt-4">4. Verify the setup (optional)</h4>
+            <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm overflow-x-auto">
+              <code>cd langchain_agent{'\n'}make smoke-local-quick</code>
+            </pre>
+            <p className="text-sm text-gray-600 mt-1">Runs a quick smoke test to verify all components are working (~13s)</p>
           </div>
         </div>
       ),
@@ -120,8 +127,8 @@ export function GuidePage() {
 
             <div className="border-l-4 border-orange-500 pl-4">
               <h4 className="font-semibold text-gray-900">Smart Reranking</h4>
-              <p className="text-sm text-gray-600">LLM-based relevance scoring (0.0-1.0) to ensure top results are truly relevant</p>
-              <p className="text-xs text-gray-500 mt-1">Quality gate: retries with adjusted search if score &lt; 0.5</p>
+              <p className="text-sm text-gray-600">LLM-based (Gemini Flash Lite) relevance scoring (0.0-1.0) to ensure top results are truly relevant</p>
+              <p className="text-xs text-gray-500 mt-1">Quality gate: retries with adjusted search (alpha ±0.3) if score &lt; 0.5. Typical latency: 500ms–1s per query.</p>
             </div>
 
             <div className="border-l-4 border-pink-500 pl-4">
@@ -260,12 +267,12 @@ export function GuidePage() {
 
           <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-sm">
             <p className="font-semibold text-amber-900">Enable ground-truth metrics:</p>
-            <p className="text-amber-900 mt-1">Ingest the ESCI judgments index once:</p>
+            <p className="text-amber-900 mt-1">The ESCI judgments are ingested via Lucille ETL as part of the standard setup:</p>
             <pre className="bg-gray-900 text-gray-100 p-2 rounded text-xs overflow-x-auto mt-1">
-              <code>cd langchain_agent{'\n'}PYTHONPATH=. python ingest_esci_judgments.py</code>
+              <code>bash scripts/lucille_ingest.sh</code>
             </pre>
             <p className="text-amber-900 mt-1 text-xs">
-              ~97k US queries / 1.8M judgments. After ingestion, queries that match an ESCI query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout.
+              ~97k US queries / 1.8M judgments. After ingestion, queries that match an ESCI query exactly (lowercased) trigger the BM25 → Hybrid → Reranked layout. Use <code className="bg-yellow-100 px-1">--skip-judgments</code> flag to skip this step.
             </p>
           </div>
         </div>
@@ -293,7 +300,7 @@ export function GuidePage() {
             </div>
           </div>
 
-          <h4 className="font-semibold text-gray-900 mt-2">Endpoints</h4>
+          <h4 className="font-semibold text-gray-900 mt-2">User-Facing Endpoints</h4>
           <div className="space-y-2 text-sm">
             <div className="bg-gray-50 p-2 rounded font-mono text-xs">
               POST /api/auth/login &nbsp;<span className="text-gray-500">— validate password, set cookie</span>
@@ -306,12 +313,18 @@ export function GuidePage() {
             </div>
           </div>
 
+          <h4 className="font-semibold text-gray-900 mt-2">Machine-to-Machine (Admin Token)</h4>
+          <p className="text-sm text-gray-600">
+            For automation and backend-to-backend calls, use the <code>X-Admin-Token</code> header with a 32+ character token instead of the session cookie. GitHub Actions and unattended callers use this for operations like reindexing.
+          </p>
+
           <div className="bg-amber-50 border-l-4 border-amber-500 p-3 mt-2 text-sm">
             <p className="font-semibold text-amber-900">Required env vars (server)</p>
             <ul className="text-amber-900 mt-1 space-y-1 list-disc list-inside">
               <li><code>LOGIN_PASSWORD</code> — shared password (auto-generated on first <code>setup.sh</code>)</li>
               <li><code>SESSION_SECRET</code> — ≥32-char cookie-signing secret (<code>openssl rand -hex 32</code>)</li>
               <li><code>SESSION_COOKIE_SECURE</code> — <code>true</code> for Cloud Run TLS, <code>false</code> for local HTTP</li>
+              <li><code>ADMIN_TOKEN</code> — (optional) 32+ character token for machine-to-machine auth; required for GitHub Actions reindex</li>
             </ul>
             <p className="text-amber-900 mt-2 text-xs">The frontend never receives these — the user types the password into the login screen and the cookie does the rest.</p>
           </div>
@@ -486,6 +499,18 @@ Server streams back:
               <p className="text-gray-600 text-xs mt-1">Runtime API URL discovery for frontend</p>
             </div>
           </div>
+
+          <h4 className="font-semibold text-gray-900 mt-4">Admin Operations (Requires X-Admin-Token)</h4>
+          <div className="space-y-2 text-sm">
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+              <p className="font-mono text-blue-900">POST /api/admin/reindex</p>
+              <p className="text-blue-600 text-xs mt-1">Trigger a full index reindex via Lucille ETL (GitHub Actions workflow). Requires <code className="bg-white px-1">X-Admin-Token</code> header.</p>
+            </div>
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+              <p className="font-mono text-blue-900">GET /api/admin/health</p>
+              <p className="text-blue-600 text-xs mt-1">Operational health: current document count, index state. Requires <code className="bg-white px-1">X-Admin-Token</code> header or session cookie.</p>
+            </div>
+          </div>
         </div>
       ),
     },
@@ -542,8 +567,12 @@ Server streams back:
             <p className="font-semibold text-gray-900 mt-3">Tech Stack</p>
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-gray-50 p-2 rounded text-xs">
-                <p className="font-mono text-gray-900">LLM</p>
-                <p className="text-gray-600">Gemini 3 Flash (gen) · Gemini 3.1 Flash Lite (rerank/judge)</p>
+                <p className="font-mono text-gray-900">LLM Generation</p>
+                <p className="text-gray-600">Gemini 3 Flash (preview)</p>
+              </div>
+              <div className="bg-gray-50 p-2 rounded text-xs">
+                <p className="font-mono text-gray-900">LLM Classify/Rerank</p>
+                <p className="text-gray-600">Gemini 3.1 Flash Lite (preview)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-xs">
                 <p className="font-mono text-gray-900">Embeddings</p>
@@ -562,8 +591,12 @@ Server streams back:
                 <p className="text-gray-600">LangGraph + LangChain</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-xs">
+                <p className="font-mono text-gray-900">Ingest Pipeline</p>
+                <p className="text-gray-600">Lucille (Apache Hadoop/Spark ETL)</p>
+              </div>
+              <div className="bg-gray-50 p-2 rounded text-xs">
                 <p className="font-mono text-gray-900">Frontend</p>
-                <p className="text-gray-600">React 18 + TypeScript</p>
+                <p className="text-gray-600">React 18 + TypeScript + Tailwind</p>
               </div>
             </div>
 
@@ -620,8 +653,8 @@ Server streams back:
 
             <div className="border-l-4 border-yellow-500 pl-3">
               <p className="font-semibold text-gray-900">Slow responses</p>
-              <p className="text-gray-600">Check Observability panel for pipeline bottlenecks</p>
-              <p className="text-gray-500 text-xs mt-1">Reranking typically takes longest; adjust RERANKER_TOP_K in .env</p>
+              <p className="text-gray-600">Expected latency: ~6–15s local, ~35s on Cloud Run (includes cold start + reranking)</p>
+              <p className="text-gray-500 text-xs mt-1">Check the Observability panel for pipeline bottlenecks. Reranking (500ms–1s) + retrieval are typically the slowest stages. Adjust RERANKER_TOP_K or RERANKER_FETCH_K in .env to trade speed for coverage.</p>
             </div>
           </div>
         </div>
@@ -646,13 +679,13 @@ Server streams back:
 
             <p className="font-semibold text-gray-900 mt-3">Commands</p>
             <ul className="space-y-1 text-gray-600 font-mono text-xs">
-              <li><code className="bg-gray-100 px-1">make dev</code> - Start all services</li>
+              <li><code className="bg-gray-100 px-1">make dev</code> - Start all services (API + frontend)</li>
               <li><code className="bg-gray-100 px-1">make dev-api</code> - Backend only</li>
               <li><code className="bg-gray-100 px-1">make dev-web</code> - Frontend only</li>
-              <li><code className="bg-gray-100 px-1">make ci</code> - Local pre-push gate (black/isort/flake8/mypy/pytest)</li>
-              <li><code className="bg-gray-100 px-1">PYTHONPATH=. pytest tests/</code> - Run tests</li>
-              <li><code className="bg-gray-100 px-1">PYTHONPATH=. python ingest_esci_products.py</code> - Ingest products</li>
-              <li><code className="bg-gray-100 px-1">PYTHONPATH=. python ingest_esci_judgments.py</code> - Ingest ground-truth judgments (enables NDCG/MRR/Recall@20)</li>
+              <li><code className="bg-gray-100 px-1">make ci</code> - Local pre-push gate (linting/typing/pytest)</li>
+              <li><code className="bg-gray-100 px-1">make smoke-local</code> - Full 20-test smoke suite against local backend</li>
+              <li><code className="bg-gray-100 px-1">PYTHONPATH=. pytest tests/</code> - Run all tests</li>
+              <li><code className="bg-gray-100 px-1">bash scripts/lucille_ingest.sh</code> - Ingest ESCI products + judgments (Lucille ETL)</li>
             </ul>
           </div>
         </div>
