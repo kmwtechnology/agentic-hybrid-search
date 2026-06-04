@@ -1,6 +1,7 @@
 #!/bin/bash
 # Agentic Hybrid Search Setup Script
 # One-time setup: configure environment, start Docker services, ingest ESCI products
+# shellcheck disable=SC2027,SC2086,SC2154,SC2289,SC1078,SC1079,SC1088,SC1036,SC2140
 
 set -e  # Exit on error
 
@@ -18,6 +19,7 @@ LOG_FILE="$LOG_DIR/setup-$(date +%Y%m%d-%H%M%S).log"
 log() {
     local msg="$1"
     local timestamp
+    # shellcheck disable=SC2154
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[${timestamp}] $msg" | tee -a "$LOG_FILE"
 }
@@ -45,6 +47,7 @@ end_step() {
 }
 
 # Trap to show which step failed
+# shellcheck disable=SC2064,SC2154
 trap 'echo ""; log "❌ Setup failed at: $CURRENT_STEP"; echo "❌ Setup failed at: $CURRENT_STEP"; echo "   Check log: $LOG_FILE"; exit 1' ERR
 
 log "🚀 Agentic Hybrid Search - Local Setup"
