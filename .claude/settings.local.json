@@ -329,7 +329,8 @@
       "Read(//Users/kevin/.claude/plans/**)",
       "Read(//Users/kevin/.claude/projects/**)",
       "Skill(update-config)",
-      "Bash(PYTHONPATH=langchain_agent .venv/bin/pytest langchain_agent/tests/unit/ -q --tb=no)"
+      "Bash(PYTHONPATH=langchain_agent .venv/bin/pytest langchain_agent/tests/unit/ -q --tb=no)",
+      "Bash(docker system prune *)"
     ]
   },
   "enableAllProjectMcpServers": true,
