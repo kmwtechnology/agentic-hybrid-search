@@ -106,20 +106,6 @@ def quality_gate_test_cases():
     ]
 
 
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line("markers", "unit: mark test as a unit test")
-    config.addinivalue_line("markers", "integration: mark test as an integration test")
-    config.addinivalue_line("markers", "e2e: mark test as an end-to-end test")
-    config.addinivalue_line("markers", "intent: mark test as intent classifier test")
-    config.addinivalue_line("markers", "evaluator: mark test as query evaluator test")
-    config.addinivalue_line("markers", "quality_gate: mark test as quality gate test")
-    config.addinivalue_line("markers", "slow: mark test as slow")
-    config.addinivalue_line(
-        "markers", "requires_real_api: mark test as requiring real API credentials"
-    )
-
-
 def pytest_collection_modifyitems(config, items):
     """Skip tests requiring real API credentials when API key is fake/test."""
     google_api_key = os.environ.get("GOOGLE_API_KEY", "")
