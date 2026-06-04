@@ -207,10 +207,8 @@ marimo/_lsp/
 __marimo__/
 langchain_agent/chroma_db/chroma.sqlite3
 
-# Claude Code
-.claude/
-langchain_agent/.claude/
-CLAUDE.md
+# Claude Code — note: CLAUDE.md and .claude/memory/ are tracked; local state in .claude/state/ is ignored
+.claude/state/
 
 # esci directory — raw ESCI dataset (external, not tracked)
 esci/
