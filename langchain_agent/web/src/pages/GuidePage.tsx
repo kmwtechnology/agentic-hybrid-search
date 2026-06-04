@@ -127,8 +127,8 @@ export function GuidePage() {
 
             <div className="border-l-4 border-orange-500 pl-4">
               <h4 className="font-semibold text-gray-900">Smart Reranking</h4>
-              <p className="text-sm text-gray-600">LLM-based (Gemini Flash Lite) relevance scoring (0.0-1.0) to ensure top results are truly relevant</p>
-              <p className="text-xs text-gray-500 mt-1">Quality gate: retries with adjusted search (alpha ±0.3) if score &lt; 0.5. Typical latency: 500ms–1s per query.</p>
+              <p className="text-sm text-gray-600">Cross-encoder (ms-marco-MiniLM-L-12-v2) relevance scoring on 0.0–1.0 scale to ensure top results are truly relevant</p>
+              <p className="text-xs text-gray-500 mt-1">Default: cross-encoder (~10ms per batch, local). Optional: Gemini Flash Lite LLM-based reranker (~500ms–1s). Quality gate: retries with adjusted search (alpha ±0.3) if score &lt; 0.5.</p>
             </div>
 
             <div className="border-l-4 border-pink-500 pl-4">
@@ -571,8 +571,12 @@ Server streams back:
                 <p className="text-gray-600">Gemini 3 Flash (preview)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-xs">
-                <p className="font-mono text-gray-900">LLM Classify/Rerank</p>
+                <p className="font-mono text-gray-900">LLM Classify/Eval</p>
                 <p className="text-gray-600">Gemini 3.1 Flash Lite (preview)</p>
+              </div>
+              <div className="bg-gray-50 p-2 rounded text-xs">
+                <p className="font-mono text-gray-900">Reranking</p>
+                <p className="text-gray-600">Cross-encoder (~10ms, default) or Gemini (~500ms, optional)</p>
               </div>
               <div className="bg-gray-50 p-2 rounded text-xs">
                 <p className="font-mono text-gray-900">Embeddings</p>
@@ -653,8 +657,8 @@ Server streams back:
 
             <div className="border-l-4 border-yellow-500 pl-3">
               <p className="font-semibold text-gray-900">Slow responses</p>
-              <p className="text-gray-600">Expected latency: ~6–15s local, ~35s on Cloud Run (includes cold start + reranking)</p>
-              <p className="text-gray-500 text-xs mt-1">Check the Observability panel for pipeline bottlenecks. Reranking (500ms–1s) + retrieval are typically the slowest stages. Adjust RERANKER_TOP_K or RERANKER_FETCH_K in .env to trade speed for coverage.</p>
+              <p className="text-gray-600">Expected latency: ~6–15s local, ~35s on Cloud Run (includes cold start). Bottleneck: usually retrieval or LLM generation, not reranking.</p>
+              <p className="text-gray-500 text-xs mt-1">Check the Observability panel for pipeline latencies. Default cross-encoder reranking is fast (~10ms). If using Gemini reranker (optional), it's ~500ms–1s. Adjust RERANKER_FETCH_K to reduce candidate set or swap to a different reranker via RERANKER_TYPE in .env.</p>
             </div>
           </div>
         </div>
