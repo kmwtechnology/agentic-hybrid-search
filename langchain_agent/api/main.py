@@ -48,6 +48,21 @@ from logging_config import configure_logging, get_logger
 configure_logging()
 logger = get_logger(__name__)
 
+
+def _get_api_base_url() -> str:
+    """Get API base URL for logging, detecting environment automatically."""
+    # Try to use VITE_API_URL from environment (set by frontend build)
+    api_url = os.getenv("VITE_API_URL", "").strip()
+    if api_url:
+        return api_url
+    # Fallback: detect from hostname
+    hostname = os.getenv("HOSTNAME", "localhost")
+    if "localhost" in hostname or "127.0.0.1" in hostname:
+        return "http://localhost:8000"
+    # Cloud Run or remote hostname
+    return f"https://{hostname.split(':')[0]}"
+
+
 # Initialize rate limiter
 limiter = Limiter(
     key_func=get_remote_address,
@@ -76,11 +91,12 @@ async def lifespan(app: FastAPI):
             "Generate one with `openssl rand -hex 32`."
         )
 
+    base_url = _get_api_base_url()
     logger.info(
         "api_started",
-        rest_api="http://localhost:8000/api",
-        websocket="ws://localhost:8000/ws/chat",
-        docs="http://localhost:8000/swagger",
+        rest_api=f"{base_url}/api",
+        websocket=base_url.replace("http", "ws") + "/ws/chat",
+        docs=f"{base_url}/swagger",
         auth_required=True,
         login_gate=True,
     )

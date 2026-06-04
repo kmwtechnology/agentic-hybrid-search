@@ -21,6 +21,7 @@ Powered by:
 - Observability: Pydantic-validated WebSocket events with real-time streaming
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -2104,8 +2105,6 @@ Respond with JSON only. No other text."""
             return
 
         try:
-            import asyncio
-
             # Use the stored event loop that was set when emit_callback was assigned
             asyncio.run_coroutine_threadsafe(self.emit_callback(event), self.event_loop)
             # Don't wait for the result - let it run asynchronously

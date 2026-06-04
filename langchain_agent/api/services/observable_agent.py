@@ -404,11 +404,20 @@ class ObservableAgentService:
 
             return final_response
 
-        except Exception as e:
+        except (TimeoutError, ConnectionError, RuntimeError) as e:
             await emit(
                 AgentErrorEvent(
                     error=str(e),
-                    recoverable=False,
+                    recoverable=True,  # Transient failures may succeed on retry
+                )
+            )
+            return None
+        except Exception as e:
+            logger.exception("Unexpected error in agent execution")
+            await emit(
+                AgentErrorEvent(
+                    error=str(e),
+                    recoverable=False,  # Logic errors, etc. are not retryable
                 )
             )
             return None
