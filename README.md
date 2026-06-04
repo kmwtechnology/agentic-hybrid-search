@@ -407,18 +407,25 @@ agentic-hybrid-search/
 
 ## Documentation Map
 
-| Location | Purpose |
-|----------|---------|
-| [README.md](README.md) (this file) | Architecture, deployment paths, tech stack |
-| [langchain_agent/README.md](langchain_agent/README.md) | Day-to-day development, API usage, config, troubleshooting |
-| [langchain_agent/api/README.md](langchain_agent/api/README.md) | FastAPI backend layers (routes, middleware, schemas, services) |
-| [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts (setup, dev, deploy, CI hooks) |
-| [langchain_agent/web/README.md](langchain_agent/web/README.md) | React frontend (components, stores, hooks, testing) |
-| [langchain_agent/lucille-esci/README.md](langchain_agent/lucille-esci/README.md) | Lucille ETL config for ESCI ingest |
-| [langchain_agent/tests/README.md](langchain_agent/tests/README.md) | Test suite overview (unit, integration, e2e) |
-| [langchain_agent/tests/integration/README.md](langchain_agent/tests/integration/README.md) | Integration tests (multi-component, live services) |
-| [langchain_agent/tests/e2e/README.md](langchain_agent/tests/e2e/README.md) | End-to-end tests (deployed Cloud Run) |
-| [data/README.md](data/README.md) | Precomputed ESCI parquets (products, judgments) |
+| Location | Purpose | Audience |
+|----------|---------|----------|
+| [README.md](README.md) (this file) | Architecture, deployment paths, tech stack | Everyone |
+| **For Developers** | | |
+| [langchain_agent/README.md](langchain_agent/README.md) | Day-to-day development, API usage, config, troubleshooting | Backend/Frontend devs |
+| [langchain_agent/api/README.md](langchain_agent/api/README.md) | FastAPI backend layers (routes, middleware, schemas, services) | Backend devs |
+| [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts (setup, dev, deploy, CI hooks) | All devs |
+| [langchain_agent/web/README.md](langchain_agent/web/README.md) | React frontend (components, stores, hooks, testing) | Frontend devs |
+| [langchain_agent/lucille-esci/README.md](langchain_agent/lucille-esci/README.md) | Lucille ETL config for ESCI ingest | Data/DevOps engineers |
+| [langchain_agent/tests/README.md](langchain_agent/tests/README.md) | Test suite overview (unit, integration, e2e) | Test developers |
+| [langchain_agent/tests/integration/README.md](langchain_agent/tests/integration/README.md) | Integration tests (multi-component, live services) | Backend/test devs |
+| [langchain_agent/tests/e2e/README.md](langchain_agent/tests/e2e/README.md) | End-to-end tests (deployed Cloud Run) | QA/test devs |
+| [data/README.md](data/README.md) | Precomputed ESCI parquets (products, judgments) | Data engineers |
+| **For Operations** | | |
+| [docs/operations/README.md](docs/operations/README.md) | Deploy, monitor, scale, troubleshoot Cloud Run | SRE/DevOps/Operators |
+| **For API Consumers** | | |
+| [docs/integration/README.md](docs/integration/README.md) | REST/WebSocket examples, auth patterns | Integrators |
+| **For Contributors** | | |
+| [docs/contributing/README.md](docs/contributing/README.md) | Code patterns, testing, PR process | Contributors |
 
 ## Search Optimization
 
