@@ -1,69 +1,264 @@
-> **Parent**: [API Integration Guide](README.md)
+# WebSocket Guide
 
-# WebSocket Real-Time Streaming
+Real-time message streaming for responsive chat UIs.
 
-Agentic Hybrid Search uses WebSocket for real-time token-by-token response streaming and pipeline observability events.
+**Parent:** [Integration Guide](README.md)
+
+---
 
 ## Connection
 
-**URL:**
-```
-wss://agentic-hybrid-search-<hash>.run.app/ws/{thread_id}
-```
+### URL
 
-**Local dev:**
+**Development:**
 ```
 ws://localhost:8000/ws/{thread_id}
 ```
 
-**Requirements:**
-- Valid session cookie (obtained via `POST /api/auth/login`)
-- `thread_id`: unique conversation identifier (e.g., `conv-123` or UUID)
+**Production:**
+```
+wss://agentic-hybrid-search-XXXX.run.app/ws/{thread_id}
+```
+
+Replace `{thread_id}` with a conversation ID (e.g., `conv_abc123def456`).
+
+### Authentication
+
+The session cookie **must** be present in the WebSocket handshake. Browsers send it automatically; custom clients must include it explicitly.
+
+**JavaScript (browser):**
+```javascript
+const ws = new WebSocket(
+  `wss://agentic-hybrid-search-XXXX.run.app/ws/${threadId}`,
+  [],
+  { credentials: 'include' }  // Include cookies
+);
+```
+
+**Python (custom client):**
+```python
+import websockets
+import json
+
+async def connect():
+    headers = {
+        'Cookie': 'ahs_session=...'  # From login response
+    }
+    async with websockets.connect(
+        f'wss://agentic-hybrid-search-XXXX.run.app/ws/{thread_id}',
+        additional_headers=headers
+    ) as ws:
+        # Connected
+        await ws.send(json.dumps({
+            'type': 'chat_message',
+            'message': 'Find wireless headphones',
+            'thread_id': thread_id
+        }))
+```
+
+### Connection Established
+
+On successful connection, the server sends:
+```json
+{
+  "type": "connection_established",
+  "thread_id": "conv_abc123def456",
+  "timestamp": "2026-06-04T16:30:45Z"
+}
+```
 
 ---
 
-## JavaScript Browser Example
+## Sending Messages
+
+### Chat Message
+
+```json
+{
+  "type": "chat_message",
+  "message": "Find wireless headphones under $100",
+  "thread_id": "conv_abc123def456"
+}
+```
+
+Required fields: `type`, `message`, `thread_id`.
+
+---
+
+## Receiving Events
+
+The server streams back a sequence of **typed events**. All events have a `type` field and a `node` field (which pipeline stage emitted it).
+
+### Event Types
+
+| Event | Node | Purpose |
+|-------|------|---------|
+| `connection_established` | — | Handshake complete |
+| `search_progress` | intent_classifier | Intent classification in progress |
+| `reranker_progress` | reranker | Reranking top-K documents |
+| `quality_gate` | quality_gate | Quality gate verdict (retry or continue) |
+| `query_expansion` | query_evaluator | Query rewriting result |
+| `opensearch_query` | retriever | Full OpenSearch DSL (for debugging) |
+| `llm_response_chunk` | agent | Token-by-token response text |
+| `clarification_requested` | intent_classifier | Low-confidence intent; ask user |
+| `clarification_resolved` | intent_classifier | User clarified intent |
+| `agent_complete` | agent | Full response and citations ready |
+| `pipeline_summary` | — | Per-stage metrics (NDCG, MRR, latency) |
+
+### Example: Search Flow
+
+**1. User sends message:**
+```json
+{"type": "chat_message", "message": "wireless headphones", "thread_id": "..."}
+```
+
+**2. Server responds with events:**
+
+```json
+{"type": "search_progress", "node": "intent_classifier", "status": "classifying"}
+```
+
+```json
+{"type": "search_progress", "node": "intent_classifier", "intent": "search", "confidence": 0.95}
+```
+
+```json
+{"type": "query_expansion", "node": "query_evaluator", "expanded_query": "wireless headphones"}
+```
+
+```json
+{"type": "reranker_progress", "node": "reranker", "documents_scored": 40, "max_score": 0.87}
+```
+
+```json
+{"type": "llm_response_chunk", "node": "agent", "chunk": "Here are the ", "complete": false}
+```
+
+```json
+{"type": "llm_response_chunk", "node": "agent", "chunk": "top wireless", "complete": false}
+```
+
+```json
+{"type": "llm_response_chunk", "node": "agent", "chunk": " headphones:\n", "complete": false}
+```
+
+```json
+{
+  "type": "agent_complete",
+  "node": "agent",
+  "response": "Here are the top wireless headphones:\n1. Bose ...",
+  "citations": [
+    {"url": "https://www.amazon.com/s?k=Bose+QuietComfort", "title": "Bose QuietComfort"}
+  ]
+}
+```
+
+```json
+{
+  "type": "pipeline_summary",
+  "node": "agent",
+  "metrics": {
+    "intent": "search",
+    "retriever_latency_ms": 1200,
+    "reranker_max_score": 0.87,
+    "agent_latency_ms": 8500,
+    "total_latency_ms": 10200
+  }
+}
+```
+
+---
+
+## Close Codes
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| 1000 | Normal close | Conversation ended |
+| 1001 | Going away | Server shutting down |
+| 4401 | Auth failed | Session cookie expired; re-authenticate |
+| 4500 | Server error | Unexpected error; reconnect |
+
+**On close code 4401:** User must re-authenticate via `POST /api/auth/login` and reconnect with a new cookie.
+
+---
+
+## JavaScript Example (React)
 
 ```javascript
-const threadId = 'my-conversation-' + Date.now();
-const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(`${protocol}//${window.location.host}/ws/${threadId}`);
+import { useEffect, useState } from 'react';
 
-ws.onopen = () => {
-  console.log('Connected');
-  ws.send(JSON.stringify({
-    type: 'chat_message',
-    message: 'wireless earbuds under $100',
-    thread_id: threadId
-  }));
-};
+export function ChatComponent() {
+  const [messages, setMessages] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isConnected, setIsConnected] = useState(false);
+  const ws = React.useRef(null);
 
-ws.onmessage = (event) => {
-  const msg = JSON.parse(event.data);
-  console.log(`[${msg.node}] ${msg.type}:`, msg);
-  
-  switch(msg.type) {
-    case 'agent_response_chunk':
-      document.querySelector('#response').textContent += msg.chunk;
-      break;
-    case 'agent_complete':
-      console.log('Response complete. Citations:', msg.citations);
-      break;
-    case 'error':
-      console.error('Error:', msg.error);
-      break;
-  }
-};
+  useEffect(() => {
+    const threadId = 'conv_abc123def456'; // From login
+    const url = `wss://agentic-hybrid-search-XXXX.run.app/ws/${threadId}`;
 
-ws.onerror = (error) => console.error('WebSocket error:', error);
+    ws.current = new WebSocket(url);
+    ws.current.onopen = () => setIsConnected(true);
+    ws.current.onmessage = (event) => {
+      const event_obj = JSON.parse(event.data);
+      console.log('Received event:', event_obj.type, event_obj);
 
-ws.onclose = (event) => {
-  if (event.code === 4401) {
-    console.log('Unauthorized — re-login required');
-  } else {
-    console.log('Connection closed:', event.code, event.reason);
-  }
-};
+      if (event_obj.type === 'llm_response_chunk') {
+        // Append chunk to message
+        setMessages((msgs) => [
+          ...msgs.slice(0, -1),
+          {
+            ...msgs[msgs.length - 1],
+            content: msgs[msgs.length - 1].content + event_obj.chunk,
+          },
+        ]);
+      } else if (event_obj.type === 'agent_complete') {
+        // Add citations
+        setMessages((msgs) => [
+          ...msgs.slice(0, -1),
+          { ...msgs[msgs.length - 1], citations: event_obj.citations },
+        ]);
+      }
+    };
+    ws.current.onerror = (error) => console.error('WebSocket error:', error);
+    ws.current.onclose = (event) => {
+      setIsConnected(false);
+      if (event.code === 4401) {
+        console.log('Session expired; re-authenticate');
+      }
+    };
+
+    return () => ws.current?.close();
+  }, []);
+
+  const sendMessage = () => {
+    if (!isConnected) return;
+    ws.current.send(
+      JSON.stringify({
+        type: 'chat_message',
+        message: inputValue,
+        thread_id: 'conv_abc123def456',
+      })
+    );
+    setMessages((msgs) => [...msgs, { role: 'user', content: inputValue }]);
+    setInputValue('');
+    setMessages((msgs) => [...msgs, { role: 'assistant', content: '' }]);
+  };
+
+  return (
+    <div>
+      <div>{messages.map((msg) => <p key={msg.id}>{msg.content}</p>)}</div>
+      <input
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        disabled={!isConnected}
+      />
+      <button onClick={sendMessage} disabled={!isConnected}>
+        Send
+      </button>
+    </div>
+  );
+}
 ```
 
 ---
@@ -74,144 +269,54 @@ ws.onclose = (event) => {
 import asyncio
 import json
 import websockets
-from http.cookies import SimpleCookie
 
-async def search(query: str, thread_id: str, auth_cookie: str):
-    # Parse cookie string: "ahs_session=xyz; Path=/; ..."
-    cookie = SimpleCookie()
-    cookie.load(auth_cookie.split(';')[0])  # Get first cookie
-    
-    url = f"ws://localhost:8000/ws/{thread_id}"
-    headers = {"Cookie": str(cookie.output(header=''))}
-    
+async def chat_session(thread_id: str, cookie: str):
+    url = f"wss://agentic-hybrid-search-XXXX.run.app/ws/{thread_id}"
+    headers = {"Cookie": f"ahs_session={cookie}"}
+
     async with websockets.connect(url, additional_headers=headers) as ws:
-        # Send query
-        await ws.send(json.dumps({
-            "type": "chat_message",
-            "message": query,
-            "thread_id": thread_id
-        }))
-        
-        # Stream responses
+        # Wait for connection_established
+        event = json.loads(await ws.recv())
+        assert event["type"] == "connection_established"
+        print(f"Connected to thread {event['thread_id']}")
+
+        # Send a message
+        await ws.send(
+            json.dumps({
+                "type": "chat_message",
+                "message": "Find wireless headphones under $100",
+                "thread_id": thread_id,
+            })
+        )
+
+        # Stream events
+        full_response = ""
         async for message in ws:
-            msg = json.loads(message)
-            print(f"[{msg.get('node')}] {msg.get('type')}: {msg}")
-            
-            if msg['type'] == 'agent_response_chunk':
-                print(msg['chunk'], end='', flush=True)
-            elif msg['type'] == 'error':
-                print(f"Error: {msg['error']}")
-                break
-            elif msg['type'] == 'agent_complete':
-                print("\n\nDone.")
-                break
+            event = json.loads(message)
+            event_type = event.get("type")
 
-# Usage
-import subprocess
-auth_response = subprocess.run([
-    'curl', '-X', 'POST', 'http://localhost:8000/api/auth/login',
-    '-H', 'Content-Type: application/json',
-    '-d', '{"password": "your-password"}',
-    '-c', '/tmp/cookies.txt'
-], check=True)
+            if event_type == "llm_response_chunk":
+                chunk = event.get("chunk", "")
+                print(chunk, end="", flush=True)
+                full_response += chunk
 
-with open('/tmp/cookies.txt') as f:
-    cookie = f.read()
+            elif event_type == "agent_complete":
+                citations = event.get("citations", [])
+                print(f"\n\nCitations: {citations}")
 
-asyncio.run(search("wireless headphones", "test-conv-1", cookie))
+            elif event_type == "pipeline_summary":
+                metrics = event.get("metrics", {})
+                print(f"Latency: {metrics.get('total_latency_ms')} ms")
+
+        print("\n[Session complete]")
+
+# Run
+if __name__ == "__main__":
+    cookie = "..."  # From login
+    thread_id = "conv_abc123def456"
+    asyncio.run(chat_session(thread_id, cookie))
 ```
 
 ---
 
-## Message Contracts
-
-### Inbound (Client → Server)
-
-**Send a query:**
-```json
-{
-  "type": "chat_message",
-  "message": "wireless earbuds under $100",
-  "thread_id": "conv-123"
-}
-```
-
-**Cancel ongoing request:**
-```json
-{
-  "type": "cancel_request",
-  "thread_id": "conv-123"
-}
-```
-
----
-
-### Outbound (Server → Client)
-
-Events are streamed in real-time. Each event has:
-- `type` — event category (see table below)
-- `node` — pipeline node that emitted it (intent_classifier, retriever, etc.)
-- Additional fields depend on `type`
-
-| Event Type | Node | Payload | Description |
-|-----------|------|---------|-------------|
-| `search_progress` | retriever | `status: "fetching"` | Retriever starting |
-| `reranker_progress` | reranker | `count: 40, status: "scoring"` | Reranker progress |
-| `quality_gate` | quality_gate | `pass: true, alpha_adjusted: null` | Quality gate verdict |
-| `query_expansion` | query_evaluator | `original: "...", expanded: "..."` | Query rewrite |
-| `agent_response_chunk` | agent | `chunk: "The"` | Response token |
-| `agent_complete` | agent | `citations: [{url, title}]` | Response done |
-| `clarification_requested` | intent_classifier | `question: "Did you mean...?"` | Needs clarification |
-| `error` | (any) | `error: "str", type: "str"` | Error occurred |
-| `connection_established` | (system) | `thread_id: "...", timestamp: ...` | Connected |
-
-**Example sequence for a query:**
-
-```json
-{"type": "connection_established", "thread_id": "conv-123", "timestamp": "2026-06-04T12:00:00Z"}
-{"type": "search_progress", "node": "retriever", "status": "fetching"}
-{"type": "reranker_progress", "node": "reranker", "count": 40, "status": "scoring"}
-{"type": "quality_gate", "node": "quality_gate", "pass": true, "alpha_adjusted": null}
-{"type": "agent_response_chunk", "node": "agent", "chunk": "The"}
-{"type": "agent_response_chunk", "node": "agent", "chunk": " top"}
-...
-{"type": "agent_complete", "node": "agent", "citations": [
-  {"url": "https://www.amazon.com/s?k=wireless+earbuds", "title": "Wireless Earbuds"}
-]}
-```
-
----
-
-## Close Codes
-
-| Code | Reason | Action |
-|------|--------|--------|
-| `1000` | Normal closure | Client or server closed cleanly |
-| `1011` | Server error | Retry after exponential backoff |
-| `4401` | Unauthorized | Session expired; re-login via `POST /api/auth/login` |
-| `4403` | Forbidden | Origin or auth rejected; check allow-list |
-
-Example reconnection logic:
-
-```javascript
-ws.onclose = (event) => {
-  if (event.code === 4401) {
-    // Re-login
-    await login();
-    reconnect();
-  } else if (event.code === 1011) {
-    // Retry with backoff
-    setTimeout(reconnect, 5000);
-  }
-};
-```
-
----
-
-## Performance Tips
-
-1. **Send one message at a time** — WebSocket is half-duplex; wait for `agent_complete` before sending the next query
-2. **Set client timeout to 60s minimum** — searches can take 15–45 seconds depending on model load
-3. **Reconnect on 4401** — don't silently drop; prompt the user to log in again
-4. **Discard old events** — if UI updates cause lag, skip rendering old events; only process the latest from each `node`
-5. **Use `additional_headers` for cookies in Python** — don't include the entire Cookie header; `websockets` will merge them correctly
+For REST API examples, see [REST API](rest-api.md). For auth details, see [Auth Patterns](auth-patterns.md).
