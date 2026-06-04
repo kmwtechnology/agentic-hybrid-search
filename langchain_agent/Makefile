@@ -87,7 +87,7 @@ format:
 
 type-check:
 	@echo "Checking types with mypy..."
-	$(VENV)/mypy main.py config.py --ignore-missing-imports || true
+	$(VENV)/mypy main.py config.py --ignore-missing-imports --check-untyped-defs || true
 
 # ----------------------------------------------------------------------------
 # CI parity: run *exactly* what build-deploy.yml runs in GitHub Actions.
@@ -110,7 +110,7 @@ ci-lint: ci-tools
 	@echo "[CI] flake8 . --count"
 	@$(VENV)/flake8 . --count
 	@echo "[CI] mypy main.py"
-	@$(VENV)/mypy main.py --ignore-missing-imports || true
+	@$(VENV)/mypy main.py --ignore-missing-imports --check-untyped-defs || true
 
 ci-test: ci-tools
 	@echo "[CI] pytest tests/unit/"
