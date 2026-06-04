@@ -418,7 +418,6 @@ LLM_MODEL=gemini-3-flash-preview,\
 EMBEDDINGS_MODEL=models/gemini-embedding-001,\
 RERANKER_TYPE=cross-encoder,\
 CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2,\
-RERANKER_MODEL=gemini-3.1-flash-lite-preview,\
 QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview,\
 VECTOR_DIMENSION=768,\
 LOG_FORMAT=json,\

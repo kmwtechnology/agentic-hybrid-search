@@ -502,7 +502,6 @@ jobs:
           OPENSEARCH_USE_SSL=true,\
           OPENSEARCH_VERIFY_CERTS=false,\
           LLM_MODEL=gemini-3-flash-preview,\
-          RERANKER_MODEL=gemini-3.1-flash-lite-preview,\
           RERANKER_TYPE=cross-encoder,\
           CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L-12-v2,\
           RERANKER_WARMUP_ENABLED=true,\
