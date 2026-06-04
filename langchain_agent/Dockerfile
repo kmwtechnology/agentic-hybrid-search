@@ -43,14 +43,4 @@ ENV PORT=8080
 
 EXPOSE ${PORT}
 
-# Create entrypoint that handles service account credentials
-RUN echo '#!/bin/sh\n\
-# If GOOGLE_API_KEY contains JSON (service account), write it to a file and set ADC\n\
-if echo "$GOOGLE_API_KEY" | grep -q "BEGIN PRIVATE KEY"; then\n\
-  echo "$GOOGLE_API_KEY" > /tmp/service-account.json\n\
-  export GOOGLE_APPLICATION_CREDENTIALS=/tmp/service-account.json\n\
-fi\n\
-exec uvicorn api.main:app --host 0.0.0.0 --port ${PORT}\n\
-' > /entrypoint.sh && chmod +x /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT}"]
