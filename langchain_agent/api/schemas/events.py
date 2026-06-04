@@ -8,7 +8,7 @@ providing full observability into every step and decision.
 from datetime import datetime, timezone
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # TYPE ALIASES FOR BOUNDED SCORES
@@ -48,8 +48,6 @@ class BaseEvent(BaseModel):
     type: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     node: Optional[str] = None  # Current graph node name
-
-    model_config = ConfigDict(ser_json_encoders={datetime: lambda v: v.isoformat()})
 
 
 # ============================================================================
