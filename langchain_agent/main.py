@@ -46,6 +46,7 @@ from pydantic import BaseModel
 # Import extracted modules
 from agent_state import CustomAgentState
 from doc_replacer import DocumentReplacer
+from exceptions import LLMError, SearchTimeoutError
 from judge import RETRY_ELIGIBLE_CATEGORIES, LLMJudge
 from link_verifier import LinkVerifier
 from reranker import CrossEncoderReranker, GeminiReranker
@@ -764,13 +765,42 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                 "intent_optimized": False,  # LLM-driven, not fast-path
             }
 
+        except SearchTimeoutError as e:
+            elapsed = time.time() - start_time
+            collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
+            fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
+            logger.warning(
+                "Query evaluation timeout",
+                extra={
+                    "elapsed_ms": int(elapsed * 1000),
+                    "timeout_ms": getattr(e, "timeout_ms", None),
+                    "fallback_alpha": fallback_alpha,
+                },
+            )
+        except LLMError as e:
+            elapsed = time.time() - start_time
+            collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
+            fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
+            logger.warning(
+                "Query evaluation LLM error",
+                extra={
+                    "model": getattr(e, "model", None),
+                    "elapsed_ms": int(elapsed * 1000),
+                    "fallback_alpha": fallback_alpha,
+                },
+            )
         except Exception as e:
             # Fallback to collection-aware default if evaluation fails
             elapsed = time.time() - start_time
             collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
             fallback_alpha = collection_defaults.get("alpha", DEFAULT_ALPHA)
             logger.warning(
-                f"Query evaluation failed: {e}, using default alpha={fallback_alpha}, elapsed={elapsed:.3f}s"
+                "Query evaluation failed",
+                extra={
+                    "error": str(e),
+                    "elapsed_ms": int(elapsed * 1000),
+                    "fallback_alpha": fallback_alpha,
+                },
             )
             return {
                 "alpha": fallback_alpha,
@@ -1747,6 +1777,7 @@ Return ONLY a JSON object (use null for missing attributes):
                             parts.append(f"price: over ${price_range['gte']}")
             return ", ".join(parts) if parts else None
         except Exception:
+            logger.warning("Failed to format filter summary", exc_info=True)
             return None
 
     def _classify_intent(
