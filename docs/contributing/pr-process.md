@@ -1,253 +1,245 @@
-> **Parent**: [Contributing Guide](README.md)
-
 # PR Process
 
-Guidelines for branching, commits, PR body, and self-review.
+Branch naming, commit conventions, PR template, and review checklist.
+
+**Parent:** [Contributing Guide](README.md)
 
 ---
 
 ## Branch Naming
 
-Use this format:
+**Format:** `<type>/<issue-number>-<slug>`
 
-```
-feat/{issue-number}-{slug}    # New feature
-fix/{slug}                     # Bug fix
-docs/{slug}                    # Documentation
-chore/{slug}                   # Refactoring, cleanup
-test/{slug}                    # Test improvements
-```
+| Type | When | Example |
+|------|------|---------|
+| `feat/` | New feature | `feat/issue-42-refinement-intent` |
+| `fix/` | Bug fix | `fix/issue-28-swagger-localhost` |
+| `docs/` | Documentation | `docs/contributing-guide` |
+| `refactor/` | Code cleanup (no behavior change) | `refactor/simplify-auth` |
+| `chore/` | Maintenance (deps, CI, config) | `chore/upgrade-langchain` |
 
-**Examples:**
-```
-feat/issue-28-swagger-localhost-fix
-fix/websocket-reconnection-deadlock
-docs/add-operations-guide
-chore/cleanup-dead-code
-```
+**Rules:**
+- Use issue number if one exists (e.g., issue #42)
+- Use kebab-case for slug
+- Keep it short (<50 chars total)
 
 ---
 
-## Commits
+## Commit Message Format
 
-**Style:** Conventional Commits with optional ticket prefix
+**Format:** `<TYPE>: <description> (optional footer)`
 
-```
-{optional-ticket-id} {type}: {subject}
-
-{body}
-
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
-```
-
-**Types:** `feat`, `fix`, `docs`, `chore`, `test`, `perf`, `refactor`
+Prefix with type (matching branch type):
+- `feat:` — new feature
+- `fix:` — bug fix
+- `docs:` — documentation
+- `refactor:` — code cleanup
+- `chore:` — maintenance
 
 **Example:**
 ```
-#54 fix: correct exceptions in quality gate retry logic
+feat: add refinement intent support
 
-The quality gate was catching bare Exception instead of specific
-exception types, making error logs ambiguous. Now catches LLMError
-and SearchTimeoutError explicitly with distinct log messages.
+- Detects "refinement" queries that narrow prior results
+- Validates category overlap; requests clarification if <0.3
+- Adds 18 unit tests
 
-All 708 unit tests pass. Smoke-local-quick passes.
-
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
+Closes #42.
 ```
 
-**One commit per logical concern.** If your PR fixes two bugs, make two commits.
+**Guidelines:**
+1. **First line:** 50 chars max, imperative mood ("add" not "added")
+2. **Blank line:** Separate from body
+3. **Body:** Explain **why**, not **what**. The diff shows what changed.
+4. **Footer:** Reference issue with `Closes #NNN.` or `See #NNN.`
 
 ---
 
-## PR Body Template
+## Before Opening a PR
 
-**Use this template when opening a PR:**
+- [ ] Create feature branch: `git checkout -b feat/issue-NNN-slug`
+- [ ] Make changes and test locally
+- [ ] Run `PYTHONPATH=. pytest tests/unit/` — all pass
+- [ ] Run `make smoke-local-quick` — all pass (or `make smoke-local` for confidence)
+- [ ] Run `make lint` — no violations (or `make format-fix` to auto-fix)
+- [ ] Read your own diff — spot any dead code, stale comments
+- [ ] Commit and push
+
+---
+
+## Opening a PR
+
+**Use GitHub UI** to create a PR. Fill out the template:
 
 ```markdown
 ## Summary
-
-One-liner describing what changed and why.
-
-## What
-
-- Bullet list of what was changed
-- Why it needed to change
-- Any design decisions
+- Implement refinement intent detection
+- Validate category overlap; request clarification on low continuity
+- Add 18 unit tests
 
 ## Testing
+- [ ] Unit tests pass (make sure to run locally)
+- [ ] Smoke tests pass
+- [ ] No integration/e2e needed (no middleware changes)
 
-- [ ] Unit tests pass: `PYTHONPATH=. pytest tests/unit/`
-- [ ] Smoke test passes: `make smoke-local-quick`
-- [ ] CI passes: `make ci`
-- [ ] Manual testing (if applicable): describe what you tested
+## Deployment
+- [ ] Ready to merge
+- [ ] Requires post-deploy validation (manual smoke test on Cloud Run)
 
-## Rollout
-
-- No database migrations
-- No env var changes
-- No breaking API changes
-
----
-
-Generated with [Claude Code](https://claude.com/claude-code)
+## Related
+Closes #42.
 ```
 
----
-
-## Self-Review Checklist
-
-Before requesting review, go through this checklist:
-
-### Code Quality
-
-- [ ] No stale comments or TODOs
-- [ ] No dead code (removed imports, unused variables)
-- [ ] No hardcoded values (use env vars or constants)
-- [ ] Consistent with project style (black, isort, flake8 pass)
-- [ ] Type hints present where applicable (mypy clean)
-
-### Backend Changes
-
-- [ ] No bare `except Exception` (use specific exception types from `exceptions.py`)
-- [ ] State access uses `.get(field, default)` pattern
-- [ ] All `agent_node` return paths include `"citations"` key
-- [ ] Event parity test passes: `pytest tests/unit/test_frontend_backend_event_parity.py -v`
-- [ ] New exceptions inherit from `AgenticHybridSearchError`
-
-### Frontend Changes
-
-- [ ] TypeScript types match backend events (`web/src/types/events.ts`)
-- [ ] Frontend eslint and tsc clean
-- [ ] `npm test` passes
-
-### Documentation
-
-- [ ] README files updated if you added/changed directory structure
-- [ ] New endpoints or parameters documented
-- [ ] Links in README/docs use correct relative paths
-- [ ] No broken internal links (test with `grep -r "\.\./\.\." docs/`)
-
-### Deployment
-
-- [ ] Env vars set in BOTH `scripts/deploy.sh` AND `build-deploy.yml --set-secrets` (if needed)
-- [ ] No secrets committed (check `.gitignore`)
-- [ ] Cloud Run memory/CPU config updated if needed
-
-### Tests
-
-- [ ] Unit tests pass: `PYTHONPATH=. pytest tests/unit/ -v`
-- [ ] Integration tests run locally: `PYTHONPATH=. pytest tests/integration/ -v`
-- [ ] Smoke tests pass: `make smoke-local` (if backend path changed)
-- [ ] E2E tests pass locally: `CLOUD_RUN_URL=http://localhost:8000 pytest tests/e2e/ -m "not slow" -v`
+**Don't** force-push or amend after opening. Add new commits; the maintainer will squash on merge.
 
 ---
 
-## Review Expectations
+## Code Review Checklist
 
-**All PRs require at least 1 approval before merge.**
+Self-review before asking for review:
 
-- Small changes (<100 lines, docs-only): Fast approval
-- Code changes: Expect 1–2 rounds of feedback
-- Infrastructure changes: Expect careful review
-
-**Comment response:** Reply to every comment either with a fix commit or a brief written explanation. If feedback conflicts with prior decisions, note the tension in the reply (don't silently drop feedback).
+- [ ] **No dead code** — remove unused variables, functions, imports
+- [ ] **No stale comments** — comments should explain why, not what
+- [ ] **Event parity** — if backend events changed, frontend types match
+- [ ] **Auth pattern** — new routes use `verify_same_origin` + `verify_session`, not `verify_api_key`
+- [ ] **PYTHONPATH** — all test commands include `PYTHONPATH=.`
+- [ ] **Exception handling** — no bare `except Exception`, use subclasses
+- [ ] **State access** — use `.get()` on `CustomAgentState`, not `[]`
+- [ ] **Env vars** — if new config added, it's in `.env.example` AND `build-deploy.yml --set-secrets`
+- [ ] **Tests** — new code has unit tests; integration tests if multi-component
 
 ---
 
-## Before Pushing
+## Addressing Feedback
 
-1. Run `make ci` — all linters, tests, type checks must pass
-2. Run `make smoke-local` (if backend changes) — sanity check against local backend
-3. Read the diff end-to-end: `git diff main`
-4. Verify all links resolve (docs PRs): `grep -r "\.\./\.\." docs/`
-5. Check for secrets in the diff: no `.env`, API keys, tokens
+**Maintainer's feedback comes as comments on the diff.**
 
-```bash
-# Full checklist
-make ci
-make smoke-local
-git diff main | grep -E "password|api.?key|token|secret" && echo "FOUND SECRETS!" || echo "No secrets found"
+1. **Read the comment carefully.** Understand why, not just what to change.
+2. **Reply to each comment:** Either "Done" (if you made the change) or explain why you disagree.
+3. **Make changes and push new commits.** Do NOT amend.
+
+Example:
+```
+💬 Maintainer: "This exception should be more specific than Exception."
+
+✓ You: "Done — changed to catch SearchTimeoutError specifically."
 ```
 
----
-
-## Merge & Deploy
-
-**Merge:** Squash to `main` after review approval + CI green.
-
-```bash
-gh pr merge <PR_NUMBER> --squash
-```
-
-**Deployment:** On `main`, GitHub Actions automatically:
-1. Runs full CI
-2. Builds Docker image
-3. Pushes to Artifact Registry
-4. Deploys to Cloud Run
-5. Runs smoke tests
-
-Monitor the deploy in [Actions](https://github.com/kmwtechnology/agentic-hybrid-search/actions).
+**After addressing all feedback:**
+1. Re-run `make smoke-local-quick` locally
+2. Push the new commit
+3. **Re-request review** (GitHub button at the top of the PR)
 
 ---
 
-## Troubleshooting
+## Merge
 
-### Pre-commit hook blocks commit
+**Maintainer will squash to main** after CI passes and review is approved.
 
-Hook failed (usually black/isort):
+All your commits become one:
+```
+feat: add refinement intent support
 
-```bash
-cd langchain_agent && make format-fix
-git add .
-git commit --no-verify  # Finish the commit bypassing the hook
+- Detects "refinement" queries that narrow prior results
+- Validates category overlap; requests clarification if <0.3
+- Adds 18 unit tests
+
+Closes #42.
 ```
 
-Then re-run the hook to verify:
+**Your branch is then deleted.** Nothing to do on your end.
 
-```bash
-.git/hooks/pre-commit
+---
+
+## PR Template
+
+Use the template above. Customize for your change:
+
+```markdown
+## Summary
+Brief 1-3 bullet points of what changed.
+
+## Test plan
+- [ ] Unit tests pass
+- [ ] Smoke tests pass
+- [ ] Manual testing (if needed)
+
+## Deployment notes
+- Any breaking changes?
+- Any new env vars?
+- Any post-deploy validation needed?
+
+## Related
+Closes #NNN.
 ```
 
-### Pre-push hook blocks push
+**Keep it concise.** The diff is the source of truth; the PR body explains why.
 
-Smoke tests failing. Run them locally and fix:
+---
 
+## Common Mistakes
+
+### Force-pushing
+**Don't.** If the maintainer has reviewed your PR and you add new commits with `git push --force`, their review context is lost.
+
+**Right:** `git push` (normal push)
+**Wrong:** `git push --force` (after opening PR)
+
+### Amending after PR
+**Don't.** Use new commits instead.
+
+**Right:**
 ```bash
-make smoke-local  # See what failed
-# Fix the issue
-git add .
-git commit -m "fix: ..."
+git commit -m "fix: address review feedback"
 git push
 ```
 
-### CI fails on GitHub but passes locally
+**Wrong:**
+```bash
+git commit --amend -m "feat: refactored"
+git push --force
+```
 
-Likely causes:
-- Different Python version (`python3 --version` should be 3.13)
-- Different Node version (`node --version` should be 24)
-- Missing env vars in Secret Manager
+### Bare Exception catches
+**Don't.** Use specific subclasses.
 
-Check the GitHub Actions log for details.
+**Right:**
+```python
+try:
+    query_result = evaluate_query(query)
+except SearchTimeoutError as e:
+    logger.warning("Timeout", exc_info=True)
+```
+
+**Wrong:**
+```python
+try:
+    query_result = evaluate_query(query)
+except Exception:
+    pass
+```
+
+### Missing event parity
+**Don't.** If you add a field to a backend event, add it to the frontend type too.
+
+**Right:**
+```python
+# backend
+class SearchProgressEvent(BaseEvent):
+    type: Literal["search_progress"]
+    intent: str
+    confidence: float
+
+# frontend
+type SearchProgressEvent = BaseEvent & {
+  type: "search_progress";
+  intent: string;
+  confidence: number;
+};
+```
+
+**Wrong:** Only update backend; frontend types don't match → test fails.
 
 ---
 
-## Working Session 14-Step Rhythm
-
-This project follows a 14-step workflow (simplified here):
-
-1. **Discuss** — review memory, prior PRs; restate scope
-2. **Plan** — propose approach, get approval for non-trivial work
-3. **Code** — create branch, write code
-4. **Test** — run unit + smoke + integration tests locally
-5. **Commit** — let pre-commit hooks run; one logical commit per concern
-6. **Update docs/memory** — refresh this file and any affected READMEs
-7. **Push & open PR** — open as draft; add Why/What/Testing body
-8. **CI watch** — `gh pr checks <num>`; fix failures
-9. **Self-review** — read diff end-to-end against checklist above
-10. **Ready for review** — `gh pr ready <PR>`
-11. **Address feedback** — commit fixes (don't force-push); re-request review
-12. **Merge** — squash to main after approval + CI green
-13. **Post-deploy** — watch deploy workflow; verify in target environment
-14. **Cleanup** — close tickets, archive in Obsidian
-
-**Full rhythm:** See `~/.claude/working-session-workflow.md` (global instructions).
+For code patterns, see [Code Patterns](code-patterns.md). For testing, see [Testing](testing.md).

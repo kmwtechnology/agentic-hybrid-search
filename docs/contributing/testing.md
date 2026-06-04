@@ -1,304 +1,325 @@
-> **Parent**: [Contributing Guide](README.md)
+# Testing Guide
 
-# Testing Strategy
+Test pyramid and local testing commands.
 
-Agentic Hybrid Search uses a **test pyramid**: unit → integration → e2e → smoke.
+**Parent:** [Contributing Guide](README.md)
 
 ---
 
 ## Test Pyramid
 
-| Level | Scope | Service Deps | Time | Where |
-|-------|-------|-------------|------|-------|
-| **Unit** | Single function/class | None | ~3s | `tests/unit/` |
-| **Integration** | Multi-component | Postgres + OpenSearch | ~30s | `tests/integration/` |
-| **E2E** | Full system | Cloud Run | ~60s per test | `tests/e2e/` |
-| **Smoke** | Sanity checks | Local backend or Cloud Run | ~90s | `tests/e2e/` (marked with `@pytest.mark.slow`) |
+```
+         /\
+        /  \  Smoke Tests (Cloud Run)
+       /    \   ~2 min, 20 tests
+      /______\
+      /      \
+     /  E2E   \  End-to-End Tests
+    / Tests    \   ~3 min, 17 tests
+   /____________\
+   /            \
+  / Integration  \  Integration Tests
+ /   Tests       \   ~2 min, live PostgreSQL + OpenSearch
+/________________\
+/                  \
+ Unit Tests         ~3 sec, 716 tests, mocked deps
+/____________________\
+```
+
+**Rule:** More tests at the bottom (fast, deterministic), fewer at the top (slow, flaky).
 
 ---
 
 ## Unit Tests
 
-No external services required.
+**When:** Always. Every code change must have unit tests.
+
+**What:** Pure functions, no I/O (mock PostgreSQL, OpenSearch, Gemini).
+
+**How:** Run locally before pushing.
 
 ```bash
 cd langchain_agent
-PYTHONPATH=. pytest tests/unit/ -v
+PYTHONPATH=. pytest tests/unit/
 ```
 
-Expected output:
+Expected: ~716 tests in ~3 seconds, 0 failures.
+
+### Markers
+
+Run by marker:
+```bash
+PYTHONPATH=. pytest tests/unit/ -m phase1    # Fast subset
+PYTHONPATH=. pytest tests/unit/ -m unit      # All unit tests
 ```
-708 passed in 3.2s
+
+### Coverage
+
+Check coverage:
+```bash
+PYTHONPATH=. pytest tests/unit/ --cov=. --cov-report=html
+# Open htmlcov/index.html
 ```
 
-**Add a unit test:** Create a new file in `tests/unit/test_*.py` or add to existing file.
-
-```python
-import pytest
-from main import _flatten_llm_content
-
-def test_flatten_llm_content_with_string():
-    msg = "hello"
-    assert _flatten_llm_content(msg) == "hello"
-
-def test_flatten_llm_content_with_list():
-    msg = [{"text": "hello"}, {"text": " world"}]
-    assert _flatten_llm_content(msg) == "hello world"
-```
+Aim for >80% coverage on critical paths (intent_classifier, retriever, agent).
 
 ---
 
 ## Integration Tests
 
-Require **live PostgreSQL + OpenSearch**.
+**When:** After middleware, WebSocket, or multi-component changes.
+
+**What:** Tests with real PostgreSQL + OpenSearch (from `docker compose`).
+
+**How:** Requires Docker services running.
 
 ```bash
+# Terminal 1: Start services
+cd repo_root
 docker compose up -d
+
+# Terminal 2: Run integration tests
 cd langchain_agent
-PYTHONPATH=. pytest tests/integration/ -v
+PYTHONPATH=. pytest tests/integration/ -m 'not slow'
 ```
 
-**When to run:** After changes to middleware, WebSocket handlers, or database operations.
+Expected: ~30–120 seconds, 0 failures.
 
-**Note:** `make ci` only runs `--collect-only` on integration tests (validates imports). Run the actual tests manually before pushing:
+**Critical:** Don't skip integration tests for middleware changes. The pre-push hook runs `make smoke-local` which catches these, but local verification is faster.
+
+---
+
+## End-to-End Tests
+
+**When:** After adding a new flow (e.g., refinement intent, quality gate retry).
+
+**What:** Tests against a deployed Cloud Run service (or local backend running on :8000).
+
+**How:** Requires Docker services + local backend running.
 
 ```bash
-PYTHONPATH=. pytest tests/integration/test_auth.py -v
+# Terminal 1: Backend
+cd langchain_agent
+PYTHONPATH=. uvicorn api.main:app --reload --port 8000
+
+# Terminal 2: Run e2e tests
+cd langchain_agent
+LOGIN_PASSWORD=$(grep '^LOGIN_PASSWORD=' .env | cut -d= -f2) \
+PYTHONPATH=. pytest tests/e2e/test_deployment_smoke.py -v -m "e2e and slow" --timeout=120 --asyncio-mode=auto
+```
+
+Expected: ~3 minutes, 17 tests, 0 failures.
+
+**Against Cloud Run:**
+```bash
+LOGIN_PASSWORD=... \
+CLOUD_RUN_URL=https://agentic-hybrid-search-XXXX.run.app \
+PYTHONPATH=. pytest tests/e2e/ -v -m "e2e and slow" --timeout=120
 ```
 
 ---
 
-## E2E Tests
+## Smoke Tests (Pre-Push)
 
-Full system test against Cloud Run or localhost backend.
+**When:** Automatically before pushing (pre-push hook). Or manually before a pull request.
 
-### Local E2E (against localhost:8000)
+**What:** 20 regression tests covering the full pipeline (auth, search, refinement, citations, latency).
 
+**How:**
 ```bash
-# In one terminal, start the backend
-make dev-api
-
-# In another terminal, run e2e tests
-export CLOUD_RUN_URL=http://localhost:8000
-export LOGIN_PASSWORD=$(grep '^LOGIN_PASSWORD=' .env | cut -d= -f2)
-
-PYTHONPATH=. pytest tests/e2e/test_search.py -v -m "e2e and not slow" --timeout=120
-```
-
-### Cloud Run E2E
-
-```bash
-export CLOUD_RUN_URL=https://agentic-hybrid-search-xyz.run.app
-export LOGIN_PASSWORD=<password-from-cloud-run>
-
-PYTHONPATH=. pytest tests/e2e/ -v --timeout=120
-```
-
----
-
-## Smoke Tests
-
-Focused sanity checks for critical paths.
-
-```bash
-# Quick smoke (search-only, ~13s)
+# Quick (search intent only, ~13s)
 make smoke-local-quick
 
-# Full smoke (all 20 tests, ~90s)
+# Full suite (~90s)
 make smoke-local
 ```
 
-**Git hooks run smoke tests automatically:**
-- **Pre-commit:** `smoke-local-quick` when `api/services/`, `api/routes/`, `api/main.py`, `main.py`, or `agent_state.py` staged
-- **Pre-push:** `smoke-local` (full 20 tests) when backend paths modified
+Expected: All 20 tests pass.
 
-### Smoke Test Budget
+**What it catches:**
+- WebSocket connection failures
+- Agent not emitting events
+- Event fields missing
+- Auth gate broken
+- Latency SLO exceeded
 
-Each chat message round-trip = **16–25 seconds** (LLM generation + cross-encoder reranking).
-
-Pytest timeout is set to **120 seconds** per test file, accommodating 2–5 sequential messages per test.
-
-If you add a new smoke test with >2 messages, increase `pytest --timeout=180`.
-
----
-
-## CI/CD Gates
-
-### Local CI Gate
-
-```bash
-make ci  # Runs: format, lint, type-check, unit tests, frontend tests, collect-only integration+e2e
-```
-
-**Expected:** All pass before pushing.
-
-### GitHub Actions CI
-
-- **On every PR/push:** `test.yml` runs unit + integration + frontend tests (no e2e)
-- **On main only:** `build-deploy.yml` builds Docker, deploys to Cloud Run, runs smoke tests
+This is the most valuable gate before pushing. It catches regressions that unit tests can't see.
 
 ---
 
-## Test Markers
+## CI Pipeline
 
-Filter tests by marker:
+**GitHub Actions (`make ci`)** runs:
 
-```bash
-# Only unit tests
-PYTHONPATH=. pytest tests/ -m "unit" -v
+1. **Backend lint** (black, isort, flake8, mypy) — ~5s
+2. **Unit tests** (pytest tests/unit/) — ~3s
+3. **Integration collect-only** (no execution; checks imports) — ~2s
+4. **E2E collect-only** (no execution; checks imports) — ~2s
+5. **Frontend tests** (vitest) — ~3s
+6. **Frontend lint** (eslint) — ~2s
+7. **Frontend type check** (tsc) — ~1s
+8. **Frontend build** (vite) — ~1s
 
-# Only integration
-PYTHONPATH=. pytest tests/ -m "integration" -v
+**Total:** ~20s locally, ~3 min on GitHub (parallel jobs).
 
-# Only e2e (not slow)
-PYTHONPATH=. pytest tests/e2e/ -m "e2e and not slow" -v
-
-# Only slow tests (smoke tests)
-PYTHONPATH=. pytest tests/e2e/ -m "slow" -v
-
-# Search-specific tests
-PYTHONPATH=. pytest tests/ -m "search" -v
-```
+If any step fails, the PR is blocked.
 
 ---
 
-## Adding a New Test
+## Local Testing Before Push
 
-### Unit Test
-
-```python
-# tests/unit/test_my_feature.py
-import pytest
-from my_module import my_function
-
-def test_my_function_basic():
-    result = my_function("input")
-    assert result == "expected"
-
-def test_my_function_error():
-    with pytest.raises(ValueError):
-        my_function("bad input")
-```
-
-### Integration Test
-
-```python
-# tests/integration/test_my_feature.py
-import pytest
-import psycopg
-from opensearchpy import OpenSearch
-
-@pytest.fixture
-def db():
-    conn = psycopg.connect("postgresql://postgres:postgres@localhost/langchain_agent")
-    yield conn
-    conn.close()
-
-def test_database_insert(db):
-    cur = db.cursor()
-    cur.execute("INSERT INTO checkpoints (thread_id, data) VALUES (%s, %s)", ("test", "{}"))
-    db.commit()
-    assert True
-```
-
-### Smoke Test
-
-Smoke tests live in `tests/e2e/` and use `@pytest.mark.slow`:
-
-```python
-# tests/e2e/test_my_feature.py
-import pytest
-from tests.e2e.conftest import auth_ws_headers
-
-@pytest.mark.slow
-@pytest.mark.e2e
-async def test_my_scenario(websocket_fixture):
-    """Smoke test for my feature."""
-    ws = await websocket_fixture.connect()
-    await ws.send(json.dumps({
-        "type": "chat_message",
-        "message": "my query",
-        "thread_id": "test-conv"
-    }))
-    
-    events = []
-    async for msg in ws:
-        events.append(json.loads(msg))
-        if msg.get("type") == "agent_complete":
-            break
-    
-    assert any(e["type"] == "agent_response_chunk" for e in events)
-```
-
----
-
-## Pre-Commit & Pre-Push Hooks
-
-The project uses two-tier git hooks (in `.git/hooks/`):
-
-| Hook | Runs | When |
-|------|------|------|
-| **pre-commit** | black + isort + flake8 + `smoke-local-quick` | Every commit on changed Python files |
-| **pre-push** | `make ci` + `make smoke-local` | Once per push when backend files changed |
-
-**Bypass (not recommended):** `git commit --no-verify` or `git push --no-verify`
-
----
-
-## Troubleshooting Tests
-
-### `ModuleNotFoundError: No module named 'config'`
-
-Missing `PYTHONPATH=.`:
+Follow this checklist before `git push`:
 
 ```bash
-PYTHONPATH=. pytest tests/unit/  # ✓ Correct
-pytest tests/unit/                # ✗ Wrong
-```
-
-### Test hangs or times out
-
-Check if Docker services are up:
-
-```bash
-docker compose ps
-# Should see postgres, opensearch, opensearch-dashboards running
-```
-
-If not:
-
-```bash
-docker compose up -d
-```
-
-### WebSocket test fails with `ConnectionRefusedError`
-
-Backend not running on `:8000`:
-
-```bash
-make dev-api  # Starts backend
-# Then run test in another terminal
-```
-
-### Integration test fails with `psycopg.OperationalError`
-
-PostgreSQL connection lost:
-
-```bash
-docker compose restart postgres
-PYTHONPATH=. pytest tests/integration/ -v
-```
-
----
-
-## Coverage Report
-
-Generate HTML coverage report:
-
-```bash
+# 1. Unit tests
 cd langchain_agent
-PYTHONPATH=. pytest tests/unit/ --cov=. --cov-report=html
-open htmlcov/index.html
+PYTHONPATH=. pytest tests/unit/
+
+# 2. Lint
+make format-fix    # Auto-fix formatting
+make lint          # Check lint (should pass after format-fix)
+
+# 3. Smoke tests (catches WebSocket, event, latency issues)
+make smoke-local-quick    # Fast: 13s (search intent only)
+# OR
+make smoke-local          # Full: 90s (all 20 tests)
+
+# 4. Git
+git push    # Pre-push hook runs `make ci` again
 ```
 
-Current coverage: ~75% (unit tests only; integration/e2e not included in coverage%).
+If `make smoke-local-quick` fails, the pre-push hook will also fail. Fix it before pushing.
+
+---
+
+## Integration Test Setup
+
+Integration tests use `docker compose` services. Ensure they're running:
+
+```bash
+cd repo_root
+docker compose up -d
+
+# Verify
+docker compose ps    # Should show postgres, opensearch, opensearch-dashboards
+```
+
+Tests use environment variables from `.env`:
+- `POSTGRES_HOST=localhost`
+- `OPENSEARCH_HOST=localhost`
+
+If you change database credentials in `.env`, update the test conftest too.
+
+---
+
+## E2E Test Requirements
+
+**Local (backend on localhost):**
+- Backend running on `:8000`
+- `LOGIN_PASSWORD` set in `.env`
+- `docker compose up -d` running
+
+**Cloud Run:**
+- Service deployed and healthy
+- `CLOUD_RUN_URL` env var set
+- `LOGIN_PASSWORD` available (retrieve from Secret Manager)
+
+**Important:** E2E tests in `tests/e2e/` are only executed in CI against Cloud Run (GHA workflow `test.yml`). Local execution is optional; the pre-push hook doesn't trigger them.
+
+---
+
+## Debugging Failed Tests
+
+### Print debugging
+```python
+def test_something():
+    result = some_function()
+    print(f"Debug: result={result}")  # Visible with -s flag
+    assert result == expected
+```
+
+Run with output:
+```bash
+PYTHONPATH=. pytest tests/unit/test_something.py::test_something -v -s
+```
+
+### Drop to debugger
+```python
+import pdb
+
+def test_something():
+    result = some_function()
+    pdb.set_trace()  # Debugger breaks here
+    assert result == expected
+```
+
+Run:
+```bash
+PYTHONPATH=. pytest tests/unit/test_something.py::test_something -v -s --pdb
+```
+
+### Check logs
+```bash
+# Unit tests emit logs to stderr
+PYTHONPATH=. pytest tests/unit/ -v --log-cli-level=DEBUG
+```
+
+---
+
+## Adding New Tests
+
+### Structure
+```
+tests/
+├── unit/              # No external deps (fast)
+│   └── test_intent_classifier.py
+├── integration/       # PostgreSQL + OpenSearch (medium)
+│   └── test_retriever_with_live_index.py
+└── e2e/              # Full system (slow)
+    └── test_chat_flow.py
+```
+
+### Markers
+Use pytest markers to categorize:
+```python
+@pytest.mark.unit
+def test_intent_classification():
+    ...
+
+@pytest.mark.integration
+def test_retriever():
+    ...
+
+@pytest.mark.e2e
+@pytest.mark.slow
+def test_full_chat_flow():
+    ...
+```
+
+Then run by marker:
+```bash
+PYTHONPATH=. pytest tests/unit/ -m unit
+PYTHONPATH=. pytest tests/ -m integration
+PYTHONPATH=. pytest tests/ -m e2e
+```
+
+### Example Unit Test
+```python
+import pytest
+from intent_classifier import classify_intent
+
+@pytest.mark.unit
+def test_intent_classifier_search():
+    result = classify_intent("Find wireless headphones")
+    assert result["intent"] == "search"
+    assert result["confidence"] > 0.8
+
+@pytest.mark.unit
+def test_intent_classifier_comparison():
+    result = classify_intent("Compare Bose and Sony")
+    assert result["intent"] == "comparison"
+```
+
+---
+
+For code patterns, see [Code Patterns](code-patterns.md). For the PR process, see [PR Process](pr-process.md).
