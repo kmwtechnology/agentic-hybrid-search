@@ -1,257 +1,273 @@
-> **Parent**: [API Integration Guide](README.md)
+# REST API Guide
 
-# REST API Reference
+Complete REST endpoint documentation with cURL examples.
 
-## Base URL
+**Parent:** [Integration Guide](README.md)
 
-**Local development:**
-```
-http://localhost:8000
-```
-
-**Cloud Run:**
-```
-https://agentic-hybrid-search-<hash>.run.app
-```
+---
 
 ## Authentication
 
-All endpoints require **session authentication** OR **admin token**.
+First, log in to get a session cookie:
 
-| Auth Type | Method | Example |
-|-----------|--------|---------|
-| **Session cookie** | Login first, cookie sent automatically | See [Auth Patterns](auth-patterns.md) |
-| **Admin token** | `X-Admin-Token` header | `X-Admin-Token: <32+ char token>` |
-
----
-
-## Endpoints
-
-### Auth
-
-#### `POST /api/auth/login`
-
-Log in with shared password. Returns session cookie.
-
-**Request:**
 ```bash
+# Login
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"password": "your-login-password"}' \
+  -d '{"password": "your_password"}' \
   -c cookies.txt
+
+# Expected response (200 OK):
+# Set-Cookie: ahs_session=...
 ```
 
-**Response (200):**
-```json
-{"message": "Login successful"}
-```
+Store the cookie with `-c cookies.txt`, then include it in all subsequent requests with `-b cookies.txt`.
 
-**Subsequent requests** automatically include the cookie:
+### Health Check (No Auth Required)
+
 ```bash
-curl http://localhost:8000/api/suggest?q=wireless \
-  -b cookies.txt
+curl http://localhost:8000/api/health
 ```
+
+Response (200 OK):
+```json
+{
+  "status": "healthy",
+  "postgres": "ok",
+  "opensearch": "ok",
+  "google_api": "ok",
+  "document_count": 9618,
+  "timestamp": "2026-06-04T16:30:45Z"
+}
+```
+
+If any probe is not "ok", the service is degraded. Check [Troubleshooting](../operations/troubleshooting.md).
 
 ---
 
-### Conversations
+## Conversations
 
-#### `GET /api/conversations`
+### Create a Conversation
 
-List all conversations.
+```bash
+curl -X POST http://localhost:8000/api/conversations \
+  -H "Content-Type: application/json" \
+  -b cookies.txt \
+  -d '{
+    "title": "My Shopping Session"
+  }'
+```
 
-**Request:**
+Response (201 Created):
+```json
+{
+  "id": "conv_abc123def456",
+  "title": "My Shopping Session",
+  "created_at": "2026-06-04T16:30:45Z",
+  "updated_at": "2026-06-04T16:30:45Z",
+  "message_count": 0
+}
+```
+
+### List All Conversations
+
 ```bash
 curl http://localhost:8000/api/conversations \
   -b cookies.txt
 ```
 
-**Response (200):**
-```json
-[
-  {
-    "id": "conv-123",
-    "title": "Laptop search",
-    "created_at": "2026-06-04T12:00:00Z",
-    "updated_at": "2026-06-04T12:05:00Z"
-  }
-]
-```
-
-#### `GET /api/conversations/{id}`
-
-Get conversation history.
-
-**Request:**
-```bash
-curl http://localhost:8000/api/conversations/conv-123 \
-  -b cookies.txt
-```
-
-**Response (200):**
+Response (200 OK):
 ```json
 {
-  "id": "conv-123",
-  "messages": [
-    {"role": "user", "content": "wireless earbuds under $100"},
-    {"role": "assistant", "content": "...", "citations": []}
-  ]
+  "conversations": [
+    {
+      "id": "conv_abc123def456",
+      "title": "My Shopping Session",
+      "created_at": "2026-06-04T16:30:45Z",
+      "updated_at": "2026-06-04T16:30:45Z",
+      "message_count": 3
+    }
+  ],
+  "total": 1
 }
 ```
 
-#### `POST /api/conversations/{id}/messages`
+---
 
-Send a message (REST polling; use WebSocket for real-time streaming).
+## Messages (REST Polling)
 
-**Request:**
+### Send a Message (Non-Streaming)
+
+For simple polling (not real-time), use REST:
+
 ```bash
-curl -X POST http://localhost:8000/api/conversations/conv-123/messages \
+curl -X POST http://localhost:8000/api/conversations/conv_abc123def456/messages \
   -H "Content-Type: application/json" \
-  -d '{"message": "compare these with Bose"}' \
-  -b cookies.txt
+  -b cookies.txt \
+  -d '{
+    "message": "Find me wireless headphones under $100"
+  }'
 ```
 
-**Response (202 Accepted):**
+Response (202 Accepted — async processing):
 ```json
-{"status": "processing", "message_id": "msg-456"}
+{
+  "thread_id": "conv_abc123def456",
+  "status": "processing"
+}
 ```
 
-Use WebSocket (`/ws/{thread_id}`) for real-time response streaming instead (see [WebSocket](websocket.md)).
+**Note:** For real-time streaming, use [WebSocket](websocket.md) instead. REST polling is slower (~20-30s latency).
 
 ---
 
-### Search & Suggest
+## Suggestions (Typeahead)
 
-#### `GET /api/suggest`
+### Autocomplete Suggestions
 
-Typeahead autocomplete. Returns product title suggestions.
-
-**Request:**
 ```bash
-curl "http://localhost:8000/api/suggest?q=wireless+head" \
+curl 'http://localhost:8000/api/suggest?q=wireless' \
   -b cookies.txt
 ```
 
-**Response (200):**
+Query parameters:
+- `q` (required): search prefix (e.g., "wireless", "blue")
+- `limit` (optional, default=10): max suggestions to return
+
+Response (200 OK):
 ```json
 {
   "suggestions": [
-    {"text": "Wireless Headphones", "type": "title"},
-    {"text": "Wireless Headset", "type": "title"}
+    {
+      "text": "wireless headphones",
+      "source": "products",
+      "score": 0.95
+    },
+    {
+      "text": "wireless speaker",
+      "source": "products",
+      "score": 0.88
+    }
   ]
+}
+```
+
+**Suggestions are context-free** (no conversation history). Prefix must match product titles or brands. Single-character typos are corrected; longer queries fall back to exact prefix match.
+
+---
+
+## Admin Endpoints
+
+### Admin Health Check
+
+Requires `X-Admin-Token` header (for automation):
+
+```bash
+curl http://localhost:8000/api/admin/health \
+  -H "X-Admin-Token: your_admin_token_here"
+```
+
+Response (200 OK):
+```json
+{
+  "status": "healthy",
+  "postgres": "ok",
+  "opensearch": "ok",
+  "google_api": "ok",
+  "document_count": 9618,
+  "index_age_seconds": 3600
+}
+```
+
+Same format as public `/api/health`, but available only to admins.
+
+### Diagnose (Field-Level Metrics)
+
+```bash
+curl http://localhost:8000/api/admin/diagnose \
+  -H "X-Admin-Token: your_admin_token_here"
+```
+
+Response includes hit counts per field (product_title, product_brand, product_color, etc.):
+```json
+{
+  "status": "healthy",
+  "field_stats": {
+    "product_title": {"indexed": true, "hit_count": 9618},
+    "product_brand": {"indexed": true, "hit_count": 9500},
+    "product_color": {"indexed": true, "hit_count": 8200}
+  }
 }
 ```
 
 ---
 
-### Admin Endpoints
+## Logout
 
-#### `GET /api/health`
-
-Service health check. Returns index document count, shard status, etc.
-
-**Request (with session cookie):**
 ```bash
-curl http://localhost:8000/api/health \
+curl -X POST http://localhost:8000/api/auth/logout \
   -b cookies.txt
 ```
 
-**Request (with admin token):**
-```bash
-curl http://localhost:8000/api/health \
-  -H "X-Admin-Token: your-admin-token-here"
-```
-
-**Response (200):**
+Response (200 OK):
 ```json
 {
-  "status": "healthy",
-  "index": {
-    "name": "agentic_hybrid_search_docs",
-    "doc_count": 9618,
-    "shards": {"active": 4, "unassigned": 0}
-  },
-  "database": "connected",
-  "openai_api": "reachable"
+  "status": "logged_out"
 }
 ```
 
-#### `GET /api/admin/diagnose`
-
-Detailed field-level diagnostics (hit counts by field).
-
-**Request:**
-```bash
-curl http://localhost:8000/api/admin/diagnose \
-  -H "X-Admin-Token: your-admin-token"
-```
-
-**Response (200):**
-```json
-{
-  "fields": {
-    "product_title": {"hits": 8500, "missing": 0},
-    "product_brand": {"hits": 9100, "missing": 518}
-  }
-}
-```
+The session cookie is invalidated server-side. The `Set-Cookie` response header instructs the client to delete the cookie.
 
 ---
 
 ## Error Responses
 
-### `400 Bad Request`
-
-Invalid query or malformed JSON.
+### 400 Bad Request
 
 ```json
 {
-  "detail": "Invalid query parameter: q"
+  "detail": "Invalid JSON or missing required field 'message'"
 }
 ```
 
-### `401 Unauthorized`
-
-Missing or invalid authentication.
+### 401 Unauthorized
 
 ```json
 {
-  "detail": "Session expired or invalid"
+  "detail": "Invalid or missing session. Please login."
 }
 ```
 
-### `403 Forbidden`
+**Fix:** Re-authenticate via `POST /api/auth/login`.
 
-Not authenticated (session or token required).
+### 403 Forbidden
 
 ```json
 {
-  "detail": "Login required"
+  "detail": "Origin header is not allowed"
 }
 ```
 
-### `500 Internal Server Error`
+**Fix:** Check your Origin header matches the allow-list. See [Auth Patterns](auth-patterns.md).
 
-Server error (check [logs](../operations/monitoring.md)).
+### 500 Internal Server Error
 
 ```json
 {
-  "detail": "Internal server error"
+  "detail": "An error occurred. Check logs for details."
 }
 ```
+
+**Fix:** Check `/api/health` to see which probe failed (PostgreSQL, OpenSearch, or Google API).
 
 ---
 
 ## Rate Limiting
 
-No built-in rate limiting. On high-traffic deployments, Cloud Run will enforce quota limits via the GCP API.
+**Currently:** No rate limiting enforced. Requests are processed sequentially by design (concurrency=1 per Cloud Run instance for stateful WebSocket sessions).
+
+If you spam requests, you'll simply queue them; they'll be processed in order.
 
 ---
 
-## Best Practices
-
-1. **Use WebSocket for real-time searches** — REST polling is slower and increases load
-2. **Reuse session cookies** — login once, send cookie with all subsequent requests
-3. **Use admin token for automation** — CI/CD jobs should use `X-Admin-Token` header, not session cookies
-4. **Handle 502 gracefully** — Cloud Run cold starts (first request after deploy) may cause brief timeouts; retry with exponential backoff
-5. **Monitor latency** — single search can take 15–45 seconds depending on FETCH_K and model load time; set client timeouts accordingly
+For WebSocket real-time examples, see [WebSocket](websocket.md). For auth details, see [Auth Patterns](auth-patterns.md).

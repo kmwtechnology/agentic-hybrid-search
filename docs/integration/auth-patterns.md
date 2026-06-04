@@ -1,183 +1,284 @@
-> **Parent**: [API Integration Guide](README.md)
-
 # Authentication Patterns
 
-Two authentication flows are supported: **session cookie** (interactive users) and **admin token** (automation/CI).
+Two authentication flows for different use cases.
+
+**Parent:** [Integration Guide](README.md)
 
 ---
 
-## Pattern A: Session Cookie (Interactive Users)
+## Pattern A: Session Cookie (Browser / Interactive)
 
-Browsers and web clients use this flow.
+Use this when a **user is actively interacting** with the application (web UI, mobile app, etc.).
+
+### Flow
+
+```
+1. User enters password → POST /api/auth/login
+                ↓
+2. Server validates password → generates signed cookie
+                ↓
+3. Client stores cookie → browsers do this automatically
+                ↓
+4. All subsequent requests include cookie automatically
+                ↓
+5. Cookie expires after 24 hours (configurable) → user logs in again
+```
 
 ### Step 1: Login
 
-Send the shared password to `POST /api/auth/login`:
-
+**Request:**
 ```bash
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"password": "your-login-password"}' \
-  -c cookies.txt  # Save cookie to file
+  -H "Origin: http://localhost:8000" \
+  -d '{
+    "password": "abc123def456"
+  }' \
+  -c cookies.txt
 ```
 
-Response:
-```json
-{"message": "Login successful"}
+**Response (200 OK):**
+```
+Set-Cookie: ahs_session=eyJhbGciOiJIUzI1NiIs...; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400
 ```
 
-The server sets an `HttpOnly`, `Secure`, `SameSite=Lax` cookie named `ahs_session`.
+The cookie is **HttpOnly** (not accessible to JavaScript, safe from XSS) and **SameSite=Lax** (CSRF protection).
 
-### Step 2: All Subsequent Requests
+**Important:** The password must match `LOGIN_PASSWORD` environment variable (shared password, not per-user).
 
-Include the cookie automatically with every request:
+### Step 2: Use the Cookie
 
-**REST:**
+**Browser (automatic):**
+```javascript
+fetch('http://localhost:8000/api/conversations', {
+  credentials: 'include'  // Auto-includes cookies
+})
+```
+
+**cURL (explicit):**
 ```bash
 curl http://localhost:8000/api/conversations \
+  -b cookies.txt  # Include saved cookies
+```
+
+**Python (requests):**
+```python
+import requests
+
+session = requests.Session()
+session.post('http://localhost:8000/api/auth/login', json={'password': '...'})
+# Subsequent requests auto-include the cookie
+response = session.get('http://localhost:8000/api/conversations')
+```
+
+### Step 3: Session Expiry
+
+By default, session cookies expire after **24 hours** (configurable via `SESSION_MAX_AGE_SECONDS`).
+
+When the cookie expires:
+- Browser requests get a `401 Unauthorized` response
+- WebSocket connections close with code `4401`
+
+**Response:**
+```json
+{
+  "detail": "Invalid or missing session. Please login."
+}
+```
+
+**Recovery:** User must re-authenticate via `POST /api/auth/login` and continue.
+
+### Step 4: Logout
+
+```bash
+curl -X POST http://localhost:8000/api/auth/logout \
   -b cookies.txt
 ```
 
-**WebSocket (JavaScript):**
-```javascript
-const ws = new WebSocket(`ws://${host}/ws/${threadId}`);
-// Browser automatically sends session cookie with handshake
-```
-
-**WebSocket (Python):**
-```python
-import websockets
-from http.cookies import SimpleCookie
-
-# Parse cookie from login response
-cookie_str = "ahs_session=xyz; Path=/; SameSite=Lax; HttpOnly"
-headers = {"Cookie": cookie_str.split(';')[0]}
-
-await websockets.connect(url, additional_headers=headers)
-```
-
-### Session Expiry
-
-Sessions expire after **24 hours** (configurable via `SESSION_MAX_AGE_SECONDS` in `.env`).
-
-**WebSocket close code `4401`** signals session expiration:
-
-```javascript
-ws.onclose = (event) => {
-  if (event.code === 4401) {
-    console.log('Session expired. Please log in again.');
-    // Redirect to login screen or call login() again
-  }
-};
-```
+Server invalidates the session cookie server-side. Client also receives a `Set-Cookie` response instructing the browser to delete the cookie.
 
 ---
 
-## Pattern B: Admin Token (Automation/CI)
+## Pattern B: Admin Token (Automation / CI)
 
-GitHub Actions, scheduled jobs, and server-to-server integrations use this flow.
+Use this for **unattended automation** (GitHub Actions, scheduled jobs, service-to-service).
 
-### Step 1: Obtain Token
+### Flow
 
-Admin token is a 32+ character secret set in the environment:
+```
+1. Admin provides long-lived token
+                ↓
+2. Application stores token in environment variable (ADMIN_TOKEN)
+                ↓
+3. Each request includes token in X-Admin-Token header
+                ↓
+4. No session cookie needed; no login required
+```
+
+### Setup
+
+**Store the token in your secret manager:**
+
+GitHub Actions (example):
+```bash
+# Generate a secure random token (32+ chars)
+openssl rand -hex 32
+
+# Store in GitHub Secrets
+gh secret set ADMIN_TOKEN -b <TOKEN_VALUE>
+```
+
+Cloud Run (example):
+```bash
+# Store in Secret Manager
+gcloud secrets create admin-token --data-file=- << EOF
+<TOKEN_VALUE>
+EOF
+
+# Reference in build-deploy.yml as an environment variable
+```
+
+### Usage
+
+Every request includes the token:
 
 ```bash
-# In .env or GitHub Secrets
-ADMIN_TOKEN="your-32-or-more-char-random-string"
+curl http://localhost:8000/api/admin/health \
+  -H "X-Admin-Token: abc123def456xyz..."
 ```
 
-Local dev generates a token on first run; production uses a manually set secret.
+**Which endpoints accept admin token?**
 
-### Step 2: Send Token Header
+- `GET /api/admin/health` — health check
+- `GET /api/admin/diagnose` — field-level metrics
+- `POST /api/admin/login-admin` — internal only
 
-Include `X-Admin-Token` with every request:
+**Note:** `/api/auth/login` and `/api/conversations` do NOT accept admin token. Use session cookie for those.
 
-**REST:**
-```bash
-curl http://localhost:8000/api/health \
-  -H "X-Admin-Token: your-admin-token"
-```
+### Token Security
 
-**WebSocket:**
-```python
-import websockets
-
-headers = {
-  "X-Admin-Token": "your-admin-token"
-}
-
-await websockets.connect(url, additional_headers=headers)
-```
-
-### Admin Routes
-
-Only these routes accept `X-Admin-Token`:
-
-- `GET /api/health` — Service health
-- `GET /api/admin/diagnose` — Field-level diagnostics
-
-### Token Rotation
-
-Tokens are **not rotatable** without a deploy (the token is read from `ADMIN_TOKEN` env var at startup).
-
-To rotate:
-1. Update `ADMIN_TOKEN` in Secret Manager or `.env`
-2. Redeploy the service (token becomes active immediately)
+- **Never commit tokens to git** — store in environment variables or secret managers only
+- **Use constant-time comparison** — the server uses `hmac.compare_digest()` to prevent timing attacks
+- **Rotate regularly** — if a token is compromised, generate a new one
+- **Minimal scopes** — admin token only has access to `/api/admin/*` and health endpoints
 
 ---
 
-## Origin & CORS
+## CORS & Origin Validation
 
-### Same-Origin Policy
+Both auth patterns require the `Origin` header to match the **allow-list**.
 
-All requests (REST and WebSocket) are checked against an allow-list of **allowed origins**.
+### Allow-List Rules
 
-**Default allow-list (local dev):**
+**Localhost (development):**
 ```
-http://localhost:5173
 http://localhost:8000
+http://localhost:8001
 http://127.0.0.1:8000
+http://127.0.0.1:5173  (Vite frontend)
 ```
 
-**Cloud Run allow-list:**
+**Cloud Run (production):**
 ```
-https://*.run.app
+https://*.run.app  (all Cloud Run services in the project)
 ```
 
-### What Happens on Disallowed Origin
+### Origin Header
 
-If a browser makes a request from an origin NOT in the allow-list:
-- Origin header **present** → `403 Forbidden`
-- Origin header **absent** (AND Referer absent) → Request proceeds (legacy fallback for scripts)
+Browsers automatically set the `Origin` header. Custom clients must include it explicitly.
 
-To add a custom origin (e.g., `https://my-app.com`), update `CORS_ORIGINS` in `.env`:
-
+**cURL example:**
 ```bash
-CORS_ORIGINS=https://my-app.com,https://another.com
+curl http://localhost:8000/api/conversations \
+  -H "Origin: http://localhost:8000" \
+  -b cookies.txt
 ```
 
-Redeploy after changing.
+### Disallowed Origin
+
+If `Origin` is not in the allow-list, the server responds with `403 Forbidden`:
+
+```json
+{
+  "detail": "Origin header is not allowed"
+}
+```
+
+**Fix:** Update `get_allowed_origins()` in `api/main.py` or provide the correct Origin header.
+
+### Host Fallback Rule
+
+If **both** `Origin` and `Referer` headers are absent (uncommon), the server falls back to the `Host` header. This handles edge cases where a proxy strips headers.
+
+**Example (request with no Origin/Referer):**
+```bash
+curl http://localhost:8000/api/health
+```
+
+Falls back to Host: `localhost:8000` → allowed.
 
 ---
 
-## Comparing the Two Flows
+## Comparison
 
-| Feature | Session Cookie | Admin Token |
-|---------|----------------|------------|
-| **User type** | Interactive (browser) | Automation (CI, jobs) |
-| **Login required** | Yes; password needed | No; token in header |
-| **Expiry** | 24 hours | None (env var-based) |
-| **Routes** | REST + WebSocket | `/api/health`, `/api/admin/*` only |
-| **Security** | HttpOnly cookie, SameSite=Lax | Constant-time comparison (timing-attack safe) |
-| **Use case** | Web UI, WebSocket chat | GitHub Actions, internal services |
+| Factor | Session Cookie | Admin Token |
+|--------|-----------------|------------|
+| **Use case** | Interactive (web UI, user) | Automation (CI, jobs) |
+| **Login required** | Yes | No |
+| **Expiry** | 24h default | None (long-lived) |
+| **Where stored** | Browser cookie | Environment var / secret |
+| **Scope** | Full API | `/api/admin/*` only |
+| **Security** | HttpOnly, SameSite | Constant-time comparison |
+| **Multi-user support** | Per-user session | Shared token (no tracking) |
 
 ---
 
-## Best Practices
+## Troubleshooting
 
-1. **Store passwords securely** — Never hardcode `LOGIN_PASSWORD` in code; use environment variables or Secret Manager
-2. **Rotate admin tokens periodically** — Set a calendar reminder to refresh `ADMIN_TOKEN` every 90 days
-3. **Use HTTPS in production** — Cookies and tokens are transmitted; always use TLS
-4. **Set `SESSION_COOKIE_SECURE=true` on Cloud Run** — Ensures cookies are only sent over HTTPS
-5. **Monitor auth failures** — Check logs for `401` errors; could signal token leakage or password guess attempts
-6. **WebSocket reconnection** — Implement exponential backoff (3s, 6s, 12s, ..., max 60s) when WebSocket closes unexpectedly
+### 401 Unauthorized on Session Endpoint
+
+**Cause:** Cookie is missing or expired.
+
+**Check:**
+```bash
+curl -i http://localhost:8000/api/conversations \
+  -H "Origin: http://localhost:8000" \
+  -b cookies.txt
+```
+
+Look for `Set-Cookie` in the response. If absent, the cookie is not being sent.
+
+**Fix:** Re-authenticate:
+```bash
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Origin: http://localhost:8000" \
+  -d '{"password": "..."}' \
+  -c cookies.txt
+```
+
+### 403 Forbidden (Origin)
+
+**Cause:** The `Origin` header doesn't match the allow-list.
+
+**Fix:** Provide the correct Origin:
+```bash
+curl http://localhost:8000/api/conversations \
+  -H "Origin: http://localhost:8000" \
+  -b cookies.txt
+```
+
+For Cloud Run, Origin must be `https://<service_name>-<region>.run.app`.
+
+### 401 on WebSocket (Code 4401)
+
+**Cause:** Session cookie is expired or invalid.
+
+**Flow:**
+1. WebSocket connection attempt
+2. Server checks session cookie
+3. If invalid/expired → close with code `4401`
+4. Client must re-authenticate and reconnect
+
+---
+
+For detailed API examples, see [REST API](rest-api.md) and [WebSocket](websocket.md).
