@@ -86,8 +86,8 @@ WHAT THIS SCRIPT DOES:
     7. Installs Node.js frontend dependencies
     8. Starts PostgreSQL, OpenSearch, and OpenSearch Dashboards containers
     9. Initializes database and OpenSearch index
-    10. Generates 10K deterministic product sample (seed=42)
-    11. Generates embeddings and indexes products into OpenSearch
+    10. Runs Lucille ETL to ingest precomputed 10K ESCI products + judgments into OpenSearch
+        (reads from data/esci_products_sample_10000.parquet — no API calls needed)
 
 SERVICES STARTED:
     - PostgreSQL (checkpoint storage) → localhost:5432
@@ -205,8 +205,8 @@ ESCI_REPO_DIR="$PARENT_DIR/esci"
 ESCI_FILE="$ESCI_REPO_DIR/shopping_queries_dataset/shopping_queries_dataset_products.parquet"
 
 if [ ! -d "$ESCI_REPO_DIR" ]; then
-    log "   Cloning ESCI dataset from GitHub (~1GB, may take a few minutes)..."
-    echo "   Cloning ESCI dataset from GitHub (~1GB, may take a few minutes)..."
+    log "   🌐 Cloning ESCI dataset from GitHub (~1.5 GB)... this is a one-time download (2-5 min)"
+    echo "   🌐 Cloning ESCI dataset from GitHub (~1.5 GB)... this is a one-time download (2-5 min)"
     if git clone https://github.com/amazon-science/esci-data.git "$PARENT_DIR/esci"; then
         log "   ✓ ESCI dataset cloned successfully"
         echo "   ✓ ESCI dataset cloned successfully"

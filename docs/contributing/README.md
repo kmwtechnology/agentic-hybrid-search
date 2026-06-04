@@ -8,6 +8,7 @@ How to contribute code, tests, and documentation to Agentic Hybrid Search.
 
 | Guide | Purpose | For Whom |
 |-------|---------|----------|
+| [Local Dev Setup](dev-setup.md) | Prerequisites, setup.sh walkthrough, daily workflow | New contributors |
 | [Code Patterns](code-patterns.md) | PYTHONPATH, state access, exceptions, event parity | Backend/Frontend devs |
 | [Testing](testing.md) | Test pyramid (unit → integration → e2e → smoke), commands | Test developers |
 | [PR Process](pr-process.md) | Branch naming, commit format, PR template, review checklist | All contributors |
