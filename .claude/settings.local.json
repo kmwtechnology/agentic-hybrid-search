@@ -336,7 +336,8 @@
       "Bash(docker --version)",
       "Bash(java -version)",
       "Bash(mvn --version)",
-      "Bash(.venv/bin/pip list *)"
+      "Bash(.venv/bin/pip list *)",
+      "Bash(make type-check *)"
     ]
   },
   "enableAllProjectMcpServers": true,
