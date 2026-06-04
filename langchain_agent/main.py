@@ -777,6 +777,13 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                     "fallback_alpha": fallback_alpha,
                 },
             )
+            return {
+                "alpha": fallback_alpha,
+                "intent_description": "Unknown (timeout)",
+                "query_analysis": {},
+                "search_strategy": "default",
+                "intent_optimized": False,
+            }
         except LLMError as e:
             elapsed = time.time() - start_time
             collection_defaults = SEARCH_DEFAULTS.get(VECTOR_COLLECTION_NAME, {})
@@ -789,6 +796,13 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
                     "fallback_alpha": fallback_alpha,
                 },
             )
+            return {
+                "alpha": fallback_alpha,
+                "intent_description": "Unknown (LLM error)",
+                "query_analysis": {},
+                "search_strategy": "default",
+                "intent_optimized": False,
+            }
         except Exception as e:
             # Fallback to collection-aware default if evaluation fails
             elapsed = time.time() - start_time
