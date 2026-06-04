@@ -8,7 +8,7 @@ set -e  # Exit on error
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PARENT_DIR="$(dirname "$PROJECT_DIR")""
+PARENT_DIR="$(dirname "$PROJECT_DIR")"
 
 # Setup logging
 LOG_DIR="$PROJECT_DIR/logs"
