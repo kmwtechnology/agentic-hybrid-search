@@ -243,7 +243,7 @@ Flags: `--reset-index` atomically deletes+recreates the index via `setup.py --re
 
 ## Scripts
 
-- `setup.sh` — one-time non-interactive: prereqs check (Docker, Python 3.13, Node, **Java 17+, Maven**), ESCI clone (~1GB), venv + deps, Docker up, `setup.py` (which calls `lucille_ingest.sh`). Creates `.env` from `.env.example` if missing; requires manual `GOOGLE_API_KEY`.
+- `setup.sh` — one-time non-interactive: prereqs check (Docker, Python 3.14, Node, **Java 17+, Maven**), ESCI clone (~1GB), venv + deps, Docker up, `setup.py` (which calls `lucille_ingest.sh`). Creates `.env` from `.env.example` if missing; requires manual `GOOGLE_API_KEY`.
 - `teardown.sh` — kills :8000/:5173, removes Docker containers + volumes, `.venv`, `node_modules`, logs. Keeps `.env` by default.
 - `start.sh` / `stop.sh` — start/stop Docker + backend + frontend (Vite proxies API to :8000).
 - `deploy.sh` — Cloud Run deploy with Cloud SQL + Secret Manager + autoscaling.
@@ -259,7 +259,7 @@ Flags: `--reset-index` atomically deletes+recreates the index via `setup.py --re
 
 ## Testing
 
-- **Python 3.13** required (pytest.ini `minversion = 3.13`).
+- **Python 3.14** required (pytest.ini `minversion = 3.14`).
 - **Unit tests** (~696 Python + 118 frontend) — no external deps; `PYTHONPATH=. pytest tests/unit/` (~3s).
 - **CRITICAL — when modifying `tests/e2e/` or `tests/integration/`**: `make ci` runs `pytest --collect-only` on both directories to catch import errors, signature changes, library API drift (e.g., `websockets` v14 renamed `extra_headers` → `additional_headers` and moved connect to `websockets.asyncio.client`). Collection ≠ execution but catches the failures unit tests don't. **Do not push e2e/integration changes without `make ci`** — these only run live in CI against Cloud Run.
 - **CRITICAL — local smoke gate before pushing backend changes**: when modifying anything under `api/services/`, `api/routes/`, `api/main.py`, `main.py`, or `agent_state.py`, run `make smoke-local-quick` (or full `make smoke-local`) against the local backend before push. The pre-commit hook auto-triggers this when those paths are staged AND Docker is up. **This catches the WebSocket/observability regression class** (deadlocks, unbound-asyncio, event-emission failures) that unit tests can't see and that otherwise costs a 14-min Cloud Run cycle to discover. Worked example: runs #160-#171 burned chasing an "agent_complete never emitted" bug whose root cause (`_warmup_lock` deadlock + local `import asyncio` shadowing) was visible in seconds against a local backend. See `memory/feedback_local_smoke_before_deploy.md`.
