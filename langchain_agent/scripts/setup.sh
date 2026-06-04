@@ -274,8 +274,10 @@ if [ ! -f "$PROJECT_DIR/.env" ]; then
     echo "   ✓ Generated SESSION_SECRET"
     echo "   ✓ Generated LOGIN_PASSWORD: $LOGIN_PASSWORD"
     echo "     (Type this into the login screen; change it in .env to share with someone else.)"
-    echo "   ⚠ Set GOOGLE_API_KEY in .env before running."
+    echo ""
+    echo "   ERROR: GOOGLE_API_KEY is required. Set it in .env before running."
     echo "   Get your key from: https://aistudio.google.com/apikey"
+    exit 1
 else
     # Extract existing API_KEY
     API_KEY=$(grep "^API_KEY=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
@@ -284,8 +286,9 @@ else
     # Check if GOOGLE_API_KEY is still the placeholder
     EXISTING_GOOGLE_KEY=$(grep "^GOOGLE_API_KEY=" "$PROJECT_DIR/.env" | cut -d'=' -f2)
     if [ "$EXISTING_GOOGLE_KEY" = "your-google-api-key-here" ] || [ -z "$EXISTING_GOOGLE_KEY" ]; then
-        echo "   ⚠ GOOGLE_API_KEY not configured. Set it in .env before running."
+        echo "   ERROR: GOOGLE_API_KEY is required. Set it in .env before running."
         echo "   Get your key from: https://aistudio.google.com/apikey"
+        exit 1
     else
         echo "   ✓ Using existing GOOGLE_API_KEY"
     fi

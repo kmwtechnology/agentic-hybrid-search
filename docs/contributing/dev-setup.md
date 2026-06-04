@@ -75,15 +75,22 @@ cd agentic-hybrid-search/langchain_agent
 
 ### Step 2: Configure Environment
 
-Copy the example config and add your Google API key:
+You have two options:
 
+**Option A (Recommended): Let setup.sh create .env, then add your key**
 ```bash
-cp .env.example .env
-# Edit .env and replace GOOGLE_API_KEY=your-key-here with your actual key
-# Save and exit
+# Skip this step; setup.sh will create .env and then ask you to add GOOGLE_API_KEY
+# Jump straight to Step 3
 ```
 
-Get your key from: https://aistudio.google.com/apikey (free tier available)
+**Option B: Manually create .env first**
+```bash
+cp .env.example .env
+# Edit .env and set GOOGLE_API_KEY=<your-actual-key>
+# Then proceed to Step 3
+```
+
+Either way, you'll need a Google API key from: https://aistudio.google.com/apikey (free tier available)
 
 ### Step 3: Run One-Time Setup
 
@@ -246,6 +253,7 @@ Common targets for daily development:
 
 | Target | What It Does | When to Use |
 |--------|--------------|-------------|
+| `make doctor` | Verify setup health (checks Docker, services, deps) | After setup.sh completes |
 | `make dev` | Start backend + frontend (Docker must be up) | Daily development |
 | `make dev-api` | Start backend only | Testing backend in isolation |
 | `make dev-web` | Start frontend only | Testing frontend in isolation |
