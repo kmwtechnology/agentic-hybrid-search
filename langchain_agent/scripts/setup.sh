@@ -7,7 +7,7 @@ set -e  # Exit on error
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PARENT_DIR="$(dirname "$PROJECT_DIR")"
+PARENT_DIR="$(dirname "$PROJECT_DIR")""
 
 # Setup logging
 LOG_DIR="$PROJECT_DIR/logs"
@@ -21,6 +21,31 @@ log() {
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[${timestamp}] $msg" | tee -a "$LOG_FILE"
 }
+
+# Step timing
+STEP_START_TIME=""
+CURRENT_STEP=""
+
+# Function to start a step timer
+start_step() {
+    CURRENT_STEP="$1"
+    STEP_START_TIME=$(date +%s)
+}
+
+# Function to end a step and report elapsed time
+end_step() {
+    if [ -z "$STEP_START_TIME" ]; then
+        return
+    fi
+    local step_end_time
+    step_end_time=$(date +%s)
+    local elapsed=$((step_end_time - STEP_START_TIME))
+    log "✓ $CURRENT_STEP — ${elapsed}s"
+    echo "✓ $CURRENT_STEP — ${elapsed}s"
+}
+
+# Trap to show which step failed
+trap 'echo ""; log "❌ Setup failed at: $CURRENT_STEP"; echo "❌ Setup failed at: $CURRENT_STEP"; echo "   Check log: $LOG_FILE"; exit 1' ERR
 
 log "🚀 Agentic Hybrid Search - Local Setup"
 log "Log file: $LOG_FILE"
@@ -38,11 +63,12 @@ One-time setup for local development: configures environment, starts Docker serv
 
 OPTIONS:
     -h, --help          Show this help message and exit
+    --check-only        Check prerequisites only (no setup)
 
 REQUIREMENTS:
     - Docker (for PostgreSQL + OpenSearch containers)
     - Python 3.13+ (creates .venv at project root if missing)
-    - Node.js 18+ (for frontend)
+    - Node.js 24+ (for frontend)
     - Google API Key (for Gemini embeddings and LLM)
     - ~1.5 GB disk space (ESCI dataset + sample parquet + Docker volumes)
     - Internet access (to clone ESCI dataset repo from GitHub)
@@ -80,7 +106,14 @@ EOF
     exit 0
 fi
 
+# Parse flags
+CHECK_ONLY=0
+if [[ "$1" == "--check-only" ]]; then
+    CHECK_ONLY=1
+fi
+
 # 1. Check prerequisites
+start_step "Checking prerequisites"
 log "📋 Checking prerequisites..."
 echo "📋 Checking prerequisites..."
 
@@ -116,7 +149,16 @@ if ! command -v node &> /dev/null; then
     echo "   Please install Node.js 24+ from https://nodejs.org/"
     exit 1
 fi
-echo "✓ Node.js found"
+
+# Check Node version (must be 24+)
+NODE_VERSION=$(node --version 2>&1 | sed 's/v//')
+NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
+if [ "$NODE_MAJOR" -lt 24 ]; then
+    echo "❌ Node version too old: $NODE_VERSION"
+    echo "   Required: Node.js 24+"
+    exit 1
+fi
+echo "✓ Node.js $NODE_VERSION found"
 
 # Java 17+ and Maven required for Lucille ETL ingest (called by setup.py)
 if ! command -v java &> /dev/null; then
@@ -141,9 +183,18 @@ if ! command -v mvn &> /dev/null; then
 fi
 echo "✓ Maven found"
 
+end_step
+
 echo ""
 
+# Exit early if --check-only was specified
+if [ $CHECK_ONLY -eq 1 ]; then
+    echo "✅ All prerequisites met!"
+    exit 0
+fi
+
 # 2. Setup ESCI dataset repository
+start_step "Setting up ESCI dataset repository"
 log "Step 2: Setting up ESCI dataset repository..."
 echo "📦 Setting up ESCI dataset..."
 
@@ -179,9 +230,12 @@ else
     echo "   Ensure shopping_queries_dataset_products.parquet is in: $ESCI_REPO_DIR/shopping_queries_dataset/"
     exit 1
 fi
+
+end_step
 echo ""
 
 # 3. Generate API key if .env doesn't exist
+start_step "Configuring environment"
 echo "📝 Configuring environment..."
 
 if [ ! -f "$PROJECT_DIR/.env" ]; then
@@ -246,10 +300,12 @@ else
     echo "   ✓ Frontend env exists"
 fi
 
+end_step
 echo ""
 
-# 3. Create and setup .venv
-log "Step 3: Creating Python virtual environment..."
+# 4. Create and setup .venv
+start_step "Creating Python virtual environment"
+log "Step 4: Creating Python virtual environment..."
 echo "📦 Python Virtual Environment..."
 
 VENV_PATH="$PROJECT_DIR/.venv"
@@ -276,9 +332,12 @@ pip install -q --upgrade pip setuptools wheel
 pip install -q -r "$PROJECT_DIR/requirements.txt"
 log "✓ Python dependencies installed"
 echo "✓ Python dependencies installed"
+
+end_step
 echo ""
 
-# 4. Install frontend dependencies
+# 5. Install frontend dependencies
+start_step "Installing frontend dependencies"
 echo "📦 Installing frontend dependencies..."
 
 cd "$PROJECT_DIR/web"
@@ -289,10 +348,13 @@ else
     echo "✓ Frontend dependencies already installed"
 fi
 cd "$PROJECT_DIR"
+
+end_step
 echo ""
 
-# 5. Start Docker containers (PostgreSQL + OpenSearch)
-log "Step 5: Starting Docker containers..."
+# 6. Start Docker containers (PostgreSQL + OpenSearch)
+start_step "Starting Docker containers"
+log "Step 6: Starting Docker containers..."
 echo "🐘 Starting Docker containers..."
 
 cd "$PARENT_DIR"
@@ -357,11 +419,14 @@ else
     echo "✓ OpenSearch Dashboards already running → http://localhost:5601"
 fi
 cd "$PROJECT_DIR"
+
+end_step
 echo ""
 
-# 6. Initialize database, OpenSearch index, and ingest ESCI products
+# 7. Initialize database, OpenSearch index, and ingest ESCI products
 # setup.py handles everything: DB init, index creation, API validation, and product ingestion
-log "Step 6: Initializing database, OpenSearch, and ingesting products..."
+start_step "Initializing database, OpenSearch, and ingesting products"
+log "Step 7: Initializing database, OpenSearch, and ingesting products..."
 echo "💾 Initializing database, OpenSearch, and ingesting products..."
 
 # shellcheck source=/dev/null
@@ -380,13 +445,15 @@ if [ "${PIPESTATUS[0]}" -eq 0 ]; then
         log "✓ 10K product sample: $SAMPLE_SIZE"
         echo "✓ 10K product sample: $SAMPLE_SIZE"
     fi
-    log "✓ Setup complete"
-    echo "✓ Setup complete"
+    log "✓ Database initialization complete"
+    echo "✓ Database initialization complete"
+    end_step
 else
     echo ""
-    log "✗ Setup failed. Check logs/setup.log"
-    echo "✗ Setup failed. Check logs/setup.log"
-    echo "   You can retry product ingestion with: PYTHONPATH=. python ingest_esci_products.py"
+    log "✗ Setup failed during database initialization"
+    echo "✗ Setup failed during database initialization"
+    echo "   Check log: $LOG_FILE"
+    echo "   You can retry with: cd $PROJECT_DIR && PYTHONPATH=. python setup.py"
     exit 1
 fi
 
