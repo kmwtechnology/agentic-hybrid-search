@@ -145,8 +145,8 @@ export function GuidePage() {
 
             <div className="border-l-4 border-indigo-500 pl-4">
               <h4 className="font-semibold text-gray-900">Search Optimization Toggles</h4>
-              <p className="text-sm text-gray-600">Flip any of 9 search features on or off per query and watch the pipeline respond live.</p>
-              <p className="text-xs text-gray-500 mt-1">Hybrid · Fuzzy · Synonyms · Phonetic · Phrase boost · Field boost · Typeahead · Reranker · LLM. Skipped stages collapse out of the panel automatically.</p>
+              <p className="text-sm text-gray-600">Flip any of 10 search features on or off per query and watch the pipeline respond live.</p>
+              <p className="text-xs text-gray-500 mt-1">Hybrid · Fuzzy · Synonyms · Phonetic · Phrase boost · Field boost · Typeahead · Reranker · LLM · LLM Judge. Skipped stages collapse out of the panel automatically.</p>
             </div>
 
             <div className="border-l-4 border-yellow-500 pl-4">
@@ -204,7 +204,7 @@ export function GuidePage() {
       content: (
         <div className="space-y-4">
           <p className="text-sm text-gray-700">
-            The Observability panel exposes 9 per-query toggles that flip individual search features on or off. Changes apply to the <em>next</em> query you send and the panel reflects what actually ran (skipped stages collapse).
+            The Observability panel exposes 10 per-query toggles that flip individual search features on or off. Changes apply to the <em>next</em> query you send and the panel reflects what actually ran (skipped stages collapse).
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
@@ -215,8 +215,9 @@ export function GuidePage() {
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">phrase_boost</code> — adds the <code>title_phrase</code> field with a 2.5× boost.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">field_boost</code> — keeps per-field <code>^N</code> weights. Off ⇒ all fields equal.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">typeahead</code> — frontend autocomplete suggestions.</div>
-            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">reranking</code> — Gemini LLM reranker. Off ⇒ retriever order is final.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">reranking</code> — Cross-encoder (default, ~10ms) or optional Gemini LLM (~500ms). Off ⇒ retriever order is final.</div>
             <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">llm</code> — agent generation. Off ⇒ deterministic markdown product list.</div>
+            <div className="bg-gray-50 p-2 rounded"><code className="font-mono text-gray-900">llm_judge</code> — hallucination detection & auto-correction. Off ⇒ no verification pass.</div>
           </div>
 
           <div className="bg-blue-50 border-l-4 border-blue-500 p-3 mt-4 text-sm">
@@ -671,7 +672,13 @@ Server streams back:
       content: (
         <div className="space-y-3 text-sm">
           <div className="space-y-2">
-            <p className="font-semibold text-gray-900">Documentation</p>
+            <p className="font-semibold text-gray-900">Getting Started</p>
+            <ul className="space-y-1 text-gray-700">
+              <li><a href="https://github.com/kmwtechnology/agentic-hybrid-search/blob/main/docs/contributing/dev-setup.md" className="text-blue-600 hover:underline">⚙️ Local Development Setup</a> - Prerequisites, setup.sh walkthrough, daily workflow</li>
+              <li><a href="https://github.com/kmwtechnology/agentic-hybrid-search/blob/main/docs/operations/gcp-quickstart.md" className="text-blue-600 hover:underline">☁️ GCP Deployment Guide</a> - First-time GCP setup with Workload Identity Federation</li>
+            </ul>
+
+            <p className="font-semibold text-gray-900 mt-3">Documentation</p>
             <ul className="space-y-1 text-gray-700">
               <li><a href="/swagger" className="text-blue-600 hover:underline">📖 Interactive API Docs (Swagger UI)</a></li>
             </ul>
