@@ -337,7 +337,8 @@
       "Bash(java -version)",
       "Bash(mvn --version)",
       "Bash(.venv/bin/pip list *)",
-      "Bash(make type-check *)"
+      "Bash(make type-check *)",
+      "Bash(awk -F= '{print \"length:\", length\\($2\\)}')"
     ]
   },
   "enableAllProjectMcpServers": true,
