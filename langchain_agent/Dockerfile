@@ -11,7 +11,7 @@ COPY langchain_agent/web/ ./
 RUN VITE_API_URL="" npm run build
 
 # Stage 2: Python application
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # Install system dependencies for psycopg binary
 RUN apt-get update && \
