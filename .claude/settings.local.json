@@ -332,7 +332,10 @@
       "Bash(PYTHONPATH=langchain_agent .venv/bin/pytest langchain_agent/tests/unit/ -q --tb=no)",
       "Bash(docker system prune *)",
       "Bash(awk '{print $9, $5}')",
-      "Bash(git log *)"
+      "Bash(git log *)",
+      "Bash(docker --version)",
+      "Bash(java -version)",
+      "Bash(mvn --version)"
     ]
   },
   "enableAllProjectMcpServers": true,

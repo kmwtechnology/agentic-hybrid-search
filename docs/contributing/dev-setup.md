@@ -174,19 +174,28 @@ make dev-web     # Frontend only (:5173, in a separate terminal)
 
 ## Stopping Servers
 
-**Pause development (keeps data):**
+**Which command should I use?**
+
+| Scenario | Command | Result | What Stays |
+|----------|---------|--------|-----------|
+| "I'm done for the day" | `./scripts/stop.sh` | Kills backend + frontend, Docker stays up | PostgreSQL data, OpenSearch index, .venv, node_modules |
+| "I'm switching projects" | `./scripts/stop.sh` | Same as above | Everything — quick to resume with `./scripts/start.sh` |
+| "I want a clean slate" | `./scripts/teardown.sh` | 🚨 **REMOVES everything below** | Nothing — you'll need to run `./scripts/setup.sh` again |
+| | | Database deleted, index deleted, .venv deleted, node_modules deleted | |
+
+**Pause development (keep all data):**
 ```bash
 ./scripts/stop.sh
 ```
 
-Kills the backend and frontend processes. Docker containers stay running, so your Postgres data persists. Use this when you're done for the day but want to resume tomorrow.
+Kills the backend and frontend processes. Docker containers stay running, so your Postgres data and OpenSearch index persist. Use this when you're done for the day but want to resume tomorrow with `./scripts/start.sh`.
 
-**Full teardown (removes all):**
+**Full teardown (DESTRUCTIVE — removes all data):**
 ```bash
 ./scripts/teardown.sh
 ```
 
-Stops servers, removes Docker containers + volumes, deletes `.venv` and `node_modules`. Use this if you want a fresh start. You'll need to run `./scripts/setup.sh` again.
+⚠️  **This is destructive.** Removes Docker containers + volumes, deletes `.venv`, deletes `node_modules`. Your PostgreSQL database and OpenSearch index are deleted permanently. Use this only if you want a clean slate. You'll need to run `./scripts/setup.sh` again (takes 10–20 min).
 
 ---
 
@@ -194,14 +203,16 @@ Stops servers, removes Docker containers + volumes, deletes `.venv` and `node_mo
 
 Understanding when services are running helps you reason about what commands to use:
 
-| State | Services Running | Docker | How You Got Here | What to Do |
-|-------|------------------|--------|------------------|-----------|
-| Fresh install | None | Off | Just ran setup.sh | Run start.sh |
-| Dev session | Backend + Frontend | On | Run start.sh or make dev | Edit code, test |
-| Paused | None | On (data persists) | Run stop.sh | Run start.sh to resume |
-| Torn down | None | Off (data deleted) | Run teardown.sh | Run setup.sh to rebuild |
+| State | Services | Docker | How You Got Here | PostgreSQL | OpenSearch | What to Do Next |
+|-------|----------|--------|------------------|------------|-----------|-----------------|
+| **Fresh install** | None | ⚠️ Off | Just cloned repo | ❌ None | ❌ None | Run `./scripts/setup.sh` |
+| **Dev session** | Backend + Frontend | ✅ On | After `start.sh` or `make dev` | ✅ Active | ✅ Active | Edit code, run tests |
+| **Paused** | None | ✅ On | After `stop.sh` | ✅ Data kept | ✅ Index kept | Run `./scripts/start.sh` to resume |
+| **Torn down** 🚨 | None | ❌ Off | After `teardown.sh` | ❌ **Deleted** | ❌ **Deleted** | Run `./scripts/setup.sh` to rebuild |
 
-**Key insight:** `stop.sh` = "pause this session" (data stays). `teardown.sh` = "delete everything" (need full setup again).
+**Critical distinction:**
+- **`stop.sh`** = "pause" — kill processes only. Docker + all data stays. Resumable with `start.sh`.
+- **`teardown.sh`** = "destroy" — delete Docker containers + volumes. All data is **permanently deleted**. Requires full `setup.sh` to rebuild.
 
 ---
 

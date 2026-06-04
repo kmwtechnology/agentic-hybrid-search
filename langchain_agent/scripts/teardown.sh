@@ -1,19 +1,24 @@
 #!/bin/bash
 # Agentic Hybrid Search Teardown Script
-# Completely removes all installed components and data
+# ⚠️  DESTRUCTIVE — removes ALL data (PostgreSQL, OpenSearch, .venv, node_modules)
 
-echo "⚠️  Agentic Hybrid Search Teardown"
+echo "🚨 DESTRUCTIVE TEARDOWN — Data Will Be Deleted"
 echo ""
-echo "This will remove:"
-echo "  - Running services (backend, frontend)"
-echo "  - Docker containers and data volumes (PostgreSQL + OpenSearch)"
-echo "  - Python virtual environment (.venv)"
-echo "  - Node modules (web/node_modules)"
-echo "  - Log files and PID files"
+echo "This will PERMANENTLY remove:"
+echo "  ✗ PostgreSQL database (checkpoints, conversation history)"
+echo "  ✗ OpenSearch index (all product documents, search indexes)"
+echo "  ✗ Docker containers and volumes"
+echo "  ✗ Python virtual environment (.venv)"
+echo "  ✗ Node modules (web/node_modules)"
+echo "  ✗ Log files and PID files"
 echo ""
-read -p "Are you sure you want to continue? (y/N): " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+echo "Use this ONLY if you want a clean slate. Your data CANNOT be recovered."
+echo ""
+echo "→ To pause development (keep data), use: ./scripts/stop.sh"
+echo "→ To resume later, use: ./scripts/start.sh"
+echo ""
+read -r -p "Type 'teardown' to continue, or press Enter to cancel: "
+if [[ "$REPLY" != "teardown" ]]; then
     echo "Teardown cancelled."
     exit 0
 fi
