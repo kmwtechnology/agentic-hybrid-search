@@ -5,8 +5,6 @@ langgraph-checkpoint-postgres>=3.0.2,<4.0.0
 psycopg[binary]>=3.3.0
 psycopg-pool>=3.3.0
 opensearch-py>=2.4.0
-sqlalchemy>=2.0.0
-gitpython>=3.1.0
 
 # Web API dependencies
 fastapi>=0.115.0
@@ -27,9 +25,6 @@ tenacity>=8.2.0
 # Structured logging
 structlog>=24.0.0
 
-# HTML parsing for improved javadoc extraction
-beautifulsoup4>=4.12.3
-
 # Data processing (for ESCI product ingestion)
 pandas>=2.0.0
 pyarrow>=10.0.0
@@ -37,5 +32,5 @@ pyarrow>=10.0.0
 # Cross-encoder reranker (fast local relevance scoring)
 sentence-transformers>=3.0.0
 
-# LangSmith observability (optional)
+# LangSmith observability (optional - for tracing and debugging)
 langsmith>=0.1.0
