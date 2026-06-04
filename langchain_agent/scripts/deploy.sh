@@ -410,6 +410,7 @@ run gcloud run deploy "$SERVICE_NAME" \
     --timeout=3600 \
     --startup-probe=timeoutSeconds=5,periodSeconds=30,failureThreshold=20,tcpSocket.port=8080 \
     --add-cloudsql-instances="$CLOUD_SQL_CONNECTION" \
+    --service-account=agentic-hybrid-search-sa@${PROJECT_ID}.iam.gserviceaccount.com \
     --set-env-vars="\
 POSTGRES_HOST=/cloudsql/${CLOUD_SQL_CONNECTION},\
 POSTGRES_USER=${DB_USER},\

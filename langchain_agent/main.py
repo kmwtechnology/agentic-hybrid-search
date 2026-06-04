@@ -350,12 +350,13 @@ class EcommerceSearchAgent:
             print("  Run: python setup.py")
             sys.exit(1)
 
-        # Check Google API key
-        if not GOOGLE_API_KEY:
-            print("✗ GOOGLE_API_KEY not set")
-            print("  Set GOOGLE_API_KEY in your .env file or environment")
-            sys.exit(1)
-        print("✓ Google API key configured")
+        # Check Google API key or Application Default Credentials
+        if GOOGLE_API_KEY:
+            print("✓ Using explicit GOOGLE_API_KEY")
+        else:
+            print("ℹ GOOGLE_API_KEY not set; relying on Application Default Credentials (ADC)")
+            print("  For local dev: set GOOGLE_API_KEY in .env")
+            print("  For Cloud Run: ensure service account has aiplatform.user role")
 
         print()
 

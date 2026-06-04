@@ -7,6 +7,7 @@ Provides:
 """
 
 import logging
+import time
 from typing import Any, Dict, List, Optional, Union
 
 import urllib3
@@ -301,18 +302,40 @@ class OpenSearchVectorStore:
             return False
 
     def _get_embedding(self, query: str) -> List[float]:
-        """Get embedding for query, using cache if available."""
+        """Get embedding for query, using cache if available. Retries on 429 rate-limit errors."""
         cached = self._embedding_cache.get(query)
         if cached is not None:
             return cached
 
-        try:
-            embedding = self.embeddings.embed_query(query)
-        except Exception as e:
-            raise EmbeddingError(f"Failed to generate embedding: {e}") from e
+        max_retries = 3
+        retry_delay = 1
+        last_error = None
 
-        self._embedding_cache.set(query, embedding)
-        return embedding
+        for attempt in range(max_retries):
+            try:
+                embedding = self.embeddings.embed_query(query)
+                self._embedding_cache.set(query, embedding)
+                return embedding
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                is_rate_limit = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+
+                if is_rate_limit and attempt < max_retries - 1:
+                    logger.warning(
+                        f"Embedding API rate limited (attempt {attempt + 1}/{max_retries}), "
+                        f"retrying in {retry_delay}s"
+                    )
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+
+                recoverable = is_rate_limit
+                raise EmbeddingError(
+                    f"Failed to generate embedding: {e}", recoverable=recoverable
+                ) from e
+
+        raise EmbeddingError(f"Failed to generate embedding after {max_retries} retries") from last_error
 
     def as_retriever(
         self,

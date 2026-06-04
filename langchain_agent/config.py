@@ -83,7 +83,6 @@ __all__ = [
     "LLM_MODEL",
     "LLM_TEMPERATURE",
     "EMBEDDINGS_MODEL",
-    "GOOGLE_API_KEY",
     # PostgreSQL configuration
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
