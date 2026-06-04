@@ -377,7 +377,10 @@ agentic-hybrid-search/
 ├── README.md                     # This file
 ├── docker-compose.yml            # PostgreSQL + OpenSearch (local dev)
 ├── LICENSE
-├── langchain_agent/              # Main application (see its README)
+├── data/                         # Precomputed ESCI parquets (see data/README.md)
+│   ├── esci_products_sample_10000.parquet
+│   └── esci_judgments_aggregated.parquet
+├── langchain_agent/              # Main application (see langchain_agent/README.md)
 │   ├── main.py                   # LangGraph agent core (~2,600 lines)
 │   ├── agent_state.py            # CustomAgentState TypedDict
 │   ├── config.py                 # All configuration constants
@@ -391,9 +394,10 @@ agentic-hybrid-search/
 │   ├── benchmark_search.py       # Latency benchmarks
 │   ├── checkpoint_maintenance.py # Checkpoint GC
 │   ├── migrate_to_hnsw.py        # Index migration utility
-│   ├── api/                      # FastAPI backend (routes, schemas, middleware, services)
-│   ├── web/                      # React frontend (Zustand, WebSocket, ObservabilityPanel)
-│   ├── scripts/                  # setup/start/stop/deploy/gcp-init/gcp-teardown/logs/smoke_test
+│   ├── api/                      # FastAPI backend — see api/README.md
+│   ├── web/                      # React frontend — see web/README.md
+│   ├── scripts/                  # Lifecycle scripts — see scripts/README.md
+│   ├── lucille-esci/             # Lucille ETL config — see lucille-esci/README.md
 │   ├── tests/                    # unit, integration, e2e suites
 │   ├── Dockerfile                # Multi-stage build (Node + Python)
 │   └── cloudbuild.yaml
@@ -403,12 +407,18 @@ agentic-hybrid-search/
 
 ## Documentation Map
 
-Use the repo root README for architecture and deployment orientation. Use
-[`langchain_agent/README.md`](langchain_agent/README.md) for day-to-day
-local development, API usage, configuration, and troubleshooting. Use
-[`langchain_agent/tests/README.md`](langchain_agent/tests/README.md) for
-the test suite and [`langchain_agent/tests/e2e/README.md`](langchain_agent/tests/e2e/README.md)
-for deployed Cloud Run checks.
+| Location | Purpose |
+|----------|---------|
+| [README.md](README.md) (this file) | Architecture, deployment paths, tech stack |
+| [langchain_agent/README.md](langchain_agent/README.md) | Day-to-day development, API usage, config, troubleshooting |
+| [langchain_agent/api/README.md](langchain_agent/api/README.md) | FastAPI backend layers (routes, middleware, schemas, services) |
+| [langchain_agent/scripts/README.md](langchain_agent/scripts/README.md) | Lifecycle scripts (setup, dev, deploy, CI hooks) |
+| [langchain_agent/web/README.md](langchain_agent/web/README.md) | React frontend (components, stores, hooks, testing) |
+| [langchain_agent/lucille-esci/README.md](langchain_agent/lucille-esci/README.md) | Lucille ETL config for ESCI ingest |
+| [langchain_agent/tests/README.md](langchain_agent/tests/README.md) | Test suite overview (unit, integration, e2e) |
+| [langchain_agent/tests/integration/README.md](langchain_agent/tests/integration/README.md) | Integration tests (multi-component, live services) |
+| [langchain_agent/tests/e2e/README.md](langchain_agent/tests/e2e/README.md) | End-to-end tests (deployed Cloud Run) |
+| [data/README.md](data/README.md) | Precomputed ESCI parquets (products, judgments) |
 
 ## Search Optimization
 

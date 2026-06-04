@@ -697,7 +697,7 @@ for comparison/attribute_filter/refinement to skip the LLM evaluator.
 
 ```text
 langchain_agent/
-├── scripts/
+├── scripts/               # Lifecycle scripts — see scripts/README.md
 │   ├── setup.sh           # One-time local setup
 │   ├── start.sh           # Start services
 │   ├── stop.sh            # Stop services
@@ -707,27 +707,34 @@ langchain_agent/
 │   ├── gcp-init.sh        # Cloud SQL + product ingestion (one-time)
 │   ├── gcp-teardown.sh    # Remove GCP resources
 │   └── smoke_test.sh      # Post-deploy smoke test
-├── api/
+├── api/                   # FastAPI backend — see api/README.md
 │   ├── main.py            # FastAPI lifespan
-│   ├── routes/            # chat (WebSocket), conversations, health,
-│   │                      #   suggest (typeahead), admin (reindex + health)
-│   ├── middleware/auth.py # Constant-time API key check
-│   ├── schemas/events.py  # Pydantic event models
+│   ├── routes/            # chat (WebSocket), conversations, health, suggest, admin, auth
+│   ├── middleware/        # Auth, CORS, session handling
+│   ├── schemas/events.py  # Pydantic event models (MUST sync with web/src/types/events.ts)
 │   └── services/          # Observable agent wrapper
-├── web/                   # React frontend (Zustand, WebSocket, ObservabilityPanel)
+├── web/                   # React frontend — see web/README.md
 │   └── src/
-│       ├── hooks/useRecentSearches.ts              # localStorage-backed recent-search history
-│       └── components/
-│           ├── ChatPanel/TypeaheadSuggestions.tsx  # Did you mean? / Suggestions / Recent Searches
-│           ├── ObservabilityPanel/SearchOptimizationDetails.tsx  # BM25 optimization card
-│           └── ObservabilityPanel/PipelineSummaryCard.tsx        # Pipeline Quality Summary card
-├── tests/                 # unit / integration / e2e (see tests/README.md)
+│       ├── hooks/         # useWebSocket, useRecentSearches, custom hooks
+│       ├── stores/        # Zustand stores (chat, observability, auth)
+│       ├── components/    # React components (Chat, ObservabilityPanel, Sidebar)
+│       ├── pages/         # Page components
+│       ├── types/         # TypeScript types (events.ts MUST sync with api/schemas/events.py)
+│       └── utils/         # Utilities
+├── lucille-esci/          # Lucille ETL config — see lucille-esci/README.md
+│   ├── conf/              # HOCON pipeline configs (products, judgments)
+│   ├── mapping/           # OpenSearch field mappings and analyzers
+│   └── pom.xml            # Maven coordinates
+├── tests/                 # Test suite — see tests/README.md
+│   ├── unit/              # Fast, no external services (~0.5s, 612 tests)
+│   ├── integration/       # Multi-component, live services — see tests/integration/README.md
+│   └── e2e/               # Deployed Cloud Run checks — see tests/e2e/README.md
 ├── main.py                # LangGraph agent core (~2,600 lines)
 ├── agent_state.py         # CustomAgentState TypedDict
 ├── config.py              # All configuration constants
 ├── exceptions.py          # Custom exception hierarchy
 ├── vector_store.py        # OpenSearchVectorStore + retriever (RRF)
-├── reranker.py            # GeminiReranker (Pydantic-validated scoring)
+├── reranker.py            # CrossEncoderReranker (default) + GeminiReranker (fallback)
 ├── embedding_cache.py     # Thread-safe query embedding cache
 ├── link_verifier.py       # URL validation w/ TTL cache
 ├── doc_replacer.py        # Broken-link replacement

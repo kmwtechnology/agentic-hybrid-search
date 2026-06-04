@@ -142,7 +142,7 @@ pre-commit, CI fast lane.
 
 ### Integration (`tests/integration/`)
 
-**Purpose:** multi-component flows with real or near-real services.
+**Purpose:** multi-component flows with real or near-real services. See [tests/integration/README.md](integration/README.md) for detailed guide.
 
 | File | Focus |
 | --- | --- |
@@ -158,6 +158,9 @@ pre-commit, CI fast lane.
 
 **Run time:** ~5–60 s. **Requires:** PostgreSQL + OpenSearch running
 (`docker compose up -d` from repo root) and `GOOGLE_API_KEY` set.
+
+**CI note:** `make ci` only runs `pytest --collect-only` on integration tests. Always run the actual
+test suite locally after middleware/WebSocket changes before pushing.
 
 ### E2E (`tests/e2e/`)
 
