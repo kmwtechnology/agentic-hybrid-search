@@ -43,6 +43,18 @@ src/
 └── tests/                     # Vitest unit tests (__tests__/ dirs alongside source)
 ```
 
+## Directory Documentation
+
+Detailed documentation for subdirectories:
+
+| Directory | Purpose | Link |
+|-----------|---------|------|
+| **Components** | React UI components (chat, observability, sidebar) | [src/components/README.md](./src/components/) |
+| **Stores** | Zustand state management (chat, auth, observability) | [src/stores/README.md](./src/stores/) |
+| **Hooks** | Custom React hooks (WebSocket, recent searches) | [src/hooks/README.md](./src/hooks/) |
+
+Start with the components directory to understand the UI structure, then explore stores for state management patterns, and hooks for WebSocket / side-effect logic.
+
 ## Development
 
 ### Commands

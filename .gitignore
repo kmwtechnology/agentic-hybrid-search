@@ -214,7 +214,6 @@ CLAUDE.md
 
 # esci directory — raw ESCI dataset (external, not tracked)
 esci/
-docs/
 
 # Lucille ETL source tree now lives in an external checkout
 # (default ~/github/kmwtechnology/lucille, override via LUCILLE_DIR).
