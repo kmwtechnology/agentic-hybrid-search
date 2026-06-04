@@ -1,101 +1,164 @@
-> **Parent**: [Operations Runbooks](README.md)
+# Monitoring Runbook
 
-# Monitoring & Alerts
+Observability setup and queries for production health checks.
+
+**Parent:** [Operations Guide](README.md)
+
+---
+
+## Health Endpoint
+
+Primary health check — always available, requires no auth:
+
+```bash
+curl https://agentic-hybrid-search-xxxx.run.app/api/health
+```
+
+Response (200 OK):
+```json
+{
+  "status": "healthy",
+  "postgres": "ok",
+  "opensearch": "ok",
+  "google_api": "ok",
+  "document_count": 9618,
+  "timestamp": "2026-06-04T16:30:45Z"
+}
+```
+
+Probes check:
+- **PostgreSQL:** reachable and responding (used for conversation state)
+- **OpenSearch:** cluster health + document count
+- **Google API:** Gemini and embedding models accessible
+
+All three must be "ok" for the service to be considered healthy. Any probe failure returns 503.
+
+---
+
+## GCP Cloud Logs Queries
+
+Access via [Google Cloud Console](https://console.cloud.google.com/logs) or CLI.
+
+### Errors (Last Hour)
+
+```
+resource.type=cloud_run_revision
+resource.labels.service_name=agentic-hybrid-search
+severity=ERROR
+```
+
+Look for:
+- `AgenticHybridSearchError` exceptions
+- `ConnectionError` to PostgreSQL or OpenSearch
+- `401 Unauthorized` (auth failures)
+
+### Slow Requests (>30s)
+
+```
+resource.type=cloud_run_revision
+resource.labels.service_name=agentic-hybrid-search
+httpRequest.latency>"30s"
+httpRequest.requestUrl=~"^.*\/api\/conversations\/.*\/messages.*"
+```
+
+Expected: <5% of requests exceed 30s (P95 is typically 16–25s).
+
+### WebSocket Connection Errors
+
+```
+resource.type=cloud_run_revision
+resource.labels.service_name=agentic-hybrid-search
+jsonPayload.event_type="connection_error"
+OR
+textPayload=~".*websocket.*error.*"
+```
+
+A few `4401 Unauthorized` close codes are normal (cookie expiry). Many suggests auth configuration issue.
+
+### Startup Failures
+
+```
+resource.type=cloud_run_revision
+resource.labels.service_name=agentic-hybrid-search
+severity=CRITICAL
+OR
+textPayload=~".*Traceback.*"
+```
+
+Common startup failures:
+- Missing environment variable (e.g., `GOOGLE_API_KEY`)
+- Database unreachable
+- Secret Manager read error
+
+---
 
 ## Key Metrics to Watch
 
-| Metric | SLO | Where to Find |
-|--------|-----|--------------|
-| **Search latency (p95)** | <45s | GCP Cloud Monitoring |
-| **WebSocket error rate** | <1% | Cloud Run logs (filter: `error` + `WebSocket`) |
-| **Cloud SQL connections** | <50 of 100 max | Cloud SQL Insights |
-| **Cloud Run CPU** | <80% | Cloud Run metrics dashboard |
-| **Agent timeout errors** | <0.1% | Application logs (filter: `AgentTimeoutError`) |
+| Metric | Normal Range | Alert Threshold |
+|--------|--------------|-----------------|
+| P95 search latency | 16–25s | >35s |
+| Error rate | <1% | >5% |
+| WebSocket conn failures | <0.1% | >1% |
+| Pod restart rate | 0/hour | >2/hour |
+| PostgreSQL connections | 5–15 | >25 |
 
-## GCP Logs Explorer Queries
+### Export Metrics to Cloud Monitoring
 
-### Error logs (all errors)
-```
-resource.type="cloud_run_revision"
-resource.service_name="agentic-hybrid-search"
-severity >= ERROR
-```
+Create a Cloud Monitoring dashboard to track these KPIs:
 
-### Slow searches (>30s)
-```
-resource.type="cloud_run_revision"
-resource.service_name="agentic-hybrid-search"
-jsonPayload.latency_ms >= 30000
-```
+1. **Search latency (P95):**
+   ```
+   resource.type="cloud_run_revision"
+   resource.labels.service_name="agentic-hybrid-search"
+   httpRequest.requestUrl=~"^.*\/api\/conversations\/.*\/messages.*"
+   metric: httpRequest.latencies
+   ```
 
-### WebSocket disconnects
-```
-resource.type="cloud_run_revision"
-resource.service_name="agentic-hybrid-search"
-(jsonPayload.event_type="WebSocketDisconnect" OR textPayload=~".*WebSocket.*disconnect.*")
-```
+2. **Error rate:**
+   ```
+   resource.type="cloud_run_revision"
+   resource.labels.service_name="agentic-hybrid-search"
+   severity>=ERROR
+   ```
 
-### LLM API failures
-```
-resource.type="cloud_run_revision"
-resource.service_name="agentic-hybrid-search"
-(jsonPayload.exception_type="LLMError" OR textPayload=~".*LLMError.*")
-```
+3. **Pod restarts (Cloud Run revision age):**
+   - Cloud Run automatically tracks revision age; check via `gcloud run services describe`
 
-**Access:** [GCP Logs Explorer](https://console.cloud.google.com/logs/query?project=gen-lang-client-0250737934)
+---
 
 ## GitHub Actions Monitoring
 
-CI/CD pipeline status: [Actions](https://github.com/kmwtechnology/agentic-hybrid-search/actions)
+All deployments and re-indexing runs are visible on GitHub:
 
-Key workflows to monitor:
-- **`test.yml`** — runs on every PR/push; must be green before merge
-- **`build-deploy.yml`** — runs on main only; deploys to Cloud Run
-- **`reindex.yml`** — triggered manually or on-demand; re-indexes ESCI data
+- **Build & Deploy workflow:** https://github.com/kmwtechnology/agentic-hybrid-search/actions/workflows/build-deploy.yml
+- **Re-index workflow:** https://github.com/kmwtechnology/agentic-hybrid-search/actions/workflows/reindex.yml
 
-## Alerting Setup (Cloud Monitoring)
+View recent runs:
+```bash
+gh run list --workflow build-deploy.yml --limit 5
+gh run view <RUN_ID>
+```
 
-### Alert Policy: High Error Rate
+Expected behavior:
+- Every merge to `main` triggers `build-deploy.yml`
+- All jobs should complete green (~12–15 min)
+- Smoke tests are the final gate before traffic promotion
 
-Create an alert in GCP Cloud Monitoring (notification channel: email / Slack):
+---
 
-1. **Condition:** `Error count` for `agentic-hybrid-search` service
-2. **Threshold:** >100 errors in 5 minutes
-3. **Actions:** Send email + Slack webhook
+## Alert Setup (Cloud Monitoring)
 
-### Alert Policy: High Latency
+To create an alert for high error rate:
 
-1. **Condition:** `Search latency (p95)` > 50 seconds
-2. **Threshold:** 5 minutes sustained
-3. **Actions:** Page on-call
+1. Open [Cloud Monitoring](https://console.cloud.google.com/monitoring)
+2. **Alerting** → **Create Policy**
+3. **Condition:**
+   - Resource type: `Cloud Run Revision`
+   - Metric: `logging.googleapis.com/log_entry_count` (severity=ERROR)
+   - Threshold: >100 errors in 5 minutes
+4. **Notification:** Slack / email
+5. **Save & Enable**
 
-### Alert Policy: Cloud SQL Connection Pool
+---
 
-1. **Condition:** `Connections` > 80 of max 100
-2. **Threshold:** 2 minutes sustained
-3. **Actions:** Warning email to DevOps
-
-## Dashboard Setup
-
-Create a Cloud Monitoring dashboard for at-a-glance health:
-
-Panels to include:
-- Cloud Run request latency (p50, p95, p99)
-- Cloud Run request count by status code
-- Cloud Run CPU utilization
-- Cloud SQL active connections
-- Error rate (queries by error type)
-
-**Template:** See GCP Cloud Run > Services > agentic-hybrid-search > Metrics tab (auto-populated).
-
-## On-Call Runbook
-
-When on-call, check **in this order**:
-
-1. **Cloud Run service status** — Is it running? (should see green checkmark)
-2. **Error logs** — `make ci` equivalent errors or new exception types?
-3. **Latency logs** — Are searches hanging at a specific node (Retriever? Reranker?)?
-4. **Cloud SQL** — Connection pool exhausted? (`gcloud sql instances describe`)
-5. **OpenSearch** — Disk space full? Shards unassigned?
-
-If unsure, **rollback** the latest deploy: see [Deployment Rollback](deployment.md#rollback-procedure).
+For troubleshooting, see [Troubleshooting](troubleshooting.md). For deployment procedures, see [Deployment](deployment.md).

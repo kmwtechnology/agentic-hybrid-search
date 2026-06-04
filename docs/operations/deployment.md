@@ -1,103 +1,156 @@
-> **Parent**: [Operations Runbooks](README.md)
+# Deployment Runbook
 
-# Deployment Checklist & Procedures
+Blue-green deployment to GCP Cloud Run, with pre-flight checklist and rollback procedures.
 
-## Pre-Deploy Checklist
+**Parent:** [Operations Guide](README.md)
 
-Before running the deploy script, verify:
+---
 
-| Check | Command | Notes |
-|-------|---------|-------|
-| **Code on main** | `git status` | All changes merged to main |
-| **CI green** | GitHub Actions | All workflows passing on main |
-| **Smoke test pass** | `make smoke-local` | Full 20-test suite must pass locally |
-| **Env vars in deploy.sh** | `grep -c 'gcloud run services update --set-env-vars' scripts/deploy.sh` | Both config AND secrets set |
-| **Env vars in build-deploy.yml** | `grep -c 'set-secrets' .github/workflows/build-deploy.yml` | Secrets synchronized with .env |
-| **GCP auth ready** | `gcloud auth application-default print-access-token` | No "unauthorized" errors |
-| **GCP project set** | `gcloud config get-value project` | Correct `gen-lang-client-0250737934` |
+## Pre-Deployment Checklist
 
-## Deploy Command
+Before pushing code to `main` or triggering a manual deploy:
 
-From repo root:
+- [ ] All CI gates pass locally: `make ci` (lint + unit tests + frontend)
+- [ ] Smoke tests pass locally: `make smoke-local` (~90s)
+- [ ] Environment variables are set in **both** places:
+  - `langchain_agent/.env` (for local testing)
+  - `build-deploy.yml` `--set-secrets` (for Cloud Run startup)
+  - Checklist: `GOOGLE_API_KEY`, `LOGIN_PASSWORD`, `SESSION_SECRET`, `SESSION_COOKIE_SECURE=true`
+- [ ] PR is merged to `main` and GitHub Actions workflow has started
+- [ ] Manual deploy (optional): `./scripts/deploy.sh --project <GCP_PROJECT_ID>`
 
+---
+
+## Deployment Process (Automatic)
+
+When code is merged to `main`, `.github/workflows/build-deploy.yml` automatically:
+
+1. **Phase 1 Unit Tests** (~3s) — Python unit tests
+2. **Phase 2 Integration Tests** (~30s) — PostgreSQL + OpenSearch live tests
+3. **Frontend Tests & Lint** (~5s) — Vitest, ESLint, TypeScript
+4. **ShellCheck** (~2s) — bash script validation
+5. **Linting & Type Checks** (~5s) — flake8, mypy
+6. **Build Docker Image** (~1–2 min) — push to Artifact Registry
+7. **Deploy to Cloud Run** (~2 min) — blue-green deploy, 0% traffic initially
+8. **Post-Deployment Smoke Tests** (~5 min) — 20 live tests against the new revision
+
+**Total time:** ~12–15 minutes.
+
+---
+
+## Traffic Promotion
+
+After deployment completes successfully:
+
+- The new revision receives **0% traffic** (blue-green safety)
+- Smoke tests run against the new revision
+- On smoke test success: traffic is promoted to **100%** (green becomes blue)
+- Old revision remains running but receives no traffic (for instant rollback if needed)
+
+Monitor the promotion:
 ```bash
-./scripts/deploy.sh --project gen-lang-client-0250737934
+gcloud run services describe agentic-hybrid-search --region=us-central1 --project=gen-lang-client-0250737934 --format='value(status.traffic[].percent)'
 ```
 
-What it does:
-1. Builds Docker image locally (or uses cached layer from prior build)
-2. Pushes to `us-central1-docker.pkg.dev/<PROJECT_ID>/agentic-hybrid-search/agentic-hybrid-search:latest`
-3. Updates Cloud Run service with new image
-4. Performs blue-green traffic split (described below)
-5. Runs `/health` smoke tests on the deployed service
+Expected output after successful deploy: `100` (new revision) or `100,0` (split during transition).
 
-Expected time: **3–5 minutes** (15s build, 30s push, 90s deploy, 2m smoke tests).
+---
 
-## Blue-Green Deployment
+## Rollback (Instant)
 
-Cloud Run automatically creates a new revision. Traffic gradually shifts:
-
-1. New revision spins up with new image
-2. Both old and new revisions serve traffic briefly (canary window, ~30s)
-3. Once health checks pass, 100% traffic routes to new revision
-4. Old revision stays available for rollback (see below)
-
-**No downtime** — WebSocket connections on old revision continue until client disconnect/reconnect.
-
-## Rollback Procedure
-
-If the new revision has issues:
+If the deployment is broken and needs immediate rollback:
 
 ```bash
 gcloud run services update-traffic agentic-hybrid-search \
-  --region=us-central1 \
-  --to-revisions=PREVIOUS=100
+  --to-revisions PREVIOUS=100 \
+  --region us-central1 \
+  --project gen-lang-client-0250737934
 ```
 
-This routes 100% traffic back to the previous (pre-deploy) revision **instantly**. Current sessions on the broken revision will disconnect and reconnect to the old one.
+This sends 100% traffic back to the previous (blue) revision. Takes ~10 seconds.
 
-To check current traffic split:
+Verify:
+```bash
+gcloud run services describe agentic-hybrid-search --region=us-central1 --project=gen-lang-client-0250737934
+```
+
+---
+
+## Re-Indexing ESCI Data
+
+To refresh the product and judgment indexes (e.g., after code changes to mappings):
+
+### Option A: Via GitHub Actions (Recommended)
 
 ```bash
-gcloud run services describe agentic-hybrid-search \
-  --region=us-central1 \
-  --format='value(status.traffic[].percent)'
+gh workflow run reindex.yml -r main
 ```
 
-## Monitoring Deployment Progress
+This triggers the `reindex.yml` workflow on the GitHub Actions runner. Runs Lucille ETL against the hosted OpenSearch instance. Takes ~5–10 minutes.
 
-Watch logs in real-time:
-
+Monitor:
 ```bash
-gcloud run services logs read agentic-hybrid-search \
-  --region=us-central1 \
-  --project gen-lang-client-0250737934 \
-  --limit 50 \
-  --follow
+gh run list --workflow reindex.yml --limit 1
 ```
 
-Or in GCP Cloud Console: [Cloud Run Services](https://console.cloud.google.com/run?project=gen-lang-client-0250737934)
+### Option B: Manual (Workstation)
 
-## Re-indexing After Deploy
+Requires: Java 17+, Maven, local Lucille checkout at `~/github/kmwtechnology/lucille`.
 
-To re-index ESCI data on the deployed Cloud Run instance (without redeploying):
-
+From `langchain_agent/`:
 ```bash
-gh workflow run reindex.yml --repo kmwtechnology/agentic-hybrid-search
+bash scripts/lucille_ingest.sh --reset-index
 ```
 
-This:
-1. Clones the Lucille external repo
-2. Runs Lucille ETL on the hosted OpenSearch instance
-3. Rebuilds the full `agentic_hybrid_search_docs` index (~2–3 minutes)
+This atomically deletes + recreates the index, then ingests precomputed parquets from `data/`.
 
-**Note:** Re-indexing does NOT trigger a Cloud Run deploy; the running service remains online and briefly serves stale results during the reindex window.
+### Always Use `--reset-index`
+
+The `--reset-index` flag is **critical**. It prevents the race condition where Lucille's auto-created default-mapped index becomes stale between a curl DELETE and the first write.
+
+---
 
 ## Deployment Environment Variables
 
-Critical: **env vars must be set in both places**:
+**Required in both `langchain_agent/.env` and `build-deploy.yml --set-secrets`:**
 
-1. **`scripts/deploy.sh`** — credentials and config that never change
-2. **`.github/workflows/build-deploy.yml`** → `--set-secrets` — values that might rotate (API keys)
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `GOOGLE_API_KEY` | Gemini LLM + embeddings | `AIza...` |
+| `LOGIN_PASSWORD` | User login credential | `abc123def456` |
+| `SESSION_SECRET` | Cookie signature key, ≥32 chars | `a1b2c3d4...` |
+| `SESSION_COOKIE_SECURE` | HTTPS-only on prod | `true` |
+| `OPENSEARCH_HOST` | Hosted instance (set by gcp-init.sh) | `opensearch-prod.example.com` |
+| `OPENSEARCH_PORT` | Hosted instance port | `443` |
+| `OPENSEARCH_USE_SSL` | Hosted instance requires TLS | `true` |
 
-See [Required env vars in BOTH deploy paths](../../../.claude/projects/-Users-kevin-github-kmwtechnology-agentic-hybrid-search/memory/feedback_required_env_vars_in_both_deploy_paths.md) for the full list and verification steps.
+**Check Cloud Run secret startup:**
+```bash
+gcloud run services describe agentic-hybrid-search --region=us-central1 --project=gen-lang-client-0250737934 --format='value(spec.template.spec.containers[0].env[].name)'
+```
+
+---
+
+## Post-Deployment Verification
+
+After traffic is promoted to 100%, check:
+
+1. **Service health:**
+   ```bash
+   curl https://agentic-hybrid-search-xxxx.run.app/api/health
+   ```
+   Expected: 200 OK, all probes green.
+
+2. **Real request latency (GCP Logs):**
+   ```bash
+   gcloud run services logs read agentic-hybrid-search --region=us-central1 --project=gen-lang-client-0250737934 --limit=50 | grep "search.*latency"
+   ```
+
+3. **Error rate (last 5 min):**
+   ```bash
+   gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=agentic-hybrid-search AND severity>=ERROR" --limit=100 --project=gen-lang-client-0250737934
+   ```
+
+---
+
+For monitoring procedures, see [Monitoring](monitoring.md). For troubleshooting, see [Troubleshooting](troubleshooting.md).

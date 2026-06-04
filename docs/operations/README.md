@@ -1,12 +1,39 @@
-> **Parent**: [Agentic Hybrid Search](../../README.md)
+# Operations Guide
 
-# Operations Runbooks
+Runbooks and operational guidance for running Agentic Hybrid Search in production.
 
-This directory contains operational guides for deploying, monitoring, troubleshooting, and scaling the Agentic Hybrid Search service on GCP Cloud Run.
+**Parent:** [Root README](../../README.md)
 
-| Guide | Purpose | For Whom |
-|-------|---------|----------|
-| **[Deployment](deployment.md)** | Pre-deploy checklist, deploy command, blue-green rollback | DevOps/SRE |
-| **[Monitoring](monitoring.md)** | GCP Logs, dashboards, alerts, key metrics | SRE/On-call |
-| **[Troubleshooting](troubleshooting.md)** | Common failure patterns and remediation steps | Operators |
-| **[Scaling](scaling.md)** | Cloud Run concurrency, min-instances, cost tuning | DevOps |
+## Quick Links
+
+| Runbook | Purpose | When to use |
+|---------|---------|-----------|
+| [Deployment](deployment.md) | Pre-deploy checklist, blue-green rollback, re-indexing | Before pushing to production; incident recovery |
+| [Monitoring](monitoring.md) | GCP Logs Explorer queries, metrics, alert setup | During/after deployment; proactive health checks |
+| [Troubleshooting](troubleshooting.md) | Common failure patterns and fixes | When something breaks; startup errors |
+| [Scaling](scaling.md) | Cloud Run concurrency, instance sizing, cost tuning | Load planning; cost optimization reviews |
+
+---
+
+## Key Concepts
+
+**Cloud Run blue-green deployment** — new revisions receive 0% traffic initially. Traffic is promoted to 100% only after smoke tests pass. Rollback is instant via `gcloud run services update-traffic`.
+
+**Session authentication** — users log in via `POST /api/auth/login` and receive a signed HttpOnly cookie. Admin tasks (reindexing) use a long-lived `ADMIN_TOKEN` header.
+
+**Re-indexing** — triggered manually via GitHub Actions workflow `reindex.yml` or via `scripts/lucille_ingest.sh` (requires Java 17+ and a local Lucille checkout). Always use `--reset-index` to avoid race conditions.
+
+**Smoke tests** — run post-deployment against the live Cloud Run service. All 20 tests must pass before traffic is promoted. Covers auth, WebSocket, search pipeline, citations, and latency SLOs.
+
+---
+
+## Healthy Production State
+
+- `/api/health` endpoint returns 200 with all probes green (PostgreSQL, OpenSearch, Google API)
+- P95 search latency < 30 seconds (typical 16–25s)
+- No sustained error rate spikes in Cloud Logs
+- All WebSocket connections close gracefully; no 4401 auth rejections (unless intentional login expiry)
+
+---
+
+For detailed procedures, see the runbooks above. For integrator or developer docs, see [root README](../../README.md).

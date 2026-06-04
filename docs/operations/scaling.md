@@ -1,172 +1,161 @@
-> **Parent**: [Operations Runbooks](README.md)
+# Scaling Runbook
 
-# Scaling Guide
+Capacity planning and cost optimization for Cloud Run.
 
-## Cloud Run Configuration
-
-### Concurrency & Instance Count
-
-| Setting | Value | Rationale |
-|---------|-------|-----------|
-| **Concurrency** | `1` | WebSocket sessions are stateful; each request must stick to the same container |
-| **Max instances** | `10` | Limit to control costs; one search ≈ 1 min, so 10 instances ≈ 10 concurrent searches |
-| **Min instances** | `0` (cold start) or `1` (warm) | `0` to save cost (~$7/month); `1` if <1s latency required (~$10/month) |
-| **Memory** | `2 Gi` | Default sufficient; increase to `4 Gi` if `RERANKER_FETCH_K > 30` |
-| **CPU** | `2` | Default; increase to `4` for very high throughput (rare) |
-
-### Tuning Concurrency = 1
-
-**Why?** WebSocket connections are per-instance. If concurrency > 1, one instance serves multiple concurrent users, risking shared state pollution (though the code is thread-safe, it's conservative to isolate).
-
-**To change:**
-```bash
-gcloud run services update agentic-hybrid-search \
-  --region=us-central1 \
-  --concurrency=1
-```
-
-### Cost Math
-
-- Base: **$0.00002400 per vCPU-second** + **$0.0000050 per GB-second**
-- Typical: 2 vCPU, 2 GB RAM
-- 1 search ≈ 1 minute → ~$0.005 per request
-- Min instance (always-on): ~$10/month
+**Parent:** [Operations Guide](README.md)
 
 ---
 
-## Database Scaling
+## Cloud Run Instance Configuration
 
-### Cloud SQL Connection Pool
+Current production settings:
 
-| Metric | Threshold | Action |
-|--------|-----------|--------|
-| Active connections | >80 of 100 | Increase `max_connections` or reduce Cloud Run max instances |
-| Connection wait time | >100ms | Scale down other workloads; upgrade Cloud SQL tier |
+| Setting | Value | Why |
+|---------|-------|-----|
+| CPU | 4 cores | LLM inference (Gemini) is CPU-bound; 1 core too slow |
+| Memory | 8 GB | ~500 MB base + ~4 GB for model caches + ~3 GB working memory |
+| Concurrency | 1 | Stateful WebSocket sessions; 1 request at a time per instance |
+| Min instances | 1 | Always-on; ~$40/month |
+| Max instances | 10 | Auto-scale up to 10 if demand spikes |
+| Timeout | 3600s | 1 hour max request time (search latency is 16-25s, leaves headroom) |
 
-**To increase max connections:**
+---
+
+## Concurrency Model
+
+**Why concurrency=1?** Each request holds a stateful WebSocket session. Concurrent requests on the same instance would share the same session context, leading to message interleaving and race conditions. **Do not increase to >1 without refactoring the session/context model.**
+
+**Cost implication:**
+- 1 request takes ~20s
+- Concurrency=1 means Cloud Run must spawn a new instance for every concurrent user
+- 1000 concurrent users = ~50 instances (1000 users × 20s latency / 60s per instance-minute / ~20 concurrent users per instance)
+
+---
+
+## Scaling Scenarios
+
+### Light Load (<10 users)
+
+- Min instances = 1
+- Auto-scale kicks in if requests queue
+- Cost: ~$40/month
+
+### Medium Load (10-100 users)
+
+- Min instances = 2–3 (avoid cold starts)
+- Max instances = 10
+- Expected: 5–10 instances running at peak
+- Cost: ~$200–400/month
+
+### Heavy Load (>100 users)
+
+- Min instances = 5–10
+- Max instances = 20+
+- Consider provisioning OpenSearch with higher node count (retrieval becomes bottleneck)
+- Cost: >$1000/month
+
+---
+
+## Cost Breakdown
+
+**Cloud Run pricing** (us-central1, on-demand):
+- vCPU: $0.0000417 per vCPU-second
+- Memory: $0.0000050 per GB-second
+- Requests: $0.40 per 1M requests
+
+**Cost per instance-hour** (4 CPU, 8 GB):
+- vCPU: 4 × 3600s × $0.0000417 = ~$0.60
+- Memory: 8 × 3600s × $0.0000050 = ~$0.14
+- Total: ~$0.74/hour = ~$18/day = ~$540/month (running continuously)
+
+**With 1 min instance running + 5 instances during peak (8 hours):**
+- Min instance: 1 × 24h = $17/month
+- Peak instances: 5 × 8h × 20 working days = 800 instance-hours = ~$590/month
+- Requests (assume 1M/month): $0.40
+- **Total: ~$600/month**
+
+---
+
+## PostgreSQL Scaling
+
+Cloud SQL auto-increases storage but requires manual action for CPU/memory upgrades.
+
+**Current instance:** db-custom-4-16384 (4 vCPU, 16 GB RAM)
+
+**Monitor connection pool:**
 ```bash
-gcloud sql instances patch agentic-hybrid-search \
-  --database-flags=max_connections=150
+gcloud sql connect <INSTANCE_NAME> --project=gen-lang-client-0250737934 << EOF
+SELECT count(*) FROM pg_stat_activity WHERE state='active';
+EOF
 ```
 
-### Cloud SQL Memory & CPU
+**Expected:** <50 active connections (typical 10–20).
 
-Monitor via Cloud SQL Insights. If CPU >80% sustained:
-
-1. Upgrade instance class: `db-f1-micro` → `db-n1-standard-1`
-2. Add a read replica for read-heavy analytics queries (if applicable)
+**Bottleneck:** If >80 connections, upgrade to db-custom-8-32768 (8 vCPU, 32 GB).
 
 ---
 
 ## OpenSearch Scaling
 
-### Shard & Node Scaling
+The vector index is shared across all Cloud Run instances; it's the bottleneck for high concurrency.
 
-If search queries are slow (>30s) with low errors:
+**Current cluster:** 2-node, 2 GB heap each (check via Dashboards or cloud console).
 
-1. **Check shard count:** Each shard should have <10M documents
-   ```
-   curl http://localhost:9200/agentic_hybrid_search_docs/_stats
-   ```
-2. **Increase shards if needed:**
-   ```bash
-   curl -X PUT http://localhost:9200/agentic_hybrid_search_docs/_settings \
-     -H "Content-Type: application/json" \
-     -d '{"index": {"number_of_shards": 5}}'
-   ```
-3. **Add nodes to cluster** if CPU/memory exhausted
+**Scaling triggers:**
+- Retrieval latency >5s → add another data node
+- High CPU (>70%) → upgrade to larger instance type
+- High disk usage (>80%) → add nodes or reduce retention
 
-### HNSW Vector Index Parameters
-
-The index uses HNSW for kNN search. Tuning is rare, but if k-NN latency is high:
-
-```json
-"index.knn": true,
-"index.knn.algo_param.ef_search": 512
+**Add a node:**
+```bash
+gcloud compute instances create opensearch-node-2 \
+  --image-family=debian-11 \
+  --image-project=debian-cloud \
+  --machine-type=n2-standard-4 \
+  --zone=us-east1-b \
+  --project=gen-lang-client-0250737934
 ```
 
-Increase `ef_search` (default 512) for higher recall at cost of latency. Typical: 512 or 1024.
+Then join it to the cluster via Dashboards → Nodes → Add Node.
 
 ---
 
-## Caching & Performance
+## Metrics to Monitor for Scaling Decisions
 
-### Embedding Cache
-
-Cold embeddings (first request): require an API call to Gemini (~200ms per query).
-
-Warm embeddings (cached): <1ms lookup.
-
-The embedding cache is in-memory per instance and per-process. To pre-warm:
-
-1. Submit N queries (typical: 10–20)
-2. Subsequent requests for similar queries hit cache
-
-### Checkpoint Cache
-
-LangGraph checkpoints are stored in PostgreSQL. Retrieval is O(1) per checkpoint. No scaling needed unless checkpoint table grows to >1B rows (extremely rare).
+| Metric | Check | Action |
+|--------|-------|--------|
+| Cloud Run instance count | `gcloud run services describe` → `status.traffic[].revisions` | If max-instances hit consistently, upgrade CPU/memory or add min-instances |
+| Cloud Run latency P95 | Logs Explorer | If >35s, either improve code or scale horizontally (more instances) |
+| PostgreSQL connections | `pg_stat_activity` | If >80, upgrade to larger instance |
+| OpenSearch CPU | Cloud Console → VM instances | If >70%, add nodes or upgrade |
+| OpenSearch retrieval latency | Logs (look for `retriever_latency_ms`) | If >5s, add OpenSearch nodes |
 
 ---
 
-## Load Testing
+## Cost Optimization Tips
 
-Before scaling to production traffic:
-
-1. **Local smoke test:** `make smoke-local` (20 tests, ~90s)
-2. **GCP smoke test:** `make smoke-local` but pointed at Cloud Run URL
-   ```bash
-   CLOUD_RUN_URL=https://agentic-hybrid-search-xyz.run.app \
-     LOGIN_PASSWORD=... \
-     pytest tests/e2e/ -m "e2e and slow" --timeout=120
-   ```
-3. **Gradual traffic increase:** Deploy with `min_instances=1`, monitor for 24h, then scale up
+1. **Use min-instances=0 in dev/staging** (cold starts are acceptable)
+2. **Set max-instances = 2× expected peak load** (saves on over-provisioning)
+3. **Monitor PostgreSQL query logs** (enable slow query log to find bottlenecks)
+4. **Schedule batch re-indexing off-peak** (re-indexing is CPU-intensive on OpenSearch)
+5. **Compress logs after 30 days** (Cloud Logging charges for storage)
 
 ---
 
-## Cost Optimization
+## Disaster Recovery: Scaling Back Down
 
-| Lever | Impact | Effort |
-|-------|--------|--------|
-| Set `min_instances=0` (cold start OK) | Save $10/mo | Trivial; accept 15s cold-start latency |
-| Reduce `max_instances` to 5 | Save $/mo per concurrent user over 5 | Depends on traffic; could cause 503 overload |
-| Use Spot VMs for Cloud SQL (if non-prod) | Save 70% | Only for non-critical; restarts lose connections |
-| Pre-compute embeddings batch (not real-time) | N/A for real-time search | Different use case |
+If you over-provisioned and need to scale back:
 
----
+```bash
+gcloud run services update agentic-hybrid-search \
+  --min-instances=1 \
+  --max-instances=5 \
+  --region=us-central1 \
+  --project=gen-lang-client-0250737934
+```
 
-## Monitoring for Scale Issues
-
-Add alerts (see [Monitoring](monitoring.md)):
-
-- ✅ Error rate spike → rollback
-- ✅ Latency >60s sustained → scale up instances or optimize config
-- ✅ Cloud SQL connections >80 → scale up DB or reduce max instances
-- ✅ Cloud Run CPU >90% → increase CPU or concurrency
+Old instances shut down gracefully over 5 minutes. Active requests are not interrupted.
 
 ---
 
-## Example: Scaling from 1 → 100 concurrent users
-
-Assumptions:
-- Each search = 1 minute
-- Concurrency = 1
-- 100 concurrent users → need ~100 instances
-
-Steps:
-
-1. **Increase `max_instances`:**
-   ```bash
-   gcloud run services update agentic-hybrid-search --max-instances=100
-   ```
-
-2. **Ensure Cloud SQL can handle 100 connections:**
-   ```bash
-   gcloud sql instances patch agentic-hybrid-search \
-     --database-flags=max_connections=150
-   ```
-
-3. **Upgrade Cloud SQL if needed:** Monitor CPU/memory; upgrade to `db-n1-standard-2` if >80% utilized
-
-4. **Monitor for 24h:** Set alarms on error rate, latency p95, and database connection pool
-
-5. **Cost estimate:** 100 instances × $0.005/search × 100 searches/day ≈ $50/day
+For monitoring during scaling, see [Monitoring](monitoring.md). For deployment, see [Deployment](deployment.md).
