@@ -378,6 +378,32 @@ class OpenSearchVectorStore:
         )
 
     @staticmethod
+    def _truncate_query_terms(query: str, max_terms: int = 40) -> str:
+        """
+        Truncate a query to a maximum number of terms.
+
+        Prevents maxClauseCount errors (Lucene hard cap: 1024 clauses).
+        A 40-term query × 8 fields (with .heavy sub-fields) = 320 clauses,
+        well under the limit. Issue #85.
+
+        Args:
+            query: The query string to truncate
+            max_terms: Maximum number of terms to keep (default: 40)
+
+        Returns:
+            Truncated query or original if already short enough
+        """
+        terms = query.split()
+        if len(terms) <= max_terms:
+            return query
+        truncated = " ".join(terms[:max_terms])
+        logger.warning(
+            f"Query truncated from {len(terms)} to {max_terms} terms (issue #85): "
+            f"{query[:80]}... → {truncated[:80]}..."
+        )
+        return truncated
+
+    @staticmethod
     def _build_multi_match(
         query: str,
         optimizations: Optional[Dict[str, bool]] = None,
@@ -398,6 +424,8 @@ class OpenSearchVectorStore:
         (e.g., `chunk_text.heavy`) use `heavy_english_analyzer` (snowball) at ^0.3
         for recall insurance, leveraging dense vectors for morphological coverage.
         """
+        # Truncate query to prevent maxClauseCount errors (issue #85)
+        query = OpenSearchVectorStore._truncate_query_terms(query)
         opts = optimizations or {}
         phonetic = opts.get("phonetic", True)
         phrase_boost = opts.get("phrase_boost", True)
@@ -637,7 +665,34 @@ class OpenSearchVectorStore:
             capture_body["body"] = _scrub_body_for_display(body)
             capture_body["params"] = dict(params)
             capture_body["index"] = self.index_name
-        response = self.client.search(index=self.index_name, body=body, params=params)
+        try:
+            response = self.client.search(index=self.index_name, body=body, params=params)
+        except Exception as e:
+            # Catch maxClauseCount errors and retry with aggressive truncation (issue #85)
+            if "max_clause_count" in str(e).lower() and "already_retried" not in getattr(
+                e, "_ahs_context", ""
+            ):
+                logger.warning(
+                    f"maxClauseCount error on first attempt, retrying with aggressive truncation: {e}"
+                )
+                truncated_query = self._truncate_query_terms(query, max_terms=20)
+                if truncated_query != query:
+                    # Rebuild the DSL with the truncated query
+                    body["query"]["hybrid"]["queries"][1]["bool"]["must"] = [
+                        self._build_multi_match(truncated_query, optimizations)
+                    ]
+                    try:
+                        response = self.client.search(
+                            index=self.index_name, body=body, params=params
+                        )
+                    except Exception as retry_error:
+                        # Mark it so we don't retry again
+                        retry_error._ahs_context = "already_retried"
+                        raise
+                else:
+                    raise
+            else:
+                raise
         return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
 
     def _hybrid_search_rrf(
@@ -688,7 +743,30 @@ class OpenSearchVectorStore:
                 {"_rrf_fallback": True, "vector_body": vector_body, "text_body": text_body}
             )
             capture_body["index"] = self.index_name
-        text_response = self.client.search(index=self.index_name, body=text_body)
+        try:
+            text_response = self.client.search(index=self.index_name, body=text_body)
+        except Exception as e:
+            # Catch maxClauseCount errors and retry with aggressive truncation (issue #85)
+            if "max_clause_count" in str(e).lower() and "already_retried" not in getattr(
+                e, "_ahs_context", ""
+            ):
+                logger.warning(
+                    f"maxClauseCount error on first attempt, retrying with aggressive truncation: {e}"
+                )
+                truncated_query = self._truncate_query_terms(query, max_terms=20)
+                if truncated_query != query:
+                    text_body["query"]["bool"]["must"] = [
+                        self._build_multi_match(truncated_query, optimizations)
+                    ]
+                    try:
+                        text_response = self.client.search(index=self.index_name, body=text_body)
+                    except Exception as retry_error:
+                        retry_error._ahs_context = "already_retried"
+                        raise
+                else:
+                    raise
+            else:
+                raise
 
         # Build rank maps
         vector_ranks = {}
@@ -746,7 +824,30 @@ class OpenSearchVectorStore:
                 capture_body["body"] = _scrub_body_for_display(body)
                 capture_body["index"] = self.index_name
 
-            response = self.client.search(index=self.index_name, body=body)
+            try:
+                response = self.client.search(index=self.index_name, body=body)
+            except Exception as e:
+                # Catch maxClauseCount errors and retry with aggressive truncation (issue #85)
+                if "max_clause_count" in str(e).lower() and "already_retried" not in getattr(
+                    e, "_ahs_context", ""
+                ):
+                    logger.warning(
+                        f"maxClauseCount error on first attempt, retrying with aggressive truncation: {e}"
+                    )
+                    truncated_query = self._truncate_query_terms(query, max_terms=20)
+                    if truncated_query != query:
+                        body["query"]["bool"]["must"] = [
+                            self._build_multi_match(truncated_query, optimizations)
+                        ]
+                        try:
+                            response = self.client.search(index=self.index_name, body=body)
+                        except Exception as retry_error:
+                            retry_error._ahs_context = "already_retried"
+                            raise
+                    else:
+                        raise
+                else:
+                    raise
             return [self._hit_to_document(hit) for hit in response["hits"]["hits"]]
 
         except Exception as e:
