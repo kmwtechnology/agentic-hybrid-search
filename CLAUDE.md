@@ -91,7 +91,7 @@ WebSocket-streamed Pydantic events: `SearchProgressEvent`, `RerankerProgressEven
 |-------|------|
 | LLM (generation) | Gemini 3 Flash (preview) |
 | LLM (classify/rerank/eval) | Gemini 3.1 Flash Lite (preview) |
-| Embeddings | `text-embedding-005` (768-dim) |
+| Embeddings | `models/gemini-embedding-001` (768-dim) |
 | Agent framework | LangGraph + LangChain |
 | Vector DB | OpenSearch 2.19.1 (HNSW knn + BM25) |
 | Checkpoints | PostgreSQL 16 |
@@ -308,7 +308,7 @@ Copy `langchain_agent/.env.example` → `langchain_agent/.env`.
 ### Models & Retrieval
 
 - `LLM_MODEL=gemini-3-flash-preview`, `LLM_TEMPERATURE=0`
-- `EMBEDDINGS_MODEL=models/text-embedding-005`, `VECTOR_DIMENSION=768` (set `output_dimensionality=768`)
+- `EMBEDDINGS_MODEL=models/gemini-embedding-001`, `VECTOR_DIMENSION=768` (set `output_dimensionality=768`)
 - `RERANKER_MODEL=gemini-3.1-flash-lite-preview`, `QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview`
 - `RETRIEVER_K=4`, `RETRIEVER_FETCH_K=30`, `RETRIEVER_ALPHA=0.25`
 - `ENABLE_RERANKING=true`, `RERANKER_FETCH_K=15`, `RERANKER_TOP_K=4`
