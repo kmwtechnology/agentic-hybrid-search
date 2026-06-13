@@ -80,6 +80,7 @@ load_dotenv()
 
 __all__ = [
     # Google AI configuration
+    "GOOGLE_API_KEY",
     "LLM_MODEL",
     "LLM_TEMPERATURE",
     "EMBEDDINGS_MODEL",
