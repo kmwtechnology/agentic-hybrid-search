@@ -1,6 +1,7 @@
 """Unit tests for attribute normalization."""
 
 import pytest
+
 from attribute_normalizer import AttributeNormalizer
 
 

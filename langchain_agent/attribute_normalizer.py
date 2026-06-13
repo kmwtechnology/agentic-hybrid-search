@@ -61,7 +61,9 @@ class AttributeNormalizer:
         Returns:
             (primary_canonical, secondary_canonical or None)
         """
-        if not color_str or (isinstance(color_str, float) and color_str != color_str):  # isnan check
+        if not color_str or (
+            isinstance(color_str, float) and color_str != color_str
+        ):  # isnan check
             return None, None
 
         normalized = str(color_str).lower()
@@ -116,7 +118,9 @@ class AttributeNormalizer:
         Returns:
             normalized brand (lowercase; "generic" if placeholder, otherwise original lowercased)
         """
-        if not brand_str or (isinstance(brand_str, float) and brand_str != brand_str):  # isnan check
+        if not brand_str or (
+            isinstance(brand_str, float) and brand_str != brand_str
+        ):  # isnan check
             return "generic"
 
         normalized = str(brand_str).lower().strip()
