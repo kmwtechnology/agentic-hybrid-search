@@ -14,7 +14,7 @@
 
 **Deployment & CI/CD**: [GCP Cloud Run](gcp_deployment_complete.md) | [GitHub Actions + WIF](github_actions_cicd.md) | [Env vars in both paths](feedback_required_env_vars_in_both_deploy_paths.md)
 
-**Performance & Observability**: [Cross-encoder latency (FETCH_K=40, ~35s)](cross_encoder_latency_fix_2026-05-01.md) | [LLM Judge retry gate](judge_categorical_retry_gate.md)
+**Performance & Observability**: [Cross-encoder latency (FETCH_K=40, ~35s)](cross_encoder_latency_fix_2026-05-01.md) | [LLM Judge retry gate](judge_categorical_retry_gate.md) | [Filter relaxation — drops multi_match filters when < 3 results (PR #71)](filter_relaxation_retriever.md)
 
 **Data & Infrastructure**: [ESCI dataset](esci_dataset.md) | [ESCI 10k precomputed embeddings (PR #40)](esci_sample_precomputed_embeddings.md) | [OpenSearch VM](project_opensearch_vm.md)
 
