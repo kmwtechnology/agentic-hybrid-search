@@ -84,6 +84,8 @@ Field definitions for the product index:
 - `knn_vector` — HNSW index, 768-dim
 - `product_title`, `product_brand`, `product_color` — text + keyword dual mapping (faceting)
 - `title_suggest`, `brand_suggest` — edge-ngram analyzers for prefix matching
+- `product_color_primary`, `product_color_secondary` — normalized color fields (keyword, added post-ingest)
+- `product_brand_normalized` — normalized brand field (keyword, added post-ingest)
 
 ## Versioning
 
@@ -110,10 +112,27 @@ When the external Lucille repo's version bumps, update both files **in the same 
 bash scripts/lucille_ingest.sh
 ```
 
+**What it does:**
+
+1. Builds `lucille-esci` Maven module (cached after first run)
+2. Runs Lucille products ingest: `data/esci_products_sample_10000.parquet` → OpenSearch
+   - Applies `conf/products.conf` transformations: title/brand/color copy, chunk_text build, collection_id set
+   - ~10 s
+3. **Post-ingest enrichment** (Step 5b): `scripts/enrich_attribute_normalization.py`
+   - Adds normalized color/brand fields to every product in OpenSearch
+   - `product_color_primary`, `product_color_secondary`, `product_brand_normalized`
+   - Uses search_after pagination; bulk-updates in batches of 250
+   - ~20 s (all 9,618 products)
+4. Runs Lucille judgments ingest: `data/esci_judgments_aggregated.parquet` → OpenSearch
+   - ~5 s
+
+**Total:** ~30–40 s
+
+**Details:**
 - Reads `data/esci_products_sample_10000.parquet` (9,618 docs + embeddings)
 - Reads `data/esci_judgments_aggregated.parquet` (97,345 queries)
 - No embedding API calls needed (embeddings precomputed in parquet)
-- ~30 s total
+- Attribute normalization is deterministic and reproducible (rules-only, no AI)
 
 ### With reset (atomically recreates index)
 
@@ -167,8 +186,38 @@ grep OPENSEARCH_PORT .env
 Check `conf/products.conf` — every product doc must have `collection_id=esci_products` set
 in `defaultFields`. If products are indexed without it, retrieval queries won't find them.
 
+## Attribute Normalization (Post-Ingest Enrichment)
+
+**What:** After Lucille ingest completes, `scripts/enrich_attribute_normalization.py` runs as Step 5b.
+It adds normalized color and brand fields to every product, improving filter recall.
+
+**Fields added:**
+- `product_color_primary` — canonical primary color ("black", "white", "blue", etc.)
+- `product_color_secondary` — canonical secondary color if compound entry (e.g., "Black & Purple" → secondary: "purple")
+- `product_brand_normalized` — case-folded brand (e.g., "Sony" → "sony")
+
+**Why:** Raw color/brand fields have high variance ("grey" vs "gray", "Light Grey", "Black Mesh").
+Filter queries like "blue wireless headphones" now match all blue variants including "Navy", "Cyan", "Teal", etc.
+
+**How it works:**
+1. Fetches all products from OpenSearch using `search_after` pagination
+2. Applies `AttributeNormalizer` rules (16 canonical colors, synonym expansion, compound extraction)
+3. Bulk-updates all docs with the three new fields
+4. ~20 s for 9,618 products
+
+**Configuration:**
+- Color mappings: `conf/color_mappings.json` (generated once via `analyze_color_attributes.py`)
+- Normalizer class: `attribute_normalizer.py` (reusable for tests and offline enrichment)
+- Script: `enrich_attribute_normalization.py` (called by `lucille_ingest.sh`)
+
+**Reproducibility:**
+- Deterministic: rules-only, no AI calls
+- Auditable: color mappings committed to git
+- Idempotent: safe to re-run `lucille_ingest.sh` on the same data
+
 ## References
 
 - [Lucille Framework](https://github.com/kmwtechnology/lucille)
 - [OpenSearch field mappings](https://opensearch.org/docs/latest/im-plugin/index-templates/)
 - [HNSW KNN](https://opensearch.org/docs/latest/search-plugins/knn/knn-index/)
+- [Attribute Normalization (ARCHITECTURE.md)](../ARCHITECTURE.md#attribute-normalization-color--brand)
