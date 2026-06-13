@@ -578,28 +578,7 @@ python scripts/prepare_judgments_parquet.py --locale us --force
 Config lives in `lucille-esci/conf/` (HOCON). The script auto-builds the Maven
 module on first run and skips the build when no source files changed.
 
-#### Fallback: Python ingest scripts (large samples, stats, custom locales)
-
-The Python scripts are deprecated for the default 10 k ingest but remain useful
-for larger samples and one-off operations:
-
-```bash
-PYTHONPATH=. python ingest_esci_products.py              # default 10 k sample
-PYTHONPATH=. python ingest_esci_products.py --limit 500
-PYTHONPATH=. python ingest_esci_products.py --all        # all ~1.2 M US products
-PYTHONPATH=. python ingest_esci_products.py --resample   # force new sample
-PYTHONPATH=. python ingest_esci_products.py --stats
-```
-
-The default 10 k sample ships precomputed at `data/esci_products_sample_10000.parquet` (read by Lucille). Larger/custom samples are written to `esci/shopping_queries_dataset/esci_products_sample_{N}.parquet`. Use `--resample` to generate a new sample (requires re-embedding).
-
-```bash
-PYTHONPATH=. python ingest_esci_judgments.py             # full --reset (default), us locale
-PYTHONPATH=. python ingest_esci_judgments.py --limit 5000
-PYTHONPATH=. python ingest_esci_judgments.py --locale jp
-PYTHONPATH=. python ingest_esci_judgments.py --append    # incremental, skip index reset
-PYTHONPATH=. python ingest_esci_judgments.py --stats
-```
+The default 10 k sample ships precomputed at `data/esci_products_sample_10000.parquet` (read by Lucille). Lucille is the **only** supported ingest mechanism — the Python ingest scripts (`ingest_esci_products.py`, `ingest_esci_judgments.py`) were removed in PR #48.
 
 ESCI labels are mapped to numeric relevance: `E=4.0`, `S=1.0`, `C=0.1`,
 `I=0.0`. Lookups from `OpenSearchVectorStore.lookup_judgments(query)` are
@@ -740,9 +719,7 @@ langchain_agent/
 ├── doc_replacer.py        # Broken-link replacement
 ├── retry_utils.py         # Tenacity decorators
 ├── logging_config.py      # structlog setup (JSON/console)
-├── setup.py               # DB + index init + ingestion orchestration
-├── ingest_esci_products.py        # ESCI product ingestion
-├── ingest_esci_judgments.py       # ESCI relevance judgments → esci_judgments index
+├── setup.py               # DB + index init; also calls lucille_ingest.sh for ESCI data
 ├── relevancy_metrics.py           # NDCG/MRR/Recall/Precision + confidence proxy (no NumPy)
 ├── bigquery_batch_embeddings.py   # Parallel embedding via BigQuery ML
 ├── generate_embeddings.py         # Serial embedding fallback
@@ -768,8 +745,8 @@ Bare imports require `PYTHONPATH=.`:
 
 ```bash
 cd langchain_agent
-PYTHONPATH=. python ingest_esci_products.py
 PYTHONPATH=. pytest tests/unit/
+PYTHONPATH=. python setup.py
 ```
 
 ### View logs
