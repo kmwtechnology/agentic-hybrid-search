@@ -47,7 +47,7 @@ Routes check session first; on `HTTPException`, fall back to token. Constant-tim
 
 | File | Purpose |
 |------|---------|
-| `events.py` | Pydantic event models: `SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent`, `LLMResponseChunkEvent`, `ClarificationRequestedEvent`, `PipelineSummaryEvent`, etc. |
+| `events.py` | Pydantic event models: `SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent`, `LLMResponseChunkEvent`, `LLMResponseCorrectedEvent` (emitted by `llm_judge` when auto-correction fires; replaces streamed chat message on the frontend), `ClarificationRequestedEvent`, `PipelineSummaryEvent`, etc. |
 
 **CRITICAL:** `events.py` must stay in sync with `web/src/types/events.ts`. Each event's `type` literal and `node` field must match. Use the pre-flight unit test `test_frontend_backend_event_parity.py` to catch divergence.
 
@@ -55,7 +55,7 @@ Routes check session first; on `HTTPException`, fall back to token. Constant-tim
 
 | File | Purpose |
 |------|---------|
-| `observable_agent.py` | Wraps the LangGraph agent and accumulates typed events from the stream; emits `PipelineSummaryEvent` with per-stage metrics (NDCG/MRR/Recall/Precision or confidence proxy) |
+| `observable_agent.py` | Wraps the LangGraph agent and accumulates typed events from the stream; emits `LLMResponseCorrectedEvent` when judge auto-correction fires (before `PipelineSummaryEvent`), then `PipelineSummaryEvent` with per-stage metrics (NDCG/MRR/Recall/Precision or confidence proxy) |
 
 ## Configuration
 
