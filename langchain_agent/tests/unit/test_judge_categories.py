@@ -155,9 +155,11 @@ class TestFormatDocsForPrompt:
             "interior, studded rubber outsoles, and cork-bed midsoles that form to your feet.\n"
         )
         chunk = prose + bullets
-        # Confirm the key claims are past 1500 chars (the old limit) but within 2500 (new limit)
+        # Confirm the key claims are past 1500 chars (the old limit) but within 10 000 (current limit)
         assert "cork-bed midsoles" not in chunk[:1500], "claim must be past old 1500-char limit"
-        assert "cork-bed midsoles" in chunk[:2500], "claim must be within new 2500-char limit"
+        assert (
+            "cork-bed midsoles" in chunk[:10_000]
+        ), "claim must be within current 10 000-char limit"
 
         result = _format_docs_for_prompt([self._doc(chunk)])
 

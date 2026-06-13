@@ -165,16 +165,17 @@ _JUDGE_SYSTEM = (
 )
 
 
-def _format_docs_for_prompt(documents: List[Document], max_chars: int = 2500) -> str:
+def _format_docs_for_prompt(documents: List[Document], max_chars: int = 10_000) -> str:
     """Compact numbered render of the retrieved docs, truncated for prompt size.
 
-    Default 2500 chars/doc — covers the full ESCI chunk_text ceiling (~2498 chars
-    for the longest products, e.g. Thursday Boot Company Captain B07PQ9M1C5 whose
-    "THURSDAY'S SIGNATURE CRAFTSMANSHIP" bullet starts at char 2039). At
-    RETRIEVER_K=4 docs the block is ≤10 000 chars (~2 500 tokens), negligible
-    for Gemini Flash Lite's 1M-token context. 360 (issue #81) and 1500 (PR #82)
-    were both too tight and caused false-positive fabrication flags when product
-    attributes appeared in late bullet points (issue #84).
+    Default 10 000 chars/doc — effectively no truncation for any realistic ESCI
+    product (ceiling ~2498 chars, e.g. Thursday Boot Company Captain B07PQ9M1C5).
+    At RETRIEVER_K=4 docs the block is ≤40 000 chars (~10 000 tokens), still
+    negligible for Gemini Flash Lite's 1M-token context. Earlier limits (360 in
+    issue #81, 1500 in PR #82, 2500 in issue #84) all caused false-positive
+    fabrication flags when grounded product attributes appeared in late Amazon
+    bullet points past the cutoff. 10 000 is a safety cap against pathological
+    documents, not a tuned budget.
     """
     lines = []
     for i, doc in enumerate(documents, 1):
