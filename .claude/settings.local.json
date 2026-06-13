@@ -339,7 +339,9 @@
       "Bash(.venv/bin/pip list *)",
       "Bash(make type-check *)",
       "Bash(awk -F= '{print \"length:\", length\\($2\\)}')",
-      "Bash(jobs)"
+      "Bash(jobs)",
+      "Bash(make benchmark-esci-fast *)",
+      "Bash(make smoke-local-quick *)"
     ]
   },
   "enableAllProjectMcpServers": true,
