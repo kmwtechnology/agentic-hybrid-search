@@ -40,6 +40,7 @@ from api.schemas.events import (
     LLMReasoningChunkEvent,
     LLMReasoningStartEvent,
     LLMResponseChunkEvent,
+    LLMResponseCorrectedEvent,
     LLMResponseStartEvent,
     MetricsEvent,
     NodeEndEvent,
@@ -392,6 +393,23 @@ class ObservableAgentService:
                     total_ms=total_duration_ms,
                 )
             )
+
+            # When the judge auto-corrected the response, tell the frontend to
+            # replace the streamed message with the grounded version.
+            if pipeline_state.get("hallucination_retry_used") and pipeline_state.get(
+                "corrected_response"
+            ):
+                orig_faith = (pipeline_state.get("original_judgment") or {}).get(
+                    "faithfulness", 0.0
+                )
+                corr_faith = (pipeline_state.get("judgment") or {}).get("faithfulness", 0.0)
+                await emit(
+                    LLMResponseCorrectedEvent(
+                        corrected_content=pipeline_state["corrected_response"],
+                        original_faithfulness=orig_faith,
+                        corrected_faithfulness=corr_faith,
+                    )
+                )
 
             # Emit Pipeline Quality Summary — last card the UI renders.
             # Best-effort; never blocks the user response on metric failure.
