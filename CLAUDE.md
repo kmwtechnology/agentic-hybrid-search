@@ -6,8 +6,9 @@ Guidance to Claude Code (claude.ai/code) when working with this repository.
 
 When a new work session begins (especially when picking up an issue, feature, or non-trivial fix), **suggest creating a feature branch before writing code**. Confirm `git status` is clean and `main` is up to date, then propose a branch name (e.g. `feat/issue-6-judge-categories`, `fix/citation-urls`). Do not start editing on `main`. Skip only for one-line typos or doc tweaks the user explicitly says to commit straight to `main`.
 
-## Recent Fixes & Status (2026-05-01)
+## Recent Fixes & Status (2026-06-13)
 
+- **Issue #69** (PR #73 / commit 3950a4f) — Switched BM25 analyzer from `snowball` (aggressive) to `kstem` (light stemming) for precision. Added `.heavy` sub-fields (snowball) at ^0.3 boost for recall insurance. Improves brand name precision (Beats ≠ beat) and adjective distinction (wireless ≠ wire) while maintaining morphological recall via dense vectors. All 730 unit tests pass; local + remote OpenSearch reindexed.
 - **Issue #28** (PR #29 / commit be236e7) — Fixed Swagger page iframe hardcoding localhost URL in production, breaking browser back button. Now uses smart origin detection (localhost → :8000, else → window.location.origin).
 - **Issues #20 + #22** (PR #27 / squash ad0f36b) — Warmer agent tone + observability snapshot hydration from LangGraph checkpoints.
 - **Cross-encoder latency** (PR #26 / commit 10609a1) — Smoke test SLO raised 30s → 45s to accommodate FETCH_K=40 + cross-encoder model load time on first request.
@@ -111,6 +112,8 @@ WebSocket-streamed Pydantic events: `SearchProgressEvent`, `RerankerProgressEven
   - Reranker adds: `reranker_max_score`, `reranked_documents`, `reranker_latency_ms`
   - Quality Gate adds: `quality_gate_retried`, `alpha_adjusted_value`, `quality_gate_threshold_used`
   - Other: `thread_id`, `current_node`, `retrieved_products`, `citations`
+
+- **Dual-analyzer BM25** (issue #69) — In hybrid pipelines, dense vectors handle morphological recall ("running/runs/ran"). BM25 should focus on precision confirmation. Primary fields (`chunk_text`, `product_brand`, `product_color`) use `light_english_analyzer` (kstem) for precision. Sub-fields (`.heavy`) use `heavy_english_analyzer` (snowball) at ^0.3 boost for recall fallback. Balances precision (Beats ≠ beat) with recall (morphological variants via .heavy + embeddings). Updated `_build_multi_match()` to include `.heavy` fields in candidate field list.
 
 - **Hybrid search** — RRF fusion (k=60); `alpha` ∈ [0,1] weights lexical→semantic.
 - **Product dedup** — `OpenSearchRetriever.collapse_by_document()` for `esci_products`.
