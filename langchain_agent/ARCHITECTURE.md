@@ -128,6 +128,15 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 **Process**:
 
+- **Attribute extraction & filtering** (for `attribute_filter` intent):
+  - Extracts brand and color constraints from user query (LLM-powered)
+  - Filters on **normalized fields**:
+    - `product_color_primary` (normalized primary color, e.g., "black", "white", "blue")
+    - `product_color_secondary` (normalized secondary color if compound entry, e.g., "Black & Purple" → primary: "black", secondary: "purple")
+    - `product_brand_normalized` (case-folded brand, e.g., "sony", "apple")
+  - Normalization rules: 16 canonical color forms (e.g., "grey" → "gray", "navy" → "blue", "taupe" → "brown"), synonym expansion, compound color extraction
+  - See **Attribute Normalization** section below for details
+  - **Filter relaxation**: If fetch returns < 3 results with all filters, drops multi-match (material/size) filters but keeps color + brand exact-match filters (user explicitly named them)
 - **Dual-path search**:
   1. **Vector Search** (HNSW): Gemini 768-dim embeddings, cosine similarity
   2. **Lexical Search** (BM25): Dual-analyzer pattern — primary fields (`chunk_text`, `product_brand`, `product_color`) use `light_english_analyzer` (kstem, light stemming) for precision; `.heavy` sub-fields use `heavy_english_analyzer` (snowball, aggressive stemming) at ^0.3 boost for morphological recall fallback. Dense vectors handle the bulk of morphological recall, so BM25 is tuned for precision ("Beats" ≠ "beat" with kstem, but still matches "running/runs/ran" via embeddings).
@@ -140,7 +149,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
   Normalizes ranks from both methods, avoids probability calibration
 - **Candidate fetching**: `fetch_k=20` candidates (before deduplication/reranking)
 - **Product deduplication**: ESCI products may have multiple chunks; collapse to one per product
-- Emits `RetrievalProgressEvent` with candidate counts, top-K previews
+- Emits `RetrievalProgressEvent` with candidate counts, top-K previews, OpenSearchQueryEvent with DSL details
 
 **Output State**:
 
@@ -540,6 +549,15 @@ Continue to agent
       }
     }
   },
+  "product_color_primary": {
+    "type": "keyword"
+  },
+  "product_color_secondary": {
+    "type": "keyword"
+  },
+  "product_brand_normalized": {
+    "type": "keyword"
+  },
   "product_id": {
     "type": "keyword"
   }
@@ -552,6 +570,40 @@ Continue to agent
 
 - **Text mapping**: `_search` queries match "Sony" in "Sony WH-1000XM5"
 - **Keyword mapping** (`.keyword` suffix): Exact match, no tokenization, used for faceting
+
+### Attribute Normalization (Color & Brand)
+
+**Problem:** Raw color/brand fields have high variance ("grey" vs "gray", "Light Grey", "Black & Purple"). Users expect "black" to match all black variants.
+
+**Solution:** Post-ingest normalization (Python script in Step 5b of `lucille_ingest.sh`):
+
+1. **Color Normalization** (16 canonical forms):
+   - Synonym expansion: "grey" → "gray", "navy" → "blue", "taupe" → "brown"
+   - Compound extraction: "Black & Purple" → primary: "black", secondary: "purple"
+   - Descriptor stripping: "light grey" → "grey" → "gray"
+   - Case folding and special-character cleanup
+
+2. **Brand Normalization**:
+   - Case folding: "Sony" → "sony"
+   - Generic consolidation: "Unknown", "N/A" deduplicated
+   - Preserves real brands
+
+3. **Output fields** (added to every document):
+   - `product_color_primary`: Canonical primary color (keyword, for exact filtering)
+   - `product_color_secondary`: Canonical secondary color if present (keyword)
+   - `product_brand_normalized`: Case-folded brand (keyword, for exact filtering)
+
+**Impact:**
+- Filter recall: 79.4% of products classified into 16 base colors
+- "blue running shoes" now matches "Navy Running Shoes", "Cyan Runners", etc.
+- Deterministic (rules-only, no AI calls) — reproducible, auditable
+- Raw fields preserved — no data loss
+
+**Implementation Details:**
+- Executed after Lucille ingest via `scripts/enrich_attribute_normalization.py`
+- Uses `OpenSearch search_after` pagination; bulk-updates all docs
+- `AttributeNormalizer` class (reusable for tests, future offline enrichment)
+- `color_mappings.json` committed to git for reproducibility
 
 ### Search Pipeline (OpenSearch DSL)
 
@@ -587,7 +639,46 @@ Continue to agent
 }
 ```
 
-Both `knn` (vector) and `multi_match` (BM25) queries run in parallel; results are fused via RRF at the retriever level.
+**With attribute filters** (e.g., "black wireless headphones"):
+
+```json
+{
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "knn": {
+            "knn_vector": {
+              "vector": [0.1, 0.2, ...],
+              "k": 20
+            }
+          }
+        },
+        {
+          "multi_match": {
+            "query": "wireless headphones",
+            "fields": ["content", "product_brand^2", "product_color"]
+          }
+        }
+      ],
+      "filter": [
+        {
+          "term": {
+            "product_locale.keyword": "us"
+          }
+        },
+        {
+          "match": {
+            "product_color_primary": "black"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Both `knn` (vector) and `multi_match` (BM25) queries run in parallel; results are fused via RRF at the retriever level. Attribute filters are applied post-fusion to narrow results.
 
 ---
 

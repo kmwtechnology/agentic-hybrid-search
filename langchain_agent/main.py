@@ -36,7 +36,13 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import httpx
 import psycopg
 from langchain_core.documents import Document
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
@@ -304,7 +310,8 @@ class EcommerceSearchAgent:
         from config import LINK_CACHE_TTL_MINUTES, LINK_VERIFICATION_TIMEOUT_MS
 
         self.link_verifier = LinkVerifier(
-            timeout_ms=LINK_VERIFICATION_TIMEOUT_MS, cache_ttl_minutes=LINK_CACHE_TTL_MINUTES
+            timeout_ms=LINK_VERIFICATION_TIMEOUT_MS,
+            cache_ttl_minutes=LINK_CACHE_TTL_MINUTES,
         )
         self.doc_replacer = DocumentReplacer()
 
@@ -1119,7 +1126,8 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         MIN_RELEVANCE_THRESHOLD = 0.10  # Same as citation suppression threshold
         quality_gate_retried = state.get("quality_gate_retried", False)
         max_relevance = max(
-            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents), default=0.0
+            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
+            default=0.0,
         )
 
         # The "no info" branch only fires when the reranker actually scored the
@@ -1168,7 +1176,8 @@ Respond with ONLY valid JSON. The "reasoning" MUST describe the actual query "{l
         # In that case we trust the retriever's BM25/RRF ranking and emit
         # citations for every doc.
         max_relevance = max(
-            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents), default=0.0
+            (doc.metadata.get("reranker_score", 0.0) for doc in retrieved_documents),
+            default=0.0,
         )
         MIN_CITATION_RELEVANCE = 0.10  # Don't cite docs below 10% relevance
         reranker_skipped_for_citations = (
@@ -1703,11 +1712,11 @@ Return ONLY a JSON object (use null for missing attributes):
             # Build OpenSearch filter clauses (as separate filter objects - they're implicitly AND'd)
             brand = _coerce(attributes.get("brand"))
             if brand:
-                filters.append({"match": {"product_brand": {"query": brand}}})
+                filters.append({"match": {"product_brand_normalized": {"query": brand}}})
 
             color = _coerce(attributes.get("color"))
             if color:
-                filters.append({"match": {"product_color": {"query": color}}})
+                filters.append({"match": {"product_color_primary": {"query": color}}})
 
             # material_or_feature → multi_match against title + content
             material = _coerce(attributes.get("material_or_feature"))
@@ -2210,7 +2219,9 @@ Respond with JSON only. No other text."""
 
         # Lazy-init the judge so users who never enable it pay no startup cost.
         if self.judge is None:
-            from config import JUDGE_MODEL  # local import to avoid circular at module load
+            from config import (  # local import to avoid circular at module load
+                JUDGE_MODEL,
+            )
 
             self.judge = LLMJudge(model_name=JUDGE_MODEL)
 
@@ -2634,7 +2645,8 @@ Original query: {query}
                     self._emit_event_from_sync(bm25_event)
                 except Exception as e:
                     logger.error(
-                        f"Could not emit BM25 baseline OpenSearch query event: {e}", exc_info=True
+                        f"Could not emit BM25 baseline OpenSearch query event: {e}",
+                        exc_info=True,
                     )
 
         # Best-effort lookup of ESCI ground-truth judgments. Missing index or
@@ -2660,7 +2672,8 @@ Original query: {query}
             try:
                 self._emit_event_from_sync(
                     SearchProgressEvent(
-                        stage="fusion", message="Fusing results with Reciprocal Rank Fusion..."
+                        stage="fusion",
+                        message="Fusing results with Reciprocal Rank Fusion...",
                     )
                 )
             except Exception as e:
@@ -3130,7 +3143,11 @@ Original query: {query}
         workflow.set_entry_point("intent_classifier")
 
         # Intent classifier routing
-        intent_routes = {"summary": "summary", "clarify": "agent", "other": "query_evaluator"}
+        intent_routes = {
+            "summary": "summary",
+            "clarify": "agent",
+            "other": "query_evaluator",
+        }
         workflow.add_conditional_edges(
             "intent_classifier",
             self._route_after_intent,
@@ -3140,14 +3157,18 @@ Original query: {query}
         # Core pipeline edges
         workflow.add_edge("query_evaluator", "retriever")
         workflow.add_conditional_edges(
-            "summary", self._route_after_summary, {"done": "agent", "continue": "retriever"}
+            "summary",
+            self._route_after_summary,
+            {"done": "agent", "continue": "retriever"},
         )
         workflow.add_edge("retriever", "reranker")
         workflow.add_edge("reranker", "quality_gate")
 
         # Quality gate routing: retry retrieval or continue to agent
         workflow.add_conditional_edges(
-            "quality_gate", self._quality_gate_route, {"retry": "retriever", "continue": "agent"}
+            "quality_gate",
+            self._quality_gate_route,
+            {"retry": "retriever", "continue": "agent"},
         )
 
         # Agent is the final step

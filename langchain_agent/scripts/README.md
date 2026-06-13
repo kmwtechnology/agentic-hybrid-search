@@ -26,6 +26,8 @@ is running (or can be started automatically).
 | `lucille_ingest.sh` | ESCI re-ingestion (builds Lucille on first run, reads `data/*.parquet`) | Manual re-ingest | 30 s–1 min |
 | **Utilities** |
 | `prepare_judgments_parquet.py` | Pre-aggregate ESCI judgments (one-time or on sample change) | Data ops | 2–3 min |
+| `analyze_color_attributes.py` | Analyze product colors and generate canonical color mappings | Data ops (once per sample) | 5 s |
+| `enrich_attribute_normalization.py` | Post-ingest enrichment: add normalized color/brand fields to OpenSearch | Data ops (after Lucille ingest) | 30–60 s |
 | `probe_demo_query.py` | Standalone demo query tester; useful for debugging retriever/reranker | Ad hoc testing | — |
 
 ## Execution Order
