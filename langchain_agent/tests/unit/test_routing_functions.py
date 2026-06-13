@@ -537,3 +537,66 @@ class TestLlmJudgeNodeHallucinationRetry:
         assert result["corrected_response"] == "corrected response"
         assert result["judgment"]["faithfulness"] == 0.98
         assert mock_judge.judge.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# intent_classifier_node — per-turn state reset (issue #83)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestIntentClassifierNodeStateReset:
+    """Verify that intent_classifier_node resets per-turn guards so a retry
+    fired in turn N doesn't permanently disable the gate for turns N+1, N+2…"""
+
+    def setup_method(self):
+        self.agent = _make_agent()
+
+    def test_resets_hallucination_retry_used_when_true_in_checkpoint(self):
+        """Regression for issue #83: LangGraph persists hallucination_retry_used=True
+        through Postgres checkpoints; intent_classifier_node must reset it to False."""
+        state = {
+            "messages": [HumanMessage(content="mens boots")],
+            "hallucination_retry_used": True,  # persisted from a prior turn's retry
+        }
+        with patch.object(
+            self.agent,
+            "_classify_intent",
+            return_value=("search", "keyword match", 0.95, []),
+        ):
+            result = self.agent.intent_classifier_node(state)
+
+        assert result["hallucination_retry_used"] is False, (
+            "hallucination_retry_used must be reset at the top of each turn so "
+            "a prior-turn retry doesn't permanently disable the judge gate"
+        )
+
+    def test_resets_hallucination_retry_used_when_false_in_checkpoint(self):
+        """Reset is a no-op when the flag is already False, but must still be present."""
+        state = {
+            "messages": [HumanMessage(content="wireless headphones")],
+            "hallucination_retry_used": False,
+        }
+        with patch.object(
+            self.agent,
+            "_classify_intent",
+            return_value=("search", "keyword match", 0.92, []),
+        ):
+            result = self.agent.intent_classifier_node(state)
+
+        assert result["hallucination_retry_used"] is False
+
+    def test_resets_hallucination_retry_used_when_absent_from_state(self):
+        """Reset must also fire when the key is absent (first turn in a new thread)."""
+        state = {
+            "messages": [HumanMessage(content="running shoes")],
+            # hallucination_retry_used not present — fresh thread
+        }
+        with patch.object(
+            self.agent,
+            "_classify_intent",
+            return_value=("search", "keyword match", 0.95, []),
+        ):
+            result = self.agent.intent_classifier_node(state)
+
+        assert result["hallucination_retry_used"] is False

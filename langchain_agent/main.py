@@ -575,6 +575,11 @@ class EcommerceSearchAgent:
             "confidence": confidence,  # For UI display
             "intent_confidence": confidence,
             "clarifying_questions": clarifying_questions,
+            # Reset per-turn guard so every new user message gets a fresh retry budget.
+            # LangGraph persists state through Postgres checkpoints; without this reset,
+            # a retry fired in turn N permanently disables the gate for turns N+1, N+2, …
+            # (issue #83).
+            "hallucination_retry_used": False,
         }
 
     def query_evaluator_node(self, state: CustomAgentState) -> Dict[str, Any]:

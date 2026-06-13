@@ -115,9 +115,8 @@ class TestFormatDocsForPrompt:
         return Document(page_content=text, metadata={"title": title, "product_id": product_id})
 
     def test_default_limit_includes_tail_attributes(self):
-        """Regression for issue #81: 360-char default truncated 'Made in USA' claims
-        that appear at the end of ESCI product descriptions (~800 chars), causing
-        the judge to flag grounded claims as fabrications."""
+        """Regression for issue #81: old 360-char default truncated 'Made in USA' claims
+        at ~750 chars into ESCI product descriptions, causing false-positive fabrication flags."""
         long_text = (
             "Nylabone 3 Pack Of Puppy Chew Chicken Flavored Teething Bones "
             "Developing proper chewing habits is one of the best lessons your young puppy "
@@ -140,6 +139,34 @@ class TestFormatDocsForPrompt:
         assert (
             "Made in the USA" in result
         ), "origin claim was truncated — judge will false-positive flag it as fabrication"
+
+    def test_default_limit_includes_late_bullet_attributes(self):
+        """Regression for issue #84: the 1500-char fix (PR #82) was still too tight for
+        products whose key attributes appear in late Amazon bullet points (e.g. Thursday
+        Boot Company Captain B07PQ9M1C5 where 'glove leather interior' and 'cork-bed
+        midsoles' appear at char 2039 out of 2498 total)."""
+        # Simulate the Thursday Boot chunk structure: ~1300 chars of prose then bullet points
+        prose = "A" * 1300
+        bullets = (
+            "\nTHE PERFECT FIT - size guidance bullet goes here and occupies ~200 chars.\n"
+            "THE RUGGED & RESILIENT CAPTAIN - handcrafted ankle boot bullet occupies ~180 chars.\n"
+            "UNPARALLELED WORKMANSHIP - genuine leather bullet occupies ~180 chars.\n"
+            "THURSDAY'S SIGNATURE CRAFTSMANSHIP - featuring a fully lined supple glove leather "
+            "interior, studded rubber outsoles, and cork-bed midsoles that form to your feet.\n"
+        )
+        chunk = prose + bullets
+        # Confirm the key claims are past 1500 chars (the old limit) but within 2500 (new limit)
+        assert "cork-bed midsoles" not in chunk[:1500], "claim must be past old 1500-char limit"
+        assert "cork-bed midsoles" in chunk[:2500], "claim must be within new 2500-char limit"
+
+        result = _format_docs_for_prompt([self._doc(chunk)])
+
+        assert (
+            "cork-bed midsoles" in result
+        ), "late bullet attribute was truncated — judge will false-positive flag it as fabrication"
+        assert (
+            "glove leather" in result
+        ), "late bullet attribute was truncated — judge will false-positive flag it as fabrication"
 
     def test_truncates_at_max_chars_when_explicitly_set(self):
         text = "A" * 2000
