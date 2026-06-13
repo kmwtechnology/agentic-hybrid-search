@@ -6,7 +6,7 @@
 
 **Documentation**: [Documentation expansion complete (6 phases, 20 files)](documentation_expansion_complete.md) | [README hierarchy complete (6 new files)](documentation_hierarchy_2026-06-04.md)
 
-**Collaboration & Workflow**: [Claude collaboration prefs](feedback_claude_collaboration_prefs.md) | [Session workflow rhythm (13-phase)](feedback_session_workflow_rhythm.md) | [Common gotchas (quick-ref)](feedback_common_gotchas.md) | [Documentation hierarchy principle (all audiences)](feedback_documentation_hierarchy_principle.md)
+**Collaboration & Workflow**: [Claude collaboration prefs](feedback_claude_collaboration_prefs.md) | [Session workflow rhythm (13-phase)](feedback_session_workflow_rhythm.md) | [Common gotchas (quick-ref)](feedback_common_gotchas.md) | [Documentation hierarchy principle (all audiences)](feedback_documentation_hierarchy_principle.md) | [No Slack PR announcements — not a Nasuni project](feedback_no_slack_announcements.md)
 
 **Auth & Security**: [Login gate + session](login_gate_2026-04-29.md) | [Admin auth enforcement](admin_auth_enforcement_2026-04-30.md) | [Origin auth Host fallback rule](feedback_origin_auth_host_fallback.md)
 
