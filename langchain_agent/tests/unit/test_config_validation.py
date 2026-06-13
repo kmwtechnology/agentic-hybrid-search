@@ -24,14 +24,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 class TestRequiredEnvironmentVariables:
     """Test that all required environment variables are present."""
 
-    def test_google_api_key_required(self):
-        """Test that GOOGLE_API_KEY is required."""
-        # GOOGLE_API_KEY should be set in test environment
-        # For this test, just verify it can be read
-        key = os.getenv("GOOGLE_API_KEY")
-        # Note: May be None in pure unit test, but should fail at runtime
-        # This test verifies the env var can be checked
-        assert key is None or isinstance(key, str)
+    def test_google_api_key_in_config_all(self):
+        """GOOGLE_API_KEY must be exported from config so callers can import it."""
+        import config
+
+        assert "GOOGLE_API_KEY" in config.__all__
 
     def test_google_api_key_validation_when_set(self):
         """Test GOOGLE_API_KEY format when set."""
@@ -40,6 +37,31 @@ class TestRequiredEnvironmentVariables:
         # Verify it's a non-empty string
         assert len(test_key) > 0
         assert isinstance(test_key, str)
+
+    def test_verify_prerequisites_exits_when_google_api_key_absent(self):
+        """verify_prerequisites must exit(1) when GOOGLE_API_KEY is not set."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("main.LinkVerifier"), patch("main.DocumentReplacer"):
+            from main import EcommerceSearchAgent
+
+            agent = EcommerceSearchAgent.__new__(EcommerceSearchAgent)
+            agent.link_verifier = MagicMock()
+            agent.doc_replacer = MagicMock()
+            # Mock vector_store so OpenSearch checks pass
+            mock_vs = MagicMock()
+            mock_vs.client.info.return_value = {"version": {"number": "2.19"}}
+            mock_vs.client.count.return_value = {"count": 100}
+            agent.vector_store = mock_vs
+
+        # Patch Postgres connect and GOOGLE_API_KEY to simulate missing key
+        with (
+            patch("psycopg.connect"),
+            patch("main.GOOGLE_API_KEY", None),
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                agent.verify_prerequisites()
+            assert exc_info.value.code == 1
 
     def test_opensearch_host_has_default(self):
         """Test OPENSEARCH_HOST has a default value."""

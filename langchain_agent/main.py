@@ -350,13 +350,13 @@ class EcommerceSearchAgent:
             print("  Run: python setup.py")
             sys.exit(1)
 
-        # Check Google API key or Application Default Credentials
-        if GOOGLE_API_KEY:
-            print("✓ Using explicit GOOGLE_API_KEY")
-        else:
-            print("ℹ GOOGLE_API_KEY not set; relying on Application Default Credentials (ADC)")
-            print("  For local dev: set GOOGLE_API_KEY in .env")
-            print("  For Cloud Run: ensure service account has aiplatform.user role")
+        # Check Google API key — required; langchain-google-genai uses the Gemini Developer
+        # API which authenticates only with an API key string, not ADC / service accounts.
+        if not GOOGLE_API_KEY:
+            print("✗ GOOGLE_API_KEY is not set")
+            print("  Get a key at https://aistudio.google.com/apikey and set it in .env")
+            sys.exit(1)
+        print("✓ GOOGLE_API_KEY is set")
 
         print()
 
