@@ -108,9 +108,13 @@ INDEX_MAPPING = {
                 },
             },
             "analyzer": {
-                "english_analyzer": {
+                "light_english_analyzer": {
                     "tokenizer": "standard",
-                    "filter": ["lowercase", "synonym_filter", "stop", "snowball"],
+                    "filter": ["lowercase", "synonym_filter", "stop", "kstem"],
+                },
+                "heavy_english_analyzer": {
+                    "tokenizer": "standard",
+                    "filter": ["lowercase", "stop", "snowball"],
                 },
                 "english_shingle_analyzer": {
                     "tokenizer": "standard",
@@ -143,7 +147,11 @@ INDEX_MAPPING = {
                     "parameters": {"ef_construction": 512, "m": 16},
                 },
             },
-            "chunk_text": {"type": "text", "analyzer": "english_analyzer"},
+            "chunk_text": {
+                "type": "text",
+                "analyzer": "light_english_analyzer",
+                "fields": {"heavy": {"type": "text", "analyzer": "heavy_english_analyzer"}},
+            },
             "document_id": {"type": "keyword"},
             "chunk_index": {"type": "integer"},
             "collection_id": {"type": "keyword"},
@@ -158,13 +166,19 @@ INDEX_MAPPING = {
             "product_id": {"type": "keyword"},
             "product_brand": {
                 "type": "text",
-                "analyzer": "english_analyzer",
-                "fields": {"keyword": {"type": "keyword"}},
+                "analyzer": "light_english_analyzer",
+                "fields": {
+                    "keyword": {"type": "keyword"},
+                    "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
+                },
             },
             "product_color": {
                 "type": "text",
-                "analyzer": "english_analyzer",
-                "fields": {"keyword": {"type": "keyword"}},
+                "analyzer": "light_english_analyzer",
+                "fields": {
+                    "keyword": {"type": "keyword"},
+                    "heavy": {"type": "text", "analyzer": "heavy_english_analyzer"},
+                },
             },
             "product_locale": {"type": "keyword"},
             "esci_labels": {"type": "keyword"},
@@ -376,9 +390,13 @@ class OpenSearchVectorStore:
           - phrase_boost: include `title_phrase` field
           - field_boost: keep per-field `^N` weights; when False, all fields equal
           - fuzzy: include `"fuzziness": "AUTO"` on the multi_match
-          - synonyms: keep default (`english_analyzer`); when False, force the
+          - synonyms: keep default (`light_english_analyzer` with kstem); when False, force the
             query through the `standard` analyzer to suppress query-time
             synonym expansion (index-time tokens are unaffected)
+
+        Primary fields use `light_english_analyzer` (kstem) for precision. Sub-fields
+        (e.g., `chunk_text.heavy`) use `heavy_english_analyzer` (snowball) at ^0.3
+        for recall insurance, leveraging dense vectors for morphological coverage.
         """
         opts = optimizations or {}
         phonetic = opts.get("phonetic", True)
@@ -407,6 +425,14 @@ class OpenSearchVectorStore:
                     ("brand_phonetic", 1.5),
                 ]
             )
+        # Add .heavy sub-fields for recall insurance (snowball stemmer, low weight)
+        candidate_fields.extend(
+            [
+                ("chunk_text.heavy", 0.3),
+                ("product_brand.heavy", 0.3),
+                ("product_color.heavy", 0.3),
+            ]
+        )
 
         if field_boost:
             fields = [
