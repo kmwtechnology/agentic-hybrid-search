@@ -2552,6 +2552,46 @@ Original query: {query}
             f"wall={retrieve_elapsed:.3f}s"
         )
 
+        # Filter relaxation: if attribute filters returned very few results, drop
+        # multi_match (material_or_feature / size) filters and retry the hybrid
+        # query. Color and brand filters use `match` and are kept — the user
+        # explicitly asked for those. Multi_match filters are style/material hints
+        # that can over-constrain (e.g. "athletic" in "red shoes athletic").
+        MIN_ATTR_FILTER_RESULTS = 3
+        if (
+            attribute_filters
+            and len(results) < MIN_ATTR_FILTER_RESULTS
+            and intent in ("attribute_filter", "refinement")
+        ):
+            hard_filters = [f for f in attribute_filters if "multi_match" not in f]
+            if len(hard_filters) < len(attribute_filters):
+                logger.info(
+                    "Retriever: filter relaxation — %d doc(s) with full filters, "
+                    "retrying without material/size constraints (%d → %d filter(s))",
+                    len(results),
+                    len(attribute_filters),
+                    len(hard_filters),
+                )
+                relaxed_retriever = self.vector_store.as_retriever(
+                    search_type="hybrid",
+                    search_kwargs={
+                        "k": RERANKER_FETCH_K if ENABLE_RERANKING else RETRIEVER_K,
+                        "fetch_k": RETRIEVER_FETCH_K,
+                        "alpha": alpha,
+                        "filters": hard_filters or None,
+                        "optimizations": state.get("optimizations") or {},
+                        "capture_body": hybrid_capture,
+                    },
+                )
+                relaxed_results = relaxed_retriever.invoke(query)
+                if len(relaxed_results) > len(results):
+                    results = relaxed_results
+                    attribute_filters = hard_filters or None
+                    logger.info(
+                        "Retriever: relaxation succeeded — %d doc(s) returned",
+                        len(results),
+                    )
+
         # Emit OpenSearch query events with the actual DSL bodies. The hybrid
         # event flips to `quality_gate_retry` on the second pass so the UI
         # can surface the retry separately. The BM25 baseline is identical
@@ -2952,6 +2992,7 @@ Original query: {query}
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": "Quality gate disabled in config",
+                "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }
 
@@ -2962,6 +3003,7 @@ Original query: {query}
             )
             return {
                 "quality_gate_reason": f"Accepted after retry (max_score={max_score:.3f})",
+                "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }
 
@@ -2970,6 +3012,7 @@ Original query: {query}
             return {
                 "quality_gate_retried": False,
                 "quality_gate_reason": "No documents to evaluate",
+                "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }
 
@@ -2982,6 +3025,7 @@ Original query: {query}
                 "quality_gate_retried": False,
                 "quality_gate_reason": f"PASS: max_score {max_score:.3f} >= threshold {quality_threshold:.2f}",
                 "quality_gate_status": "pass",
+                "quality_gate_threshold_used": quality_threshold,
                 "reranker_max_score": max_score,
             }
 
@@ -3002,6 +3046,7 @@ Original query: {query}
             "quality_gate_retried": True,
             "quality_gate_reason": f"RETRY ({intent}): score {max_score:.3f} < {quality_threshold:.2f}, alpha → {new_alpha:.2f}",
             "quality_gate_status": "retry",
+            "quality_gate_threshold_used": quality_threshold,
             "reranker_max_score": max_score,
         }
 
