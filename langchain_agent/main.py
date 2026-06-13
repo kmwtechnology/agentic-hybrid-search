@@ -2240,22 +2240,22 @@ Respond with JSON only. No other text."""
             elapsed_ms,
         )
 
-        # Auto-retry path (Layer 3a). Triggered when:
-        #   - faithfulness < 0.85 AND at least one flagged claim is in a
-        #     retry-worthy category (fabrication / cross_product_bleed)
-        #   - we haven't already retried this turn
+        # Auto-retry path (Layer 3a). Triggered when at least one flagged
+        # claim is fabrication / cross_product_bleed AND we haven't already
+        # retried this turn. The faithfulness score is NOT checked here —
+        # the LLM judge can assign a high score (e.g. 0.90) while simultaneously
+        # flagging dangerous fabrications, making the score an unreliable gate.
+        # Categorical claim classification is the authoritative signal (issue #77).
         # Inference- or overreach-only flags surface to the UI but skip the
         # ~20–30s retry — regenerating those usually makes the answer worse.
         retry_worthy_claims = [
             h for h in result.hallucinations if h.category in RETRY_ELIGIBLE_CATEGORIES
         ]
-        retry_eligible = (
-            result.faithfulness < 0.85
-            and len(retry_worthy_claims) > 0
-            and not state.get("hallucination_retry_used", False)
+        retry_eligible = len(retry_worthy_claims) > 0 and not state.get(
+            "hallucination_retry_used", False
         )
         if not retry_eligible:
-            if result.faithfulness < 0.85 and result.hallucinations:
+            if result.hallucinations:
                 logger.info(
                     "llm_judge_node: skipping retry — %d flag(s) but none are "
                     "fabrication/cross_product_bleed (inference/overreach only).",
