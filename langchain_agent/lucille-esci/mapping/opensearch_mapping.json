@@ -44,11 +44,19 @@
         }
       },
       "analyzer": {
-        "english_analyzer": {
+        "light_english_analyzer": {
           "tokenizer": "standard",
           "filter": [
             "lowercase",
             "synonym_filter",
+            "stop",
+            "kstem"
+          ]
+        },
+        "heavy_english_analyzer": {
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
             "stop",
             "snowball"
           ]
@@ -101,7 +109,13 @@
       },
       "chunk_text": {
         "type": "text",
-        "analyzer": "english_analyzer"
+        "analyzer": "light_english_analyzer",
+        "fields": {
+          "heavy": {
+            "type": "text",
+            "analyzer": "heavy_english_analyzer"
+          }
+        }
       },
       "document_id": {
         "type": "keyword"
@@ -134,19 +148,27 @@
       },
       "product_brand": {
         "type": "text",
-        "analyzer": "english_analyzer",
+        "analyzer": "light_english_analyzer",
         "fields": {
           "keyword": {
             "type": "keyword"
+          },
+          "heavy": {
+            "type": "text",
+            "analyzer": "heavy_english_analyzer"
           }
         }
       },
       "product_color": {
         "type": "text",
-        "analyzer": "english_analyzer",
+        "analyzer": "light_english_analyzer",
         "fields": {
           "keyword": {
             "type": "keyword"
+          },
+          "heavy": {
+            "type": "text",
+            "analyzer": "heavy_english_analyzer"
           }
         }
       },
