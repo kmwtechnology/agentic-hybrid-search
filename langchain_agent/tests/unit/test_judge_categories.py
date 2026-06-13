@@ -6,6 +6,7 @@ to validate.
 """
 
 import pytest
+from langchain_core.documents import Document
 from pydantic import ValidationError
 
 from judge import (
@@ -13,6 +14,7 @@ from judge import (
     FlaggedClaim,
     HallucinationCategory,
     JudgmentResult,
+    _format_docs_for_prompt,
 )
 
 
@@ -105,3 +107,50 @@ class TestJudgmentResultHallucinationsField:
         # crosses the llm_judge_node → PipelineSummaryEvent boundary).
         round_tripped = JudgmentResult(**dumped)
         assert round_tripped.hallucinations[0].category == HallucinationCategory.inference
+
+
+@pytest.mark.unit
+class TestFormatDocsForPrompt:
+    def _doc(self, text, title="Product", product_id="ID1"):
+        return Document(page_content=text, metadata={"title": title, "product_id": product_id})
+
+    def test_default_limit_includes_tail_attributes(self):
+        """Regression for issue #81: 360-char default truncated 'Made in USA' claims
+        that appear at the end of ESCI product descriptions (~800 chars), causing
+        the judge to flag grounded claims as fabrications."""
+        long_text = (
+            "Nylabone 3 Pack Of Puppy Chew Chicken Flavored Teething Bones "
+            "Developing proper chewing habits is one of the best lessons your young puppy "
+            "can learn. Start them down the right path now with a chew they'll love! "
+            "These bones are made of softer materials for puppies. They help puppies "
+            "develop proper chewing habits and grow strong teeth & jaws. Textures promote "
+            "dental health by aiding in the removal of plaque and tartar. "
+            "Designed to encourage positive play and teach your puppy healthy chewing habits "
+            "from an early age. It's got a chicken flavor that's sure to be a hit with any pup. "
+            "Keep them happy, busy and entertained while helping to clean teeth, reduce plaque "
+            "and tartar, and promote proper oral hygiene. Satisfies the needs of your teething "
+            "puppy with a safe, softer material that's perfect for pets that don't have "
+            "permanent teeth. Made in the USA."
+        )
+        assert len(long_text) > 360, "test text must exceed the old 360-char limit"
+        assert "Made in the USA" in long_text[-50:], "origin claim must be in the tail"
+
+        result = _format_docs_for_prompt([self._doc(long_text)])
+
+        assert (
+            "Made in the USA" in result
+        ), "origin claim was truncated — judge will false-positive flag it as fabrication"
+
+    def test_truncates_at_max_chars_when_explicitly_set(self):
+        text = "A" * 2000
+        result = _format_docs_for_prompt([self._doc(text)], max_chars=100)
+        assert "…" in result
+        # snippet line should be ≤ 100 chars + "…"
+        snippet_line = [line for line in result.splitlines() if line.startswith("   ")][0].strip()
+        assert len(snippet_line) <= 101  # 100 chars + ellipsis character
+
+    def test_short_text_not_truncated(self):
+        text = "Short description."
+        result = _format_docs_for_prompt([self._doc(text)])
+        assert "…" not in result
+        assert "Short description." in result

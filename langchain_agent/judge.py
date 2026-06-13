@@ -165,8 +165,15 @@ _JUDGE_SYSTEM = (
 )
 
 
-def _format_docs_for_prompt(documents: List[Document], max_chars: int = 360) -> str:
-    """Compact numbered render of the retrieved docs, truncated for prompt size."""
+def _format_docs_for_prompt(documents: List[Document], max_chars: int = 1500) -> str:
+    """Compact numbered render of the retrieved docs, truncated for prompt size.
+
+    Default 1500 chars/doc — generous enough to include tail attributes like
+    "Made in USA" that appear at the end of ESCI product descriptions (which
+    run up to ~800 chars). At 4 docs (RETRIEVER_K=4) the block stays under
+    6 000 chars, well within Gemini Flash Lite's context window. 360 was too
+    tight and caused false-positive fabrication flags (issue #81).
+    """
     lines = []
     for i, doc in enumerate(documents, 1):
         title = doc.metadata.get("title") or "(untitled)"
