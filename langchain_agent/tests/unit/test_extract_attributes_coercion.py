@@ -109,10 +109,10 @@ class TestExtractAttributesCoercion:
         filters = agent._extract_attributes("sony black headphones")
         _all_query_fields_are_strings(filters)
         # Brand becomes single-string, color becomes joined string.
-        brand = next(f for f in filters if "product_brand" in f.get("match", {}))
-        color = next(f for f in filters if "product_color" in f.get("match", {}))
-        assert brand["match"]["product_brand"]["query"] == "Sony"
-        assert color["match"]["product_color"]["query"] == "black blue"
+        brand = next(f for f in filters if "product_brand_normalized" in f.get("match", {}))
+        color = next(f for f in filters if "product_color_primary" in f.get("match", {}))
+        assert brand["match"]["product_brand_normalized"]["query"] == "Sony"
+        assert color["match"]["product_color_primary"]["query"] == "black blue"
 
     def test_array_size_coerced(self) -> None:
         agent = _agent_returning_attributes({"size": ["XL"]})

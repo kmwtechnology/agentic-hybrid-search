@@ -1703,11 +1703,11 @@ Return ONLY a JSON object (use null for missing attributes):
             # Build OpenSearch filter clauses (as separate filter objects - they're implicitly AND'd)
             brand = _coerce(attributes.get("brand"))
             if brand:
-                filters.append({"match": {"product_brand": {"query": brand}}})
+                filters.append({"match": {"product_brand_normalized": {"query": brand}}})
 
             color = _coerce(attributes.get("color"))
             if color:
-                filters.append({"match": {"product_color": {"query": color}}})
+                filters.append({"match": {"product_color_primary": {"query": color}}})
 
             # material_or_feature → multi_match against title + content
             material = _coerce(attributes.get("material_or_feature"))
