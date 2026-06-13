@@ -55,6 +55,7 @@ export function Message({ message }: MessageProps) {
   const isUser = message.role === 'user'
   const [citationsOpen, setCitationsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showOriginal, setShowOriginal] = useState(false)
   const citationsCount = message.citations?.length || 0
 
   // Memoize markdown preprocessing to avoid regex operations on every render
@@ -263,6 +264,38 @@ export function Message({ message }: MessageProps) {
             >
               {processedContent}
             </ReactMarkdown>
+          </div>
+        )}
+
+        {message.corrected && !isUser && (
+          <div className="mt-3 flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                title={
+                  message.originalFaithfulness !== undefined && message.correctedFaithfulness !== undefined
+                    ? `Faithfulness improved ${Math.round(message.originalFaithfulness * 100)}% → ${Math.round(message.correctedFaithfulness * 100)}%`
+                    : 'Response corrected by AI judge'
+                }
+                className="text-xs text-amber-400 border border-amber-400/30 rounded px-1.5 py-0.5 cursor-default select-none"
+              >
+                AI-corrected
+              </span>
+              {message.originalContent && (
+                <button
+                  type="button"
+                  onClick={() => setShowOriginal((prev) => !prev)}
+                  className="text-xs text-gray-400 hover:text-gray-300 underline focus:outline-none"
+                >
+                  {showOriginal ? 'Hide original' : 'Show original'}
+                </button>
+              )}
+            </div>
+            {showOriginal && message.originalContent && (
+              <div className="pl-3 border-l-2 border-amber-400/30">
+                <p className="text-xs text-amber-400/70 font-semibold mb-1">Original (before correction):</p>
+                <p className="text-xs text-gray-400 whitespace-pre-wrap">{message.originalContent}</p>
+              </div>
+            )}
           </div>
         )}
 

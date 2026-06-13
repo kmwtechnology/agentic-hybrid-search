@@ -81,7 +81,7 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 
 ### Observable Events
 
-WebSocket-streamed Pydantic events: `SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent` (alpha/intent/filters + `body`/`index`/`params` DSL fields, tagged with `query_type` ∈ {`hybrid`, `bm25_baseline`, `quality_gate_retry`}; embedding vectors scrubbed to `<EMBEDDING_OMITTED_768_DIMS>`; the retriever node emits one `hybrid` and one `bm25_baseline` per request, `quality_gate_retry` only when the gate fires; surfaced in the UI by the DSL eye-icon viewer in `DslViewerModal.tsx`), `LLMResponseChunkEvent`, `ClarificationRequestedEvent`, `ClarificationResolvedEvent`, `PipelineSummaryEvent` (per-stage NDCG/MRR/Recall/Precision + lift-per-100ms; emitted once after `AgentCompleteEvent`; falls back to confidence-proxy when no judgments exist).
+WebSocket-streamed Pydantic events: `SearchProgressEvent`, `RerankerProgressEvent`, `QualityGateEvent`, `QueryExpansionEvent`, `OpenSearchQueryEvent` (alpha/intent/filters + `body`/`index`/`params` DSL fields, tagged with `query_type` ∈ {`hybrid`, `bm25_baseline`, `quality_gate_retry`}; embedding vectors scrubbed to `<EMBEDDING_OMITTED_768_DIMS>`; the retriever node emits one `hybrid` and one `bm25_baseline` per request, `quality_gate_retry` only when the gate fires; surfaced in the UI by the DSL eye-icon viewer in `DslViewerModal.tsx`), `LLMResponseChunkEvent`, `LLMResponseCorrectedEvent` (emitted by `llm_judge` node when `hallucination_retry_used=True` + `corrected_response` is set; carries `corrected_content`, `original_faithfulness`, `corrected_faithfulness`; the frontend `useWebSocket` handler calls `correctLastAssistantMessage` in `chatStore` to replace the streamed message and sets `corrected=true` on the `ChatMessage`, which renders an amber "AI-corrected" badge with a "Show original" toggle in `Message.tsx`; only `fabrication` and `cross_product_bleed` judge categories trigger this — `inference`/`overreach` stay warning-only in the observability panel), `ClarificationRequestedEvent`, `ClarificationResolvedEvent`, `PipelineSummaryEvent` (per-stage NDCG/MRR/Recall/Precision + lift-per-100ms; emitted once after `AgentCompleteEvent`; falls back to confidence-proxy when no judgments exist; `corrected_response` field still present here for the observability panel diff view).
 
 **Critical**: `api/schemas/events.py` must stay in sync with `web/src/types/events.ts`. Each event's `node` field pins it to a pipeline step regardless of emission order.
 
@@ -91,7 +91,7 @@ WebSocket-streamed Pydantic events: `SearchProgressEvent`, `RerankerProgressEven
 |-------|------|
 | LLM (generation) | Gemini 3 Flash (preview) |
 | LLM (classify/rerank/eval) | Gemini 3.1 Flash Lite (preview) |
-| Embeddings | `text-embedding-005` (768-dim) |
+| Embeddings | `models/gemini-embedding-001` (768-dim) |
 | Agent framework | LangGraph + LangChain |
 | Vector DB | OpenSearch 2.19.1 (HNSW knn + BM25) |
 | Checkpoints | PostgreSQL 16 |
@@ -308,7 +308,7 @@ Copy `langchain_agent/.env.example` → `langchain_agent/.env`.
 ### Models & Retrieval
 
 - `LLM_MODEL=gemini-3-flash-preview`, `LLM_TEMPERATURE=0`
-- `EMBEDDINGS_MODEL=models/text-embedding-005`, `VECTOR_DIMENSION=768` (set `output_dimensionality=768`)
+- `EMBEDDINGS_MODEL=models/gemini-embedding-001`, `VECTOR_DIMENSION=768` (set `output_dimensionality=768`)
 - `RERANKER_MODEL=gemini-3.1-flash-lite-preview`, `QUERY_EVAL_MODEL=gemini-3.1-flash-lite-preview`
 - `RETRIEVER_K=4`, `RETRIEVER_FETCH_K=30`, `RETRIEVER_ALPHA=0.25`
 - `ENABLE_RERANKING=true`, `RERANKER_FETCH_K=15`, `RERANKER_TOP_K=4`

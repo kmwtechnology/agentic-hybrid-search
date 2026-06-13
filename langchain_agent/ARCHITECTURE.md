@@ -130,7 +130,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 - **Dual-path search**:
   1. **Vector Search** (HNSW): Gemini 768-dim embeddings, cosine similarity
-  2. **Lexical Search** (BM25): OpenSearch analyzer, term frequency
+  2. **Lexical Search** (BM25): Dual-analyzer pattern — primary fields (`chunk_text`, `product_brand`, `product_color`) use `light_english_analyzer` (kstem, light stemming) for precision; `.heavy` sub-fields use `heavy_english_analyzer` (snowball, aggressive stemming) at ^0.3 boost for morphological recall fallback. Dense vectors handle the bulk of morphological recall, so BM25 is tuned for precision ("Beats" ≠ "beat" with kstem, but still matches "running/runs/ran" via embeddings).
 - **RRF Fusion** (Reciprocal Rank Fusion):
 
   ```text
@@ -304,10 +304,12 @@ emit_event(event) ──JSON─────────────────�
 |------|-------|--------|
 | Intent Classifier | `IntentClassificationEvent` | intent, confidence, reasoning |
 | Query Evaluator | `QueryEvaluationEvent` | alpha, query_analysis, expanded_query |
-| Retriever | `RetrievalProgressEvent`, `OpenSearchQueryEvent` | query_dsl, alpha, intent, candidates |
+| Retriever | `RetrievalProgressEvent`, `OpenSearchQueryEvent` | query_dsl, alpha, intent, candidates; `query_type` ∈ {`hybrid`, `bm25_baseline`, `quality_gate_retry`} |
 | Reranker | `RerankerProgressEvent` | per-doc scores, top-k |
 | Quality Gate | `QualityGateEvent` | decision (pass/retry/accept), reasoning |
 | Agent | `LLMResponseChunkEvent`, `AgentCompleteEvent` | token, finish_reason |
+| Agent (low confidence) | `ClarificationRequestedEvent`, `ClarificationResolvedEvent` | emitted when intent confidence < 0.7; resolved on user reply |
+| LLM Judge | `LLMResponseCorrectedEvent` | `corrected_content`, `original_faithfulness`, `corrected_faithfulness`; emitted only when judge auto-correction fires (faithfulness < 0.85 + fabrication/cross-product-bleed flags); frontend replaces the streamed chat message |
 
 ### Event Schema Sync
 

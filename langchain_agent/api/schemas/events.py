@@ -413,6 +413,16 @@ class LLMResponseChunkEvent(BaseEvent):
     is_complete: bool = False
 
 
+class LLMResponseCorrectedEvent(BaseEvent):
+    """Emitted when LLM judge auto-corrects the streamed response (fabrication/cross-product-bleed)."""
+
+    type: Literal["llm_response_corrected"] = "llm_response_corrected"
+    node: Literal["llm_judge"] = "llm_judge"
+    corrected_content: str
+    original_faithfulness: float
+    corrected_faithfulness: float
+
+
 class ToolCallEvent(BaseEvent):
     """Emitted when agent decides to call a tool."""
 
@@ -756,6 +766,7 @@ AgentEvent = (
     | LLMReasoningChunkEvent
     | LLMResponseStartEvent
     | LLMResponseChunkEvent
+    | LLMResponseCorrectedEvent
     | ToolCallEvent
     | ResponseGradingEvent
     | ResponseImprovementEvent

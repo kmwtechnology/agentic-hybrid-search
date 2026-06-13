@@ -79,7 +79,7 @@ Start with the components directory to understand the UI structure, then explore
 
 | Store | Purpose |
 |-------|---------|
-| `chatStore.ts` | Messages, active conversation, UI state (chat vs. pipeline view) |
+| `chatStore.ts` | Messages, active conversation, UI state (chat vs. pipeline view); `ChatMessage` carries `corrected`, `originalContent`, `originalFaithfulness`, `correctedFaithfulness` for judge auto-correction display |
 | `observabilityStore.ts` | Pipeline events from WebSocket, stage-by-stage visualization |
 | `authStore.ts` | Login state, session validity, user credentials |
 
@@ -115,6 +115,7 @@ Key observability components render pipeline events:
 | `PipelineSummaryCard` | Per-stage NDCG/MRR/Recall/Precision (or confidence proxy) | `ObservabilityPanel/PipelineSummaryCard.tsx` |
 | `DslViewerModal` | Full OpenSearch DSL body with request line + embedded vectors scrubbed | `ObservabilityPanel/` |
 | `TypeaheadSuggestions` | Did you mean? / Suggestions / Recent Searches combobox | `ChatPanel/` |
+| `Message` | Single chat message bubble; renders markdown, citations, streaming cursor, and amber "AI-corrected" badge with "Show original" toggle when `message.corrected=true` | `ChatPanel/Message.tsx` |
 
 ## Testing
 

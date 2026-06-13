@@ -240,6 +240,14 @@ export interface LLMResponseChunkEvent extends BaseEvent {
   is_complete: boolean
 }
 
+export interface LLMResponseCorrectedEvent extends BaseEvent {
+  type: 'llm_response_corrected'
+  node: 'llm_judge'
+  corrected_content: string
+  original_faithfulness: number
+  corrected_faithfulness: number
+}
+
 export interface ToolCallEvent extends BaseEvent {
   type: 'tool_call'
   node: 'agent'
@@ -469,6 +477,7 @@ export type AgentEvent =
   | LLMReasoningChunkEvent
   | LLMResponseStartEvent
   | LLMResponseChunkEvent
+  | LLMResponseCorrectedEvent
   | ToolCallEvent
   | ResponseGradingEvent
   | ResponseImprovementEvent

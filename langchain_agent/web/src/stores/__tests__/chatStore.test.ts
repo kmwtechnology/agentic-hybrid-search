@@ -196,4 +196,56 @@ describe('chatStore', () => {
       expect(useChatStore.getState().messages).toHaveLength(0)
     })
   })
+
+  describe('correctLastAssistantMessage', () => {
+    it('replaces content of the last assistant message with corrected version', () => {
+      useChatStore.getState().addMessage(makeMessage({ id: 'a1', role: 'assistant', content: 'original answer' }))
+      useChatStore.getState().correctLastAssistantMessage('corrected answer', 0.65, 0.92)
+      const { messages } = useChatStore.getState()
+      expect(messages[0].content).toBe('corrected answer')
+    })
+
+    it('saves original content before replacing', () => {
+      useChatStore.getState().addMessage(makeMessage({ id: 'a1', role: 'assistant', content: 'original answer' }))
+      useChatStore.getState().correctLastAssistantMessage('corrected answer', 0.65, 0.92)
+      const { messages } = useChatStore.getState()
+      expect(messages[0].originalContent).toBe('original answer')
+    })
+
+    it('sets corrected flag and faithfulness scores', () => {
+      useChatStore.getState().addMessage(makeMessage({ id: 'a1', role: 'assistant', content: 'original' }))
+      useChatStore.getState().correctLastAssistantMessage('fixed', 0.7, 0.95)
+      const msg = useChatStore.getState().messages[0]
+      expect(msg.corrected).toBe(true)
+      expect(msg.originalFaithfulness).toBeCloseTo(0.7)
+      expect(msg.correctedFaithfulness).toBeCloseTo(0.95)
+    })
+
+    it('does not touch the last user message', () => {
+      useChatStore.getState().addMessage(makeMessage({ id: 'u1', role: 'user', content: 'user query' }))
+      useChatStore.getState().correctLastAssistantMessage('corrected', 0.5, 0.9)
+      const { messages } = useChatStore.getState()
+      expect(messages[0].content).toBe('user query')
+      expect(messages[0].corrected).toBeUndefined()
+    })
+
+    it('does nothing when messages array is empty', () => {
+      expect(() =>
+        useChatStore.getState().correctLastAssistantMessage('x', 0.5, 0.9)
+      ).not.toThrow()
+      expect(useChatStore.getState().messages).toHaveLength(0)
+    })
+
+    it('only corrects the last message when multiple messages exist', () => {
+      useChatStore.getState().addMessage(makeMessage({ id: 'a1', role: 'assistant', content: 'first answer' }))
+      useChatStore.getState().addMessage(makeMessage({ id: 'u1', role: 'user', content: 'follow-up' }))
+      useChatStore.getState().addMessage(makeMessage({ id: 'a2', role: 'assistant', content: 'second answer' }))
+      useChatStore.getState().correctLastAssistantMessage('corrected second', 0.6, 0.9)
+      const { messages } = useChatStore.getState()
+      expect(messages[0].content).toBe('first answer')
+      expect(messages[0].corrected).toBeUndefined()
+      expect(messages[2].content).toBe('corrected second')
+      expect(messages[2].corrected).toBe(true)
+    })
+  })
 })

@@ -153,6 +153,14 @@ export function useWebSocket(): UseWebSocketReturn {
         break
       }
 
+      case 'llm_response_corrected':
+        chatStore.correctLastAssistantMessage(
+          data.corrected_content,
+          data.original_faithfulness,
+          data.corrected_faithfulness,
+        )
+        break
+
       case 'agent_error':
         console.error('Agent error:', data.error)
         chatStore.setConnectionState(false, false, data.error)

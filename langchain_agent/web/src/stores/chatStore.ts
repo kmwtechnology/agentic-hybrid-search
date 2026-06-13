@@ -22,6 +22,10 @@ export interface ChatMessage {
   isStreaming?: boolean
   status?: 'queued'
   citations?: Citation[]
+  corrected?: boolean
+  originalContent?: string
+  originalFaithfulness?: number
+  correctedFaithfulness?: number
 }
 
 export interface QueuedMessage {
@@ -64,6 +68,7 @@ interface ChatState {
   updateLastMessage: (content: string) => void
   updateMessageStatus: (id: string, status?: 'queued') => void
   setLastMessageCitations: (citations: Citation[]) => void
+  correctLastAssistantMessage: (correctedContent: string, originalFaithfulness: number, correctedFaithfulness: number) => void
   setIsProcessing: (isProcessing: boolean) => void
   setStreamingContent: (content: string) => void
   appendStreamingContent: (chunk: string) => void
@@ -133,6 +138,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages[lastIndex] = {
         ...messages[lastIndex],
         citations,
+      }
+    }
+    return { messages }
+  }),
+
+  correctLastAssistantMessage: (correctedContent, originalFaithfulness, correctedFaithfulness) => set((state) => {
+    const messages = [...state.messages]
+    const lastIndex = messages.length - 1
+    if (lastIndex >= 0 && messages[lastIndex].role === 'assistant') {
+      messages[lastIndex] = {
+        ...messages[lastIndex],
+        originalContent: messages[lastIndex].content,
+        content: correctedContent,
+        corrected: true,
+        originalFaithfulness,
+        correctedFaithfulness,
       }
     }
     return { messages }
