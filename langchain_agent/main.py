@@ -1401,8 +1401,11 @@ CITATION & STYLE:
         Returns:
             Expanded query with topic context, or original query if expansion not needed
         """
-        # Build conversation context
-        context = self._build_recent_context(messages, limit=4)
+        # Filter to user turns only — AI responses (product listings) inflate the query bloat.
+        # For resolving what the user meant ("those", "the one you mentioned"),
+        # only user context matters; AI descriptions are irrelevant and cause maxClauseCount errors (issue #85).
+        user_messages = [m for m in messages if isinstance(m, HumanMessage)]
+        context = self._build_recent_context(user_messages, limit=4)
         if not context:
             return query
 
