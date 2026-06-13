@@ -318,7 +318,7 @@ emit_event(event) ──JSON─────────────────�
 | Quality Gate | `QualityGateEvent` | decision (pass/retry/accept), reasoning |
 | Agent | `LLMResponseChunkEvent`, `AgentCompleteEvent` | token, finish_reason |
 | Agent (low confidence) | `ClarificationRequestedEvent`, `ClarificationResolvedEvent` | emitted when intent confidence < 0.7; resolved on user reply |
-| LLM Judge | `LLMResponseCorrectedEvent` | `corrected_content`, `original_faithfulness`, `corrected_faithfulness`; emitted only when judge auto-correction fires (faithfulness < 0.85 + fabrication/cross-product-bleed flags); frontend replaces the streamed chat message |
+| LLM Judge | `LLMResponseCorrectedEvent` | `corrected_content`, `original_faithfulness`, `corrected_faithfulness`; emitted when judge auto-correction fires (any fabrication/cross-product-bleed flag present — faithfulness score is NOT a gate, see issue #77); frontend replaces the streamed chat message |
 
 ### Event Schema Sync
 

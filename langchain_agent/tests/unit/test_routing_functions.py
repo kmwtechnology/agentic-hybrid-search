@@ -477,3 +477,63 @@ class TestLlmJudgeNodeHallucinationRetry:
         # Only the retry-worthy claim text should be passed to the regenerator —
         # we don't want the model to try to "fix" inference flags.
         assert captured_forbidden == ["Made in USA"]
+
+    def test_retries_when_faithfulness_high_but_fabrications_found(self):
+        """Regression test for issue #77: faithfulness=0.90 + 2 fabrications must trigger retry.
+
+        The LLM judge can assign a high faithfulness score while simultaneously
+        flagging dangerous fabrications. The retry gate must not depend on the
+        faithfulness score — categorical claim classification is the signal.
+        """
+        from langchain_core.documents import Document
+
+        from judge import HallucinationCategory
+
+        flag1 = MagicMock()
+        flag1.claim = "Made in the USA"
+        flag1.category = HallucinationCategory.fabrication
+
+        flag2 = MagicMock()
+        flag2.claim = "Wishbone is made in the USA"
+        flag2.category = HallucinationCategory.fabrication
+
+        first_result = MagicMock()
+        first_result.verdict = "llm_better"
+        first_result.faithfulness = 0.90  # high score — old gate would block retry
+        first_result.hallucinations = [flag1, flag2]
+        first_result.model_dump.return_value = {"faithfulness": 0.90}
+
+        second_result = MagicMock()
+        second_result.verdict = "llm_better"
+        second_result.faithfulness = 0.98
+        second_result.hallucinations = []
+        second_result.model_dump.return_value = {"faithfulness": 0.98}
+
+        mock_judge = MagicMock()
+        mock_judge.judge.side_effect = [first_result, second_result]
+        self.agent.judge = mock_judge
+
+        doc = Document(page_content="content", metadata={})
+        state = {
+            "messages": [AIMessage(content="response with Made in USA claims")],
+            "optimizations": {"llm": True, "llm_judge": True},
+            "intent": "search",
+            "user_query": "nyla bones for puppys",
+            "retrieved_documents": [doc],
+            "hallucination_retry_used": False,
+        }
+
+        with (
+            patch.object(self.agent, "_format_search_results", return_value="formatted"),
+            patch.object(
+                self.agent,
+                "_regenerate_without_hallucinations",
+                return_value="corrected response",
+            ),
+        ):
+            result = self.agent.llm_judge_node(state)
+
+        assert result["hallucination_retry_used"] is True
+        assert result["corrected_response"] == "corrected response"
+        assert result["judgment"]["faithfulness"] == 0.98
+        assert mock_judge.judge.call_count == 2
