@@ -68,11 +68,11 @@ Six intent classes: `search`, `comparison`, `attribute_filter`, `refinement`, `f
 - Conceptual → 0.7–0.85
 - Gift ideas/exploration → 1.0 (semantic)
 
-**Retriever** — hybrid vector + BM25 fused via Reciprocal Rank Fusion (k=60). Runs hybrid + BM25-baseline in parallel (2-thread `ThreadPoolExecutor`; opensearch-py releases GIL during I/O). Adds `retrieved_documents`, `pre_rerank_documents`, `bm25_documents`, `judgments`, `bm25_latency_ms`, `retriever_latency_ms`. `judgments` is per-query ESCI judgment lookup or `None`.
+**Retriever** — hybrid vector + BM25 fused via Reciprocal Rank Fusion (k=60). Runs hybrid + BM25-baseline in parallel (2-thread `ThreadPoolExecutor`; opensearch-py releases GIL during I/O). Adds `retrieved_documents`, `pre_rerank_documents`, `bm25_documents`, `judgments`, `bm25_latency_ms`, `retriever_latency_ms`. `judgments` is per-query ESCI judgment lookup or `None`. **Filter relaxation**: for `attribute_filter`/`refinement` intents, if the initial hybrid fetch returns fewer than 3 docs, the node drops `multi_match` (material_or_feature/size) filters and retries — color and brand `match` filters are kept since the user explicitly named them.
 
 **Reranker** — LLM-scored 0.0–1.0; sets `reranker_max_score`.
 
-**Quality Gate** — if `reranker_max_score < 0.5` and not yet retried, adjusts alpha ±0.3 and retries; otherwise continues.
+**Quality Gate** — uses intent-specific thresholds (comparison=0.55, search/follow_up=0.50, attribute_filter/refinement=0.45). If `reranker_max_score < threshold` and not yet retried, adjusts alpha ±0.3 and retries; otherwise continues. Returns `quality_gate_threshold_used` so the observability panel displays the intent-specific value, not the global default.
 
 **Agent** — conversational response with citations. ESCI products (no `url` metadata) cite via `https://www.amazon.com/s?k={title}` (search by title — robust against delisted ASINs; the legacy `/dp/{ASIN}` form 404'd often, see PR #10 / issue #4). Agent prompt forbids inline URLs; `_strip_inline_links` belt-and-suspenders post-processor drops any markdown/bare URL the LLM emits anyway. Citations dedup by URL, filtered by min reranker relevance (0.10). **CRITICAL**: All return paths in `agent_node` must include `"citations"` key (either populated list or empty list) — observable_agent depends on consistent state shape. Three early-return branches (summary, clarify, no-info) must return `"citations": []` (see issue #14 / commit b24719d).
 
@@ -109,7 +109,7 @@ WebSocket-streamed Pydantic events: `SearchProgressEvent`, `RerankerProgressEven
   - Query Evaluator adds: `alpha`, `intent_description`
   - Retriever adds: `retrieved_documents`, `pre_rerank_documents`, `bm25_documents`, `judgments`, `bm25_latency_ms`, `retriever_latency_ms`
   - Reranker adds: `reranker_max_score`, `reranked_documents`, `reranker_latency_ms`
-  - Quality Gate adds: `quality_gate_retried`, `alpha_adjusted_value`
+  - Quality Gate adds: `quality_gate_retried`, `alpha_adjusted_value`, `quality_gate_threshold_used`
   - Other: `thread_id`, `current_node`, `retrieved_products`, `citations`
 
 - **Hybrid search** — RRF fusion (k=60); `alpha` ∈ [0,1] weights lexical→semantic.

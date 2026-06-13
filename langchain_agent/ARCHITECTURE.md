@@ -202,6 +202,7 @@ This document provides a deep-dive into the system design, pipeline flow, state 
 
 - `quality_gate_retried`: Boolean flag (True if retry was triggered)
 - `quality_gate_reason`: Explanation of decision
+- `quality_gate_threshold_used`: The intent-specific threshold that was applied (float)
 
 **Why This Works**:
 
@@ -268,6 +269,7 @@ class CustomAgentState(TypedDict, total=False):
     # Quality Gate (→)
     quality_gate_retried: bool
     quality_gate_reason: str | None
+    quality_gate_threshold_used: float  # intent-specific threshold applied
 ```
 
 **IMPORTANT**: Since `total=False`, optional fields are **not guaranteed** at runtime.

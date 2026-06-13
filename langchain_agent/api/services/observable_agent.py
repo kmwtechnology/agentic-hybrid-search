@@ -877,16 +877,16 @@ class ObservableAgentService:
             from config import DEFAULT_ALPHA, QUALITY_GATE_THRESHOLD
 
             reason = output.get("quality_gate_reason", "")
-            triggered = "Retry triggered" in reason
+            triggered = reason.startswith("RETRY")
             await emit(
                 QualityGateEvent(
                     triggered=triggered,
                     original_alpha=(
-                        output.get("alpha", DEFAULT_ALPHA) if not triggered else DEFAULT_ALPHA
+                        DEFAULT_ALPHA if triggered else output.get("alpha", DEFAULT_ALPHA)
                     ),
                     new_alpha=output.get("alpha") if triggered else None,
                     max_score=output.get("reranker_max_score", 0.0),
-                    threshold=QUALITY_GATE_THRESHOLD,
+                    threshold=output.get("quality_gate_threshold_used", QUALITY_GATE_THRESHOLD),
                     reason=reason,
                 )
             )

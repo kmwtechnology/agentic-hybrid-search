@@ -54,7 +54,7 @@ intent = state["intent"]
 | query_evaluator | `alpha`, `intent_description` |
 | retriever | `retrieved_documents`, `pre_rerank_documents`, `bm25_documents`, `judgments`, `bm25_latency_ms`, `retriever_latency_ms` |
 | reranker | `reranker_max_score`, `reranked_documents`, `reranker_latency_ms` |
-| quality_gate | `quality_gate_retried`, `alpha_adjusted_value` |
+| quality_gate | `quality_gate_retried`, `alpha_adjusted_value`, `quality_gate_threshold_used` |
 | agent | `citations` (must be present in all return paths) |
 
 **Example:**

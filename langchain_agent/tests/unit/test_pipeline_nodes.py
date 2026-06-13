@@ -197,3 +197,62 @@ class TestQualityGateNode:
         result = agent.quality_gate_node(state)
         assert "reranker_max_score" in result
         assert result["reranker_max_score"] == pytest.approx(0.75)
+
+    def test_threshold_used_emitted_on_pass(self):
+        """quality_gate_threshold_used must be present so the UI shows intent-specific value."""
+        agent = _make_agent()
+        state = {
+            "messages": _msgs(),
+            "intent": "attribute_filter",
+            "alpha": 0.25,
+            "reranker_max_score": 0.63,
+            "retrieved_documents": self._docs(),
+            "quality_gate_retried": False,
+        }
+        result = agent.quality_gate_node(state)
+        assert result["quality_gate_status"] == "pass"
+        assert result["quality_gate_threshold_used"] == pytest.approx(0.45)
+
+    def test_threshold_used_emitted_on_retry(self):
+        """quality_gate_threshold_used is present on the retry path too."""
+        agent = _make_agent()
+        state = {
+            "messages": _msgs(),
+            "intent": "comparison",
+            "alpha": 0.6,
+            "reranker_max_score": 0.3,
+            "retrieved_documents": self._docs(),
+            "quality_gate_retried": False,
+        }
+        result = agent.quality_gate_node(state)
+        assert result["quality_gate_status"] == "retry"
+        assert result["quality_gate_threshold_used"] == pytest.approx(0.55)
+
+    def test_threshold_used_emitted_on_no_docs(self):
+        """quality_gate_threshold_used is present even when there are no docs."""
+        agent = _make_agent()
+        state = {
+            "messages": _msgs(),
+            "intent": "search",
+            "alpha": 0.5,
+            "reranker_max_score": 0.0,
+            "retrieved_documents": [],
+            "quality_gate_retried": False,
+        }
+        result = agent.quality_gate_node(state)
+        assert result["quality_gate_threshold_used"] == pytest.approx(0.50)
+
+    def test_threshold_used_matches_reason_string(self):
+        """The emitted threshold_used must match the value baked into the reason string."""
+        agent = _make_agent()
+        state = {
+            "messages": _msgs(),
+            "intent": "attribute_filter",
+            "alpha": 0.25,
+            "reranker_max_score": 0.63,
+            "retrieved_documents": self._docs(),
+            "quality_gate_retried": False,
+        }
+        result = agent.quality_gate_node(state)
+        threshold = result["quality_gate_threshold_used"]
+        assert f"{threshold:.2f}" in result["quality_gate_reason"]
