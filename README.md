@@ -95,8 +95,7 @@ A conversational RAG agent powered by Google Gemini for e-commerce product disco
   query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms)
 - **Dynamic alpha** — query-aware lexical/semantic balance; fast-path alpha
   for comparison/attribute_filter/refinement, LLM path for search/follow_up
-- **Quality gate** — if max reranker score < 0.5, adjusts alpha ±0.3 and
-  retries once
+- **Quality gate** — if max reranker score < 0.5, adjusts alpha ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) and retries once
 - **Conversational query rewriting** — resolves pronouns, comparatives, and
   short attribute questions using conversation history
 - **Refinement with context validation** — "make them waterproof" narrows

@@ -341,7 +341,8 @@
       "Bash(awk -F= '{print \"length:\", length\\($2\\)}')",
       "Bash(jobs)",
       "Bash(make benchmark-esci-fast *)",
-      "Bash(make smoke-local-quick *)"
+      "Bash(make smoke-local-quick *)",
+      "Bash(pdftotext /Users/kevin/Downloads/Maven-2026-v1.pdf -)"
     ]
   },
   "enableAllProjectMcpServers": true,

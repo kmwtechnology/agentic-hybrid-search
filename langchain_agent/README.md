@@ -16,7 +16,7 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
   RRF (k=60), with dynamic α per intent.
 - **Cross-encoder reranking** — `ms-marco-MiniLM-L-12-v2` scores
   query-product relevance (~10ms); Gemini Flash Lite fallback (~500ms).
-- **Quality gate** — retries once with α ±0.3 if max reranker score < 0.5.
+- **Quality gate** — retries once with α ±0.3 (fabrication/cross-product-bleed triggers auto-correction ~30s; inference/overreach surface only) if max reranker score < 0.5.
 - **Real-time streaming** — token-by-token WebSocket output with full
   observability events.
 - **Pipeline Quality Summary** — per-turn scorecard (NDCG@10 / MRR /
@@ -311,7 +311,7 @@ The 6-intent classifier routes every turn:
 
 | Intent | Pipeline | Examples |
 | --- | --- | --- |
-| `search` | RAG Q&A | "Find wireless headphones" |
+| `search` | RAG Q&A (LLM-path α) | "Find wireless headphones" |
 | `comparison` | RAG Q&A (fast-path α=0.60) | "Compare Sony vs Bose" |
 | `attribute_filter` | RAG Q&A (fast-path α=0.25) | "Blue running shoes size 10" |
 | `refinement` | RAG Q&A (fast-path α=0.35) | "Make them waterproof" |
