@@ -342,7 +342,14 @@
       "Bash(jobs)",
       "Bash(make benchmark-esci-fast *)",
       "Bash(make smoke-local-quick *)",
-      "Bash(pdftotext /Users/kevin/Downloads/Maven-2026-v1.pdf -)"
+      "Bash(pdftotext /Users/kevin/Downloads/Maven-2026-v1.pdf -)",
+      "Read(//Users/kevin/github/personal/ollama-fleet/.venv/bin/**)",
+      "Read(//Users/kevin/github/personal/ollama-fleet/config/**)",
+      "Bash(~/github/personal/ollama-fleet/.venv/bin/fleet health *)",
+      "Bash(timeout 120 ~/github/personal/ollama-fleet/.venv/bin/fleet run qwen3.6:35b-a3b-q4_K_M 'Report discrepancies: does \"Python 3.13+\" in docs/contributing/dev-setup.md match \"minversion = 3.14\" in pytest.ini? Answer: discrepancy found \\(docs claim 3.13+ but pytest requires 3.14\\) OR no discrepancies found' --host altai 2>&1)",
+      "Bash(timeout 120 ~/github/personal/ollama-fleet/.venv/bin/fleet run qwen3.6:35b-a3b-q4_K_M 'Fact-check: \\(1\\) does langchain_agent/ARCHITECTURE.md consistently mention 6-intent classifier with intents [search, comparison, attribute_filter, refinement, follow_up, summary]? \\(2\\) does it correctly name Gemini 3 Flash for generation and Gemini 3.1 Flash Lite for eval/reranking? Answer: discrepancies found \\(specific claims that are wrong\\) OR no discrepancies found' --host altai 2>&1)",
+      "Bash(/tmp/check_all_docs.sh)",
+      "Bash(/tmp/batch_check.sh)"
     ]
   },
   "enableAllProjectMcpServers": true,
