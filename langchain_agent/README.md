@@ -27,7 +27,7 @@ vector + BM25 search, and PostgreSQL for LangGraph checkpoints.
 
 **Stack:**
 
-- **Backend:** Python 3.13+, FastAPI, LangGraph, LangChain
+- **Backend:** Python 3.14+, FastAPI, LangGraph, LangChain
 - **Frontend:** React 18, TypeScript, Tailwind, Zustand
 - **Data layer:** OpenSearch 2.19.1 (HNSW + BM25) · PostgreSQL 16
   (LangGraph checkpoints only)
@@ -58,7 +58,7 @@ Path A needs:
 
 ```bash
 docker --version      # Docker Desktop
-python3 --version     # Python 3.13+
+python3 --version     # Python 3.14+
 node --version        # Node.js 24+
 java -version         # Java 17+ (for Lucille ETL ingest)
 mvn -version          # Maven 3.8+ (for Lucille ETL ingest)

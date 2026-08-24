@@ -8,7 +8,7 @@ Get the project running on your machine for development.
 
 ## What You're Setting Up
 
-- **Backend**: FastAPI server on `localhost:8000` (Python 3.13+, .venv)
+- **Backend**: FastAPI server on `localhost:8000` (Python 3.14+, .venv)
 - **Frontend**: React + Vite dev server on `localhost:5173` (Node.js 24+)
 - **Services**: PostgreSQL (checkpoints) + OpenSearch (search index) in Docker
 - **Data**: 10K ESCI product samples with precomputed embeddings, ingested via Lucille ETL
@@ -36,7 +36,7 @@ Verify each tool is installed. The **Why** column explains what it's used for.
 **macOS (via Homebrew):**
 ```bash
 brew install docker
-brew install python@3.13
+brew install python@3.14
 brew install node
 brew install openjdk@17
 brew install maven
@@ -57,7 +57,7 @@ sudo apt-get install maven
 
 **Windows:**
 - Docker Desktop: https://www.docker.com/products/docker-desktop
-- Python 3.13+: https://www.python.org/downloads/
+- Python 3.14+: https://www.python.org/downloads/
 - Node.js 24+: https://nodejs.org/ (use LTS)
 - Java 17+: https://www.oracle.com/java/technologies/downloads/
 - Maven: https://maven.apache.org/download.cgi

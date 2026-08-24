@@ -152,7 +152,7 @@ npx http-server dist   # Serve dist/ locally for testing
 
 Multi-stage Docker build in `../Dockerfile`:
 1. **Build stage** — Node 24, `npm install && npm run build` → `dist/`
-2. **Runtime stage** — Python 3.13 + gunicorn serves `dist/` + proxies `/api` to Python backend
+2. **Runtime stage** — Python 3.14 + gunicorn serves `dist/` + proxies `/api` to Python backend
 
 The frontend is built into the Docker image and served from the Python backend on Cloud Run.
 No separate Node.js service — all one container.
