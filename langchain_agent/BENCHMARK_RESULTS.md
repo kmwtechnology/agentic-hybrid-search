@@ -173,6 +173,8 @@ All benchmarks use these fixed values (defined in `benchmark_esci.py` and Makefi
 **Query sample:** 5000 judged US queries (industry-standard scale)  
 **Hard-query count:** 1250 / 5000 (bottom-quartile NDCG@10 <= 0.2393)
 
+⚠️ **STALE:** These results predate the June 13, 2026 BM25 analyzer change (issue #69/PR #73, `snowball` → `kstem` for precision). Results should be re-validated using `make benchmark-esci-fast` on the current codebase before citing in presentations.
+
 ```text
 ======================================================
 ESCI HARD-QUERY RELEVANCY BENCHMARK

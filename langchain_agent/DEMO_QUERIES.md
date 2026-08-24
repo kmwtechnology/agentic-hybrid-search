@@ -1,7 +1,8 @@
 # Demo Queries — Agentic Hybrid Search Conference Talk
 
-**Validated:** 2026-05-03 against local backend; all three picks reproducible
-3/3.
+**Validated:** 2026-05-03 against local backend; all three picks reproducible 3/3.
+
+⚠️ **STALE METRICS:** The NDCG@10 and max_score numbers in this document predate the June 13, 2026 BM25 analyzer change (issue #69/PR #73, `snowball` → `kstem` for precision). If re-demoing, re-validate these scenarios against the current codebase before quoting NDCG@10 figures.
 
 > **Demo notes:**
 >
