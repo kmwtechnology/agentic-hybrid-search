@@ -1,3 +1,4 @@
+/** Displays cached pipeline metrics from a previous conversation turn, restored from LangGraph checkpoints. */
 import { useObservabilityStore } from '../../stores/observabilityStore'
 
 const formatLatency = (ms: number | undefined): string => {

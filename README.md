@@ -426,7 +426,7 @@ agentic-hybrid-search/
 | **For Contributors** | | |
 | [docs/contributing/README.md](docs/contributing/README.md) | Code patterns, testing, PR process | Contributors |
 | **For Claude Code sessions** | | |
-| [langchain_agent/CLAUDE.md](langchain_agent/CLAUDE.md) | Pipeline reference, commands, patterns, env vars — loaded automatically by Claude Code | AI/dev assistant |
+| [CLAUDE.md](CLAUDE.md) | Pipeline reference, commands, patterns, env vars — loaded automatically by Claude Code | AI/dev assistant |
 
 ## Search Optimization
 

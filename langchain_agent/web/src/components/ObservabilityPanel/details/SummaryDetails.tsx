@@ -1,3 +1,4 @@
+/** Displays summary node execution status when the user asks to summarize prior conversation turns. */
 import { SummaryEvent, NodeStatus } from '../../../types/events'
 import { useObservabilityStore } from '../../../stores/observabilityStore'
 

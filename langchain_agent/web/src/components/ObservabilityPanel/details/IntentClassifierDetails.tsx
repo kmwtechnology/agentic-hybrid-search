@@ -1,3 +1,4 @@
+/** Displays detected intent, confidence score, and resolved query expansions (pronouns, comparatives). */
 import { IntentClassificationEvent, QueryExpansionEvent } from '../../../types/events'
 import clsx from 'clsx'
 
